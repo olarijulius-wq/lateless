@@ -19,6 +19,12 @@ export default function LoginPage() {
         <Suspense>
           <LoginForm />
         </Suspense>
+        <p className="mt-4 text-center text-sm text-slate-400">
+          No account?{' '}
+          <a href="/signup" className="text-sky-400 hover:underline">
+            Create one
+          </a>
+        </p>
       </div>
     </main>
   );

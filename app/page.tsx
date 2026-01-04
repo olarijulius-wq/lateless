@@ -14,7 +14,7 @@ export default function Page() {
       <div className="mt-4 flex grow flex-col gap-4 md:flex-row">
         <div className="flex flex-col justify-center gap-6 rounded-lg border border-slate-800 bg-slate-900/80 px-6 py-10 shadow-[0_18px_35px_rgba(0,0,0,0.45)] md:w-2/5 md:px-20">
           <p className={`${lusitana.className} text-xl text-slate-100 md:text-3xl md:leading-normal`}>
-            <strong>Welcome to Acme.</strong> This is the example for the{' '}
+            <strong>Welcome to Invoicify.</strong> This is the example for the{' '}
             <a href="https://nextjs.org/learn/" className="text-sky-300 underline-offset-4 hover:underline">
               Next.js Learn Course
             </a>

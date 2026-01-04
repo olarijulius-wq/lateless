@@ -1,4 +1,4 @@
-import Image from 'next/image';
+// import Image from 'next/image';
 import { UpdateInvoice, DeleteInvoice } from '@/app/ui/invoices/buttons';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
@@ -26,13 +26,9 @@ export default async function InvoicesTable({
                 <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                   <div>
                     <div className="mb-2 flex items-center">
-                      <Image
-                        src={invoice.image_url}
-                        className="mr-2 rounded-full"
-                        width={28}
-                        height={28}
-                        alt={`${invoice.name}'s profile picture`}
-                      />
+                      <div className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
+                        {invoice.name.charAt(0).toUpperCase()}
+                      </div>
                     <p>{invoice.name}</p>
                   </div>
                   <p className="text-sm text-slate-400">{invoice.email}</p>
@@ -85,13 +81,9 @@ export default async function InvoicesTable({
                 >
                   <td className="whitespace-nowrap bg-slate-900/60 py-3 pl-6 pr-3">
                     <div className="flex items-center gap-3">
-                      <Image
-                        src={invoice.image_url}
-                        className="rounded-full"
-                        width={28}
-                        height={28}
-                        alt={`${invoice.name}'s profile picture`}
-                      />
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
+                        {invoice.name.charAt(0).toUpperCase()}
+                      </div>
                       <p>{invoice.name}</p>
                     </div>
                   </td>

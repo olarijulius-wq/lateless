@@ -130,6 +130,11 @@ export default function Form({ customers }: { customers: CustomerField[] }) {
                 ))}
             </div>
         </fieldset>
+        {state.message && (
+          <p className="mt-4 text-sm text-red-500" aria-live="polite">
+            {state.message}
+          </p>
+        )}
       </div>
       <div className="mt-6 flex justify-end gap-4">
         <Link

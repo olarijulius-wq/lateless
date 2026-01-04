@@ -1,31 +1,36 @@
 // app/api/stripe/checkout/route.ts
-import { NextResponse } from "next/server";
-import { stripe } from "@/app/lib/stripe";
-import { auth } from "@/auth";
+import { NextResponse } from 'next/server';
+import { stripe } from '@/app/lib/stripe';
+import { auth } from '@/auth';
 
 export async function POST() {
   const session = await auth();
 
   if (!session?.user?.email) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const priceId = process.env.STRIPE_PRICE_ID;
   if (!priceId) {
-    return NextResponse.json({ error: "Missing STRIPE_PRICE_ID" }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Missing STRIPE_PRICE_ID' },
+      { status: 500 },
+    );
   }
 
-  // Absoluutsed URL-id (Stripe nõuab)
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000');
 
   try {
     const checkoutSession = await stripe.checkout.sessions.create({
-      mode: "subscription",
+      mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
 
-      // Seo kasutajaga (MVP: email)
+      // seome kasutajaga emaili kaudu
+      customer_email: session.user.email,
       metadata: {
         userEmail: session.user.email,
       },
@@ -37,8 +42,8 @@ export async function POST() {
     return NextResponse.json({ url: checkoutSession.url });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err?.message ?? "Stripe error" },
-      { status: 500 }
+      { error: err?.message ?? 'Stripe error' },
+      { status: 500 },
     );
   }
 }
