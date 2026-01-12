@@ -1,29 +1,7 @@
 import Image from 'next/image';
+import Link from 'next/link';
 import { FormattedCustomersTable } from '@/app/lib/definitions';
-import { EllipsisVerticalIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { deleteCustomer } from '@/app/lib/actions';
-
-function CustomerMenu({ id }: { id: string }) {
-  return (
-    <details className="relative">
-      <summary className="list-none cursor-pointer rounded-md border border-slate-800 bg-slate-950/60 h-9 w-9 flex items-center justify-center text-slate-300 hover:bg-slate-900">
-        <EllipsisVerticalIcon className="h-5 w-5" />
-      </summary>
-
-      <div className="absolute right-0 z-50 bottom-full mb-2 w-52 rounded-md border border-slate-800 bg-slate-950 shadow-xl">
-        <form action={deleteCustomer.bind(null, id)}>
-          <button
-            type="submit"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-200 hover:bg-red-500/10"
-          >
-            <TrashIcon className="h-4 w-4" />
-            Delete customer
-          </button>
-        </form>
-      </div>
-    </details>
-  );
-}
+import { DeleteCustomer, UpdateCustomer } from '@/app/ui/customers/buttons';
 
 function InitialAvatar({ name }: { name: string }) {
   const initial = (name?.trim()?.charAt(0) || '?').toUpperCase();
@@ -65,7 +43,12 @@ export default async function CustomersTable({
                           ) : (
                             <InitialAvatar name={customer.name} />
                           )}
-                          <p className="text-slate-100">{customer.name}</p>
+                          <Link
+                            href={`/dashboard/customers/${customer.id}`}
+                            className="text-slate-100 hover:text-sky-200"
+                          >
+                            {customer.name}
+                          </Link>
                         </div>
                       </div>
                       <p className="text-sm text-slate-400">{customer.email}</p>
@@ -87,8 +70,12 @@ export default async function CustomersTable({
                     </div>
                   </div>
 
-                  <div className="pt-4 text-sm text-slate-300">
+                  <div className="flex items-center justify-between pt-4 text-sm text-slate-300">
                     <p>{customer.total_invoices} invoices</p>
+                    <div className="flex justify-end gap-2">
+                      <UpdateCustomer id={customer.id} />
+                      <DeleteCustomer id={customer.id} />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -134,7 +121,12 @@ export default async function CustomersTable({
                         ) : (
                           <InitialAvatar name={customer.name} />
                         )}
-                        <p>{customer.name}</p>
+                        <Link
+                          href={`/dashboard/customers/${customer.id}`}
+                          className="hover:text-sky-200"
+                        >
+                          {customer.name}
+                        </Link>
                       </div>
                     </td>
                     <td className="whitespace-nowrap bg-slate-900/60 px-4 py-5 text-sm text-slate-200">
@@ -150,8 +142,9 @@ export default async function CustomersTable({
                       {customer.total_paid}
                     </td>
                     <td className="whitespace-nowrap bg-slate-900/60 px-4 py-5 text-center text-sm ...">
-                      <div className="inline-flex justify-center">
-                        <CustomerMenu id={customer.id} />
+                      <div className="flex justify-center gap-3">
+                        <UpdateCustomer id={customer.id} />
+                        <DeleteCustomer id={customer.id} />
                       </div>
                     </td>
                   </tr>

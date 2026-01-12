@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/app/ui/button';
 import Search from '@/app/ui/search';
 import { lusitana } from '@/app/ui/fonts';
+import ExportCustomersButton from './export-button';
 
 export const metadata: Metadata = {
   title: 'Customers',
@@ -27,15 +28,15 @@ export default async function Page(props: {
         Customers
       </h1>
 
-      {/* Search + button ROW (search on the LEFT, button on the RIGHT) */}
-      <div className="mb-4 flex w-full items-center gap-3">
-        <div className="flex-1">
-          <Search placeholder="Search customers..." />
+      {/* Search + buttons ROW (search on the LEFT, buttons on the RIGHT) */}
+      <div className="mb-4 flex w-full items-center justify-between gap-3">
+        <Search placeholder="Search customers..." />
+        <div className="flex items-center gap-2">
+          <ExportCustomersButton />
+          <Link href="/dashboard/customers/create" className="shrink-0">
+            <Button>Create customer</Button>
+          </Link>
         </div>
-
-        <Link href="/dashboard/customers/create" className="shrink-0">
-          <Button>Create customer</Button>
-        </Link>
       </div>
 
       {/* Table */}

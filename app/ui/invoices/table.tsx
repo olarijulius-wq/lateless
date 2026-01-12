@@ -1,18 +1,15 @@
 // import Image from 'next/image';
+import Link from 'next/link';
 import { UpdateInvoice, DeleteInvoice } from '@/app/ui/invoices/buttons';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
-import { fetchFilteredInvoices } from '@/app/lib/data';
+import type { InvoicesTable as InvoicesTableType } from '@/app/lib/definitions';
 
-export default async function InvoicesTable({
-  query,
-  currentPage,
+export default function InvoicesTable({
+  invoices,
 }: {
-  query: string;
-  currentPage: number;
+  invoices: InvoicesTableType[];
 }) {
-  const invoices = await fetchFilteredInvoices(query, currentPage);
-
   return (
     <div className="mt-6 flow-root">
       <div className="inline-block min-w-full align-middle">
@@ -29,10 +26,10 @@ export default async function InvoicesTable({
                       <div className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
                         {invoice.name.charAt(0).toUpperCase()}
                       </div>
-                    <p>{invoice.name}</p>
+                      <p>{invoice.name}</p>
+                    </div>
+                    <p className="text-sm text-slate-400">{invoice.email}</p>
                   </div>
-                  <p className="text-sm text-slate-400">{invoice.email}</p>
-                </div>
                   <InvoiceStatus status={invoice.status} />
                 </div>
                 <div className="flex w-full items-center justify-between pt-4">
@@ -40,6 +37,12 @@ export default async function InvoicesTable({
                     <p className="text-xl font-medium">
                       {formatCurrency(invoice.amount)}
                     </p>
+                    <Link
+                      href={`/dashboard/invoices/${invoice.id}`}
+                      className="text-sm text-sky-300 hover:text-sky-200"
+                    >
+                      {invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`}
+                    </Link>
                     <p>{formatDateToLocal(invoice.date)}</p>
                   </div>
                   <div className="flex justify-end gap-2">
@@ -84,7 +87,15 @@ export default async function InvoicesTable({
                       <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
                         {invoice.name.charAt(0).toUpperCase()}
                       </div>
-                      <p>{invoice.name}</p>
+                      <div>
+                        <p>{invoice.name}</p>
+                        <Link
+                          href={`/dashboard/invoices/${invoice.id}`}
+                          className="text-xs text-sky-300 hover:text-sky-200"
+                        >
+                          {invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`}
+                        </Link>
+                      </div>
                     </div>
                   </td>
                   <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3 text-slate-200">
@@ -109,6 +120,10 @@ export default async function InvoicesTable({
               ))}
             </tbody>
           </table>
+
+          {invoices.length === 0 && (
+            <div className="p-6 text-sm text-slate-300">No invoices yet.</div>
+          )}
         </div>
       </div>
     </div>

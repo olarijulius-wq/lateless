@@ -1,7 +1,11 @@
 import postgres from 'postgres';
 import {
   CustomerField,
+  CustomerForm,
+  CustomerInvoice,
   CustomersTableType,
+  CompanyProfile,
+  InvoiceDetail,
   InvoiceForm,
   InvoicesTable,
   LatestInvoiceRaw,
@@ -12,18 +16,174 @@ import { auth } from '@/auth';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
 async function requireUserEmail() {
   const session = await auth();
   const email = session?.user?.email;
   if (!email) throw new Error('Unauthorized');
-  return email;
+  return normalizeEmail(email);
 }
 
+function getTallinnYear(date: Date = new Date()) {
+  const year = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Tallinn',
+    year: 'numeric',
+  }).format(date);
+  return Number(year);
+}
+
+export async function fetchCompanyProfile(): Promise<CompanyProfile | null> {
+  const userEmail = await requireUserEmail();
+
+  try {
+    const data = await sql<CompanyProfile[]>`
+      SELECT
+        id,
+        user_email,
+        company_name,
+        reg_code,
+        vat_number,
+        address_line1,
+        address_line2,
+        city,
+        country,
+        phone,
+        billing_email,
+        logo_url,
+        created_at,
+        updated_at
+      FROM company_profiles
+      WHERE lower(user_email) = ${userEmail}
+      LIMIT 1
+    `;
+
+    return data[0] ?? null;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch company profile.');
+  }
+}
+
+export async function upsertCompanyProfile(
+  profile: Omit<CompanyProfile, 'id' | 'user_email' | 'created_at' | 'updated_at'>,
+): Promise<CompanyProfile> {
+  const userEmail = await requireUserEmail();
+
+  try {
+    const data = await sql<CompanyProfile[]>`
+      INSERT INTO company_profiles (
+        user_email,
+        company_name,
+        reg_code,
+        vat_number,
+        address_line1,
+        address_line2,
+        city,
+        country,
+        phone,
+        billing_email,
+        logo_url
+      )
+      VALUES (
+        ${userEmail},
+        ${profile.company_name},
+        ${profile.reg_code},
+        ${profile.vat_number},
+        ${profile.address_line1},
+        ${profile.address_line2},
+        ${profile.city},
+        ${profile.country},
+        ${profile.phone},
+        ${profile.billing_email},
+        ${profile.logo_url}
+      )
+      ON CONFLICT (user_email)
+      DO UPDATE SET
+        company_name = EXCLUDED.company_name,
+        reg_code = EXCLUDED.reg_code,
+        vat_number = EXCLUDED.vat_number,
+        address_line1 = EXCLUDED.address_line1,
+        address_line2 = EXCLUDED.address_line2,
+        city = EXCLUDED.city,
+        country = EXCLUDED.country,
+        phone = EXCLUDED.phone,
+        billing_email = EXCLUDED.billing_email,
+        logo_url = EXCLUDED.logo_url,
+        updated_at = now()
+      RETURNING
+        id,
+        user_email,
+        company_name,
+        reg_code,
+        vat_number,
+        address_line1,
+        address_line2,
+        city,
+        country,
+        phone,
+        billing_email,
+        logo_url,
+        created_at,
+        updated_at
+    `;
+
+    const saved = data[0];
+    if (!saved) {
+      throw new Error('Failed to upsert company profile.');
+    }
+
+    return saved;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to save company profile.');
+  }
+}
+
+export async function getNextInvoiceNumber() {
+  const userEmail = await requireUserEmail();
+  const year = getTallinnYear();
+
+  try {
+    const [counter] = await sql<{ current_year: number; last_seq: number }[]>`
+      INSERT INTO invoice_counters (user_email, current_year, last_seq)
+      VALUES (${userEmail}, ${year}, 1)
+      ON CONFLICT (user_email)
+      DO UPDATE SET
+        current_year = CASE
+          WHEN invoice_counters.current_year = ${year}
+          THEN invoice_counters.current_year
+          ELSE ${year}
+        END,
+        last_seq = CASE
+          WHEN invoice_counters.current_year = ${year}
+          THEN invoice_counters.last_seq + 1
+          ELSE 1
+        END,
+        updated_at = now()
+      RETURNING current_year, last_seq
+    `;
+
+    if (!counter) {
+      throw new Error('Failed to allocate invoice number.');
+    }
+
+    const padded = String(counter.last_seq).padStart(4, '0');
+    return `INV-${counter.current_year}-${padded}`;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to allocate invoice number.');
+  }
+}
 
 export async function fetchRevenue() {
   const session = await auth();
   const userEmail = session?.user?.email;
   if (!userEmail) return [];
+
+  const normalizedEmail = normalizeEmail(userEmail);
 
   const data = await sql<{ month: string; revenue: number }[]>`
     SELECT
@@ -32,7 +192,7 @@ export async function fetchRevenue() {
     FROM invoices
     WHERE
       status = 'paid'
-      AND user_email = ${userEmail}
+      AND lower(user_email) = ${normalizedEmail}
     GROUP BY date_trunc('month', date::date)
     ORDER BY date_trunc('month', date::date)
   `;
@@ -48,8 +208,8 @@ export async function fetchLatestInvoices() {
       SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
-      WHERE invoices.user_email = ${userEmail}
-        AND customers.user_email = ${userEmail}
+      WHERE lower(invoices.user_email) = ${userEmail}
+        AND lower(customers.user_email) = ${userEmail}
       ORDER BY invoices.date DESC
       LIMIT 5
     `;
@@ -72,12 +232,12 @@ export async function fetchCardData() {
   try {
     const invoiceCountPromise = sql`
       SELECT COUNT(*) FROM invoices
-      WHERE user_email = ${userEmail}
+      WHERE lower(user_email) = ${userEmail}
     `;
 
     const customerCountPromise = sql`
       SELECT COUNT(*) FROM customers
-      WHERE user_email = ${userEmail}
+      WHERE lower(user_email) = ${userEmail}
     `;
 
     const invoiceStatusPromise = sql`
@@ -85,7 +245,7 @@ export async function fetchCardData() {
         SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
         SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
       FROM invoices
-      WHERE user_email = ${userEmail}
+      WHERE lower(user_email) = ${userEmail}
     `;
 
     const data = await Promise.all([
@@ -124,17 +284,19 @@ export async function fetchFilteredInvoices(query: string, currentPage: number) 
         invoices.amount,
         invoices.date,
         invoices.status,
+        invoices.invoice_number,
         customers.name,
         customers.email,
         customers.image_url
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
-      WHERE invoices.user_email = ${userEmail}
-        AND customers.user_email = ${userEmail}
+      WHERE lower(invoices.user_email) = ${userEmail}
+        AND lower(customers.user_email) = ${userEmail}
         AND (
           customers.name ILIKE ${`%${query}%`} OR
           customers.email ILIKE ${`%${query}%`} OR
           invoices.amount::text ILIKE ${`%${query}%`} OR
+          COALESCE(invoices.invoice_number, '') ILIKE ${`%${query}%`} OR
           invoices.date::text ILIKE ${`%${query}%`} OR
           invoices.status ILIKE ${`%${query}%`}
         )
@@ -157,8 +319,8 @@ export async function fetchInvoicesPages(query: string) {
       SELECT COUNT(*)
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
-      WHERE invoices.user_email = ${userEmail}
-        AND customers.user_email = ${userEmail}
+      WHERE lower(invoices.user_email) = ${userEmail}
+        AND lower(customers.user_email) = ${userEmail}
         AND (
           customers.name ILIKE ${`%${query}%`} OR
           customers.email ILIKE ${`%${query}%`} OR
@@ -180,6 +342,36 @@ export async function fetchInvoiceById(id: string) {
   const userEmail = await requireUserEmail();
 
   try {
+    const data = await sql<InvoiceDetail[]>`
+      SELECT
+        invoices.id,
+        invoices.customer_id,
+        invoices.amount,
+        invoices.status,
+        invoices.date,
+        invoices.invoice_number,
+        customers.name AS customer_name,
+        customers.email AS customer_email
+      FROM invoices
+      JOIN customers
+        ON customers.id = invoices.customer_id
+        AND lower(customers.user_email) = ${userEmail}
+      WHERE invoices.id = ${id}
+        AND lower(invoices.user_email) = ${userEmail}
+      LIMIT 1
+    `;
+
+    return data[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch invoice.');
+  }
+}
+
+export async function fetchInvoiceFormById(id: string) {
+  const userEmail = await requireUserEmail();
+
+  try {
     const data = await sql<InvoiceForm[]>`
       SELECT
         invoices.id,
@@ -188,7 +380,7 @@ export async function fetchInvoiceById(id: string) {
         invoices.status
       FROM invoices
       WHERE invoices.id = ${id}
-        AND invoices.user_email = ${userEmail}
+        AND lower(invoices.user_email) = ${userEmail}
     `;
 
     const invoice = data.map((invoice) => ({
@@ -210,7 +402,7 @@ export async function fetchCustomers() {
     const customers = await sql<CustomerField[]>`
       SELECT id, name
       FROM customers
-      WHERE user_email = ${userEmail}
+      WHERE lower(user_email) = ${userEmail}
       ORDER BY name ASC
     `;
 
@@ -218,6 +410,44 @@ export async function fetchCustomers() {
   } catch (err) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch all customers.');
+  }
+}
+
+export async function fetchCustomerById(id: string) {
+  const userEmail = await requireUserEmail();
+
+  try {
+    const data = await sql<CustomerForm[]>`
+      SELECT id, name, email, image_url
+      FROM customers
+      WHERE id = ${id}
+        AND lower(user_email) = ${userEmail}
+      LIMIT 1
+    `;
+
+    return data[0];
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch customer.');
+  }
+}
+
+export async function fetchInvoicesByCustomerId(customerId: string) {
+  const userEmail = await requireUserEmail();
+
+  try {
+    const data = await sql<CustomerInvoice[]>`
+      SELECT id, amount, status, date
+      FROM invoices
+      WHERE customer_id = ${customerId}
+        AND lower(user_email) = ${userEmail}
+      ORDER BY date DESC
+    `;
+
+    return data;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch customer invoices.');
   }
 }
 
@@ -237,8 +467,8 @@ export async function fetchFilteredCustomers(query: string) {
       FROM customers
       LEFT JOIN invoices
         ON customers.id = invoices.customer_id
-        AND invoices.user_email = ${userEmail}
-      WHERE customers.user_email = ${userEmail}
+        AND lower(invoices.user_email) = ${userEmail}
+      WHERE lower(customers.user_email) = ${userEmail}
         AND (
           customers.name ILIKE ${`%${query}%`} OR
           customers.email ILIKE ${`%${query}%`}
@@ -258,4 +488,56 @@ export async function fetchFilteredCustomers(query: string) {
     console.error('Database Error:', err);
     throw new Error('Failed to fetch customer table.');
   }
+}
+
+export async function fetchUserPlanAndUsage() {
+  const session = await auth();
+  const email = session?.user?.email;
+  const freeLimit = 5;
+
+  // Kui mingil põhjusel sessiooni pole, käitume kui free user 0 invoice’iga
+  if (!email) {
+    return {
+      isPro: false,
+      subscriptionStatus: null as string | null,
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: null as Date | string | null,
+      invoiceCount: 0,
+      freeLimit,
+    };
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+
+  // loeme korraga: kasutaja plaan + mitu invoice’it tal on
+  const [userRows, invoiceRows] = await Promise.all([
+    sql<{
+      is_pro: boolean | null;
+      subscription_status: string | null;
+      cancel_at_period_end: boolean | null;
+      current_period_end: Date | string | null;
+    }[]>`
+      select is_pro, subscription_status, cancel_at_period_end, current_period_end
+      from users
+      where lower(email) = ${normalizedEmail}
+      limit 1
+    `,
+    sql<{ count: string }[]>`
+      select count(*)::text as count
+      from invoices
+      where lower(user_email) = ${normalizedEmail}
+    `,
+  ]);
+
+  const user = userRows[0];
+  const invoiceCount = Number(invoiceRows[0]?.count ?? '0');
+
+  return {
+    isPro: !!user?.is_pro,
+    subscriptionStatus: user?.subscription_status ?? null,
+    cancelAtPeriodEnd: user?.cancel_at_period_end ?? false,
+    currentPeriodEnd: user?.current_period_end ?? null,
+    invoiceCount,
+    freeLimit,
+  };
 }

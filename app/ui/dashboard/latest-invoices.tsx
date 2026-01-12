@@ -3,6 +3,7 @@ import clsx from 'clsx';
 // import Image from 'next/image';
 import { lusitana } from '@/app/ui/fonts';
 import { fetchLatestInvoices } from '@/app/lib/data';
+import Link from 'next/link';
 
 function InitialAvatar({ name }: { name: string }) {
   const initial = (name?.trim()?.charAt(0) || '?').toUpperCase();
@@ -31,18 +32,18 @@ export default async function LatestInvoices() {
             </p>
 
             <div className="mt-4 flex flex-wrap gap-3">
-              <a
+              <Link
                 href="/dashboard/customers"
                 className="inline-flex items-center rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-white hover:bg-sky-400"
               >
                 Add customer
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/dashboard/invoices/create"
                 className="inline-flex items-center rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
               >
                 Create invoice
-              </a>
+              </Link>
             </div>
           </div>
         ) : (

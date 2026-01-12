@@ -7,8 +7,13 @@ import { redirect } from 'next/navigation';
 import { signIn, auth } from '@/auth';
 import { AuthError } from 'next-auth';
 import bcrypt from 'bcrypt';
+import { getNextInvoiceNumber, upsertCompanyProfile } from '@/app/lib/data';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
 const FormSchema = z.object({
   id: z.string(),
@@ -27,6 +32,58 @@ const FormSchema = z.object({
 const CreateInvoice = FormSchema.omit({ id: true, date: true });
 const UpdateInvoice = FormSchema.omit({ id: true, date: true });
 
+const requiredText = (schema: z.ZodTypeAny) =>
+  z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    schema,
+  );
+
+const optionalText = (schema: z.ZodTypeAny) =>
+  z.preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    return trimmed === '' ? undefined : trimmed;
+  }, schema.optional());
+
+const CompanyProfileSchema = z.object({
+  companyName: requiredText(
+    z.string().min(2, { message: 'Company name must be at least 2 characters.' }),
+  ),
+  regCode: optionalText(
+    z
+      .string()
+      .max(50, { message: 'Registration code must be 50 characters or less.' }),
+  ),
+  vatNumber: optionalText(
+    z
+      .string()
+      .max(50, { message: 'VAT number must be 50 characters or less.' }),
+  ),
+  addressLine1: optionalText(
+    z
+      .string()
+      .max(200, { message: 'Address line 1 must be 200 characters or less.' }),
+  ),
+  addressLine2: optionalText(
+    z
+      .string()
+      .max(200, { message: 'Address line 2 must be 200 characters or less.' }),
+  ),
+  city: optionalText(
+    z.string().max(200, { message: 'City must be 200 characters or less.' }),
+  ),
+  country: optionalText(
+    z.string().max(200, { message: 'Country must be 200 characters or less.' }),
+  ),
+  phone: optionalText(z.string()),
+  billingEmail: optionalText(
+    z.string().email({ message: 'Please enter a valid billing email address.' }),
+  ),
+  logoUrl: optionalText(
+    z.string().url({ message: 'Logo URL must be a valid URL.' }),
+  ),
+});
+
 export type State = {
   errors?: {
     customerId?: string[];
@@ -34,6 +91,40 @@ export type State = {
     status?: string[];
   };
   message?: string | null;
+};
+
+export type CreateInvoiceState =
+  | { ok: true; invoiceId: string }
+  | {
+      ok: false;
+      code: 'LIMIT_REACHED' | 'VALIDATION' | 'UNKNOWN';
+      message: string;
+      errors?: State['errors'];
+    };
+
+export type DuplicateInvoiceState =
+  | { ok: true; invoiceId: string }
+  | {
+      ok: false;
+      code: 'LIMIT_REACHED' | 'NOT_FOUND' | 'UNKNOWN';
+      message: string;
+    };
+
+export type CompanyProfileState = {
+  ok: boolean;
+  message: string | null;
+  errors?: {
+    companyName?: string[];
+    regCode?: string[];
+    vatNumber?: string[];
+    addressLine1?: string[];
+    addressLine2?: string[];
+    city?: string[];
+    country?: string[];
+    phone?: string[];
+    billingEmail?: string[];
+    logoUrl?: string[];
+  };
 };
 
 // Customer create schema/state
@@ -56,13 +147,13 @@ async function requireUserEmail() {
   const session = await auth();
   const email = session?.user?.email;
   if (!email) throw new Error('Unauthorized');
-  return email;
+  return normalizeEmail(email);
 }
 
 export async function createInvoice(
-  prevState: State,
+  prevState: CreateInvoiceState | null,
   formData: FormData,
-) {
+): Promise<CreateInvoiceState> {
   const validatedFields = CreateInvoice.safeParse({
     customerId: formData.get('customerId'),
     amount: formData.get('amount'),
@@ -71,8 +162,10 @@ export async function createInvoice(
 
   if (!validatedFields.success) {
     return {
-      errors: validatedFields.error.flatten().fieldErrors,
+      ok: false,
+      code: 'VALIDATION',
       message: 'Missing fields. Failed to create invoice.',
+      errors: validatedFields.error.flatten().fieldErrors,
     };
   }
 
@@ -80,20 +173,77 @@ export async function createInvoice(
   try {
     userEmail = await requireUserEmail();
   } catch {
-    return { message: 'Unauthorized.' };
+    return {
+      ok: false,
+      code: 'UNKNOWN',
+      message: 'Unauthorized.',
+    };
+  }
+
+  const [{ is_pro: isPro = false } = { is_pro: false }] = await sql<
+    { is_pro: boolean | null }[]
+  >`
+    select is_pro
+    from users
+    where lower(email) = ${userEmail}
+    limit 1
+  `;
+
+  if (!isPro) {
+    const [{ count = '0' } = { count: '0' }] = await sql<
+      { count: string }[]
+    >`
+      select count(*)::text as count
+      from invoices
+      where lower(user_email) = ${userEmail}
+    `;
+
+    if (Number(count) >= 5) {
+      return {
+        ok: false,
+        code: 'LIMIT_REACHED',
+        message:
+          'Free plan limit reached. Upgrade to Pro to create more invoices.',
+      };
+    }
   }
 
   const { customerId, amount, status } = validatedFields.data;
   const amountInCents = Math.round(amount * 100);
   const date = new Date().toISOString().split('T')[0];
+  let invoiceNumber: string;
 
   try {
-    await sql`
-      INSERT INTO invoices (customer_id, amount, status, date, user_email)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date}, ${userEmail})
-    `;
+    invoiceNumber = await getNextInvoiceNumber();
   } catch {
-    return { message: 'Database error. Failed to create invoice.' };
+    return {
+      ok: false,
+      code: 'UNKNOWN',
+      message: 'Failed to allocate an invoice number.',
+    };
+  }
+
+  try {
+    const created = await sql<{ id: string }[]>`
+      INSERT INTO invoices (customer_id, amount, status, date, user_email, invoice_number)
+      VALUES (${customerId}, ${amountInCents}, ${status}, ${date}, ${userEmail}, ${invoiceNumber})
+      RETURNING id
+    `;
+
+    const invoiceId = created[0]?.id;
+    if (!invoiceId) {
+      return {
+        ok: false,
+        code: 'UNKNOWN',
+        message: 'Database error. Failed to create invoice.',
+      };
+    }
+  } catch {
+    return {
+      ok: false,
+      code: 'UNKNOWN',
+      message: 'Database error. Failed to create invoice.',
+    };
   }
 
   revalidatePath('/dashboard/invoices');
@@ -132,7 +282,7 @@ export async function updateInvoice(
     const updated = await sql`
       UPDATE invoices
       SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-      WHERE id = ${id} AND user_email = ${userEmail}
+      WHERE id = ${id} AND lower(user_email) = ${userEmail}
       RETURNING id
     `;
 
@@ -150,12 +300,164 @@ export async function updateInvoice(
   redirect('/dashboard/invoices');
 }
 
+export async function updateInvoiceStatus(
+  id: string,
+  newStatus: 'pending' | 'paid',
+  formData: FormData,
+) {
+  if (newStatus !== 'pending' && newStatus !== 'paid') {
+    return;
+  }
+
+  let userEmail: string;
+  try {
+    userEmail = await requireUserEmail();
+  } catch {
+    return;
+  }
+
+  try {
+    const updated = await sql<{ customer_id: string }[]>`
+      UPDATE invoices
+      SET status = ${newStatus}
+      WHERE id = ${id} AND lower(user_email) = ${userEmail}
+      RETURNING customer_id
+    `;
+
+    if (updated.length === 0) {
+      return;
+    }
+
+    revalidatePath('/dashboard/invoices');
+    revalidatePath(`/dashboard/invoices/${id}`);
+    revalidatePath(`/dashboard/customers/${updated[0].customer_id}`);
+    redirect(`/dashboard/invoices/${id}`);
+  } catch {
+    return;
+  }
+}
+
+export async function duplicateInvoice(
+  id: string,
+  prevState: DuplicateInvoiceState | null,
+  formData: FormData,
+): Promise<DuplicateInvoiceState> {
+  let userEmail: string;
+  try {
+    userEmail = await requireUserEmail();
+  } catch {
+    return {
+      ok: false,
+      code: 'UNKNOWN',
+      message: 'Unauthorized.',
+    };
+  }
+
+  const [{ is_pro: isPro = false } = { is_pro: false }] = await sql<
+    { is_pro: boolean | null }[]
+  >`
+    select is_pro
+    from users
+    where lower(email) = ${userEmail}
+    limit 1
+  `;
+
+  if (!isPro) {
+    const [{ count = '0' } = { count: '0' }] = await sql<
+      { count: string }[]
+    >`
+      select count(*)::text as count
+      from invoices
+      where lower(user_email) = ${userEmail}
+    `;
+
+    if (Number(count) >= 5) {
+      return {
+        ok: false,
+        code: 'LIMIT_REACHED',
+        message:
+          'Free plan limit reached. Upgrade to Pro to create more invoices.',
+      };
+    }
+  }
+
+  const [invoice] = await sql<{
+    customer_id: string;
+    amount: number;
+  }[]>`
+    select customer_id, amount
+    from invoices
+    where id = ${id} and lower(user_email) = ${userEmail}
+    limit 1
+  `;
+
+  if (!invoice) {
+    return {
+      ok: false,
+      code: 'NOT_FOUND',
+      message: 'Invoice not found.',
+    };
+  }
+
+  const date = new Date().toISOString().split('T')[0];
+  let invoiceNumber: string;
+
+  try {
+    invoiceNumber = await getNextInvoiceNumber();
+  } catch {
+    return {
+      ok: false,
+      code: 'UNKNOWN',
+      message: 'Failed to allocate an invoice number.',
+    };
+  }
+
+  try {
+    const created = await sql<{ id: string }[]>`
+      INSERT INTO invoices (customer_id, amount, status, date, user_email, invoice_number)
+      VALUES (${invoice.customer_id}, ${invoice.amount}, 'pending', ${date}, ${userEmail}, ${invoiceNumber})
+      RETURNING id
+    `;
+
+    const newInvoiceId = created[0]?.id;
+    if (!newInvoiceId) {
+      return {
+        ok: false,
+        code: 'UNKNOWN',
+        message: 'Database error. Failed to duplicate invoice.',
+      };
+    }
+
+    revalidatePath('/dashboard/invoices');
+    revalidatePath(`/dashboard/customers/${invoice.customer_id}`);
+    redirect(`/dashboard/invoices/${newInvoiceId}`);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      typeof (error as { digest?: string }).digest === 'string' &&
+      (error as { digest?: string }).digest?.startsWith('NEXT_REDIRECT')
+    ) {
+      throw error;
+    }
+
+    console.error('Duplicate invoice error:', error);
+    return {
+      ok: false,
+      code: 'UNKNOWN',
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Database error. Failed to duplicate invoice.',
+    };
+  }
+}
+
 export async function deleteInvoice(id: string) {
   const userEmail = await requireUserEmail();
 
   const deleted = await sql`
     DELETE FROM invoices
-    WHERE id = ${id} AND user_email = ${userEmail}
+    WHERE id = ${id} AND lower(user_email) = ${userEmail}
     RETURNING id
   `;
 
@@ -207,18 +509,66 @@ export async function createCustomer(
   redirect('/dashboard/customers');
 }
 
+export async function updateCustomer(
+  id: string,
+  prevState: CustomerState,
+  formData: FormData,
+) {
+  const validatedFields = CustomerSchema.safeParse({
+    name: formData.get('name'),
+    email: formData.get('email'),
+  });
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: 'Missing Fields. Failed to Update Customer.',
+    };
+  }
+
+  let userEmail: string;
+  try {
+    userEmail = await requireUserEmail();
+  } catch {
+    return { message: 'Unauthorized.' };
+  }
+
+  const { name, email } = validatedFields.data;
+
+  try {
+    const updated = await sql`
+      UPDATE customers
+      SET name = ${name}, email = ${email}
+      WHERE id = ${id} AND lower(user_email) = ${userEmail}
+      RETURNING id
+    `;
+
+    if (updated.length === 0) {
+      return {
+        message:
+          'Not found or you do not have permission to update this customer.',
+      };
+    }
+  } catch {
+    return { message: 'Database Error: Failed to Update Customer.' };
+  }
+
+  revalidatePath('/dashboard/customers');
+  redirect('/dashboard/customers');
+}
+
 export async function deleteCustomer(id: string) {
   const userEmail = await requireUserEmail();
 
   // Optional but recommended: delete invoices for this customer first
   await sql`
     DELETE FROM invoices
-    WHERE customer_id = ${id} AND user_email = ${userEmail}
+    WHERE customer_id = ${id} AND lower(user_email) = ${userEmail}
   `;
 
   const deleted = await sql`
     DELETE FROM customers
-    WHERE id = ${id} AND user_email = ${userEmail}
+    WHERE id = ${id} AND lower(user_email) = ${userEmail}
     RETURNING id
   `;
 
@@ -228,6 +578,60 @@ export async function deleteCustomer(id: string) {
 
   revalidatePath('/dashboard/customers');
   revalidatePath('/dashboard/invoices');
+}
+
+export async function saveCompanyProfile(
+  prevState: CompanyProfileState,
+  formData: FormData,
+): Promise<CompanyProfileState> {
+  const validated = CompanyProfileSchema.safeParse({
+    companyName: formData.get('companyName'),
+    regCode: formData.get('regCode'),
+    vatNumber: formData.get('vatNumber'),
+    addressLine1: formData.get('addressLine1'),
+    addressLine2: formData.get('addressLine2'),
+    city: formData.get('city'),
+    country: formData.get('country'),
+    phone: formData.get('phone'),
+    billingEmail: formData.get('billingEmail'),
+    logoUrl: formData.get('logoUrl'),
+  });
+
+  if (!validated.success) {
+    return {
+      ok: false,
+      message: 'Please correct the errors and try again.',
+      errors: validated.error.flatten().fieldErrors,
+    };
+  }
+
+  try {
+    await upsertCompanyProfile({
+      company_name: validated.data.companyName,
+      reg_code: validated.data.regCode ?? null,
+      vat_number: validated.data.vatNumber ?? null,
+      address_line1: validated.data.addressLine1 ?? null,
+      address_line2: validated.data.addressLine2 ?? null,
+      city: validated.data.city ?? null,
+      country: validated.data.country ?? null,
+      phone: validated.data.phone ?? null,
+      billing_email: validated.data.billingEmail ?? null,
+      logo_url: validated.data.logoUrl ?? null,
+    });
+
+    revalidatePath('/dashboard/settings');
+
+    return {
+      ok: true,
+      message: 'Company profile saved.',
+    };
+  } catch (error) {
+    console.error('Company profile save error:', error);
+    return {
+      ok: false,
+      message: 'Failed to save company profile.',
+    };
+  }
 }
 
 const SignupSchema = z.object({
@@ -256,7 +660,7 @@ export async function registerUser(prevState: SignupState, formData: FormData) {
   }
 
   const { name, email, password } = validated.data;
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedEmail = normalizeEmail(email);
 
   try {
     const existing = await sql`

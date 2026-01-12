@@ -10,6 +10,8 @@ export async function POST() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const normalizedEmail = session.user.email.trim().toLowerCase();
+
   const priceId = process.env.STRIPE_PRICE_ID;
   if (!priceId) {
     return NextResponse.json(
@@ -30,9 +32,16 @@ export async function POST() {
       line_items: [{ price: priceId, quantity: 1 }],
 
       // seome kasutajaga emaili kaudu
-      customer_email: session.user.email,
+      customer_email: normalizedEmail,
       metadata: {
-        userEmail: session.user.email,
+        userEmail: normalizedEmail,
+        userId: (session.user as { id?: string }).id ?? '',
+      },
+      subscription_data: {
+        metadata: {
+          userEmail: normalizedEmail,
+          userId: (session.user as { id?: string }).id ?? '',
+        },
       },
 
       success_url: `${baseUrl}/dashboard/settings?success=1`,

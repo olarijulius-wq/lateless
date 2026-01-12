@@ -4,13 +4,18 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { UserCircleIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 import { Button } from '@/app/ui/button';
-import { createCustomer, CustomerState } from '@/app/lib/actions';
+import { updateCustomer, CustomerState } from '@/app/lib/actions';
+import { CustomerForm } from '@/app/lib/definitions';
 
-export default function Form() {
+export default function Form({ customer }: { customer: CustomerForm }) {
   const initialState: CustomerState = { message: '', errors: {} };
-  const [state, formAction] = useActionState(createCustomer, initialState);
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const updateCustomerWithId = updateCustomer.bind(null, customer.id);
+  const [state, formAction] = useActionState(
+    updateCustomerWithId,
+    initialState,
+  );
+  const [name, setName] = useState(customer.name);
+  const [email, setEmail] = useState(customer.email);
 
   return (
     <form action={formAction}>
@@ -91,7 +96,7 @@ export default function Form() {
         >
           Cancel
         </Link>
-        <Button type="submit">Create Customer</Button>
+        <Button type="submit">Save Changes</Button>
       </div>
     </form>
   );

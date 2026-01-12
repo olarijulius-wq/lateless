@@ -1,12 +1,15 @@
-import Pagination from '@/app/ui/invoices/pagination';
+import { Metadata } from 'next';
+import { lusitana } from '@/app/ui/fonts';
 import Search from '@/app/ui/search';
+import Pagination from '@/app/ui/invoices/pagination';
 import Table from '@/app/ui/invoices/table';
 import { CreateInvoice } from '@/app/ui/invoices/buttons';
-import { lusitana } from '@/app/ui/fonts';
-import { Suspense } from 'react';
-import { InvoicesTableSkeleton } from '@/app/ui/skeletons';
-import { fetchInvoicesPages } from '@/app/lib/data';
-import { Metadata } from 'next';
+import {
+  fetchFilteredInvoices,
+  fetchInvoicesPages,
+  fetchUserPlanAndUsage,
+} from '@/app/lib/data';
+import ExportInvoicesButton from './export-button';
 
 export const metadata: Metadata = {
   title: 'Invoices',
@@ -21,23 +24,56 @@ export default async function Page(props: {
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) || 1;
-  const totalPages = await fetchInvoicesPages(query);
- 
+
+  const [invoices, totalPages, plan] = await Promise.all([
+    fetchFilteredInvoices(query, currentPage),
+    fetchInvoicesPages(query),
+    fetchUserPlanAndUsage(),
+  ]);
+
+  const { isPro, invoiceCount, freeLimit } = plan;
+  const canCreate = isPro || invoiceCount < freeLimit;
+
   return (
-    <div className="w-full">
-      <div className="flex w-full items-center justify-between">
-        <h1 className={`${lusitana.className} text-2xl`}>Invoices</h1>
+    <main>
+      <div className="mb-3">
+        <h1 className={`${lusitana.className} text-xl md:text-2xl`}>
+          Invoices
+        </h1>
       </div>
-      <div className="mt-4 flex items-center justify-between gap-2 md:mt-8">
-        <Search placeholder="Search invoices..." />
-        <CreateInvoice />
+
+      <div className="mb-4 flex w-full items-center justify-between gap-3">
+        <div className="flex-1">
+          <Search placeholder="Search invoices..." />
+        </div>
+        <div className="flex flex-col items-start gap-1 sm:items-end">
+          <div className="flex items-center gap-3">
+            <ExportInvoicesButton />
+            {canCreate ? (
+              <CreateInvoice />
+            ) : (
+              <a
+                href="/dashboard/settings"
+                className="flex h-10 items-center rounded-lg border border-amber-500 bg-amber-500/90 px-4 text-sm font-medium text-slate-900 shadow hover:bg-amber-400"
+              >
+                Free plan limit reached - Upgrade to Pro
+              </a>
+            )}
+          </div>
+
+          {!isPro && (
+            <p className="text-xs text-slate-400">
+              {invoiceCount} / {freeLimit} invoices used on Free plan.
+            </p>
+          )}
+        </div>
       </div>
-      <Suspense key={query + currentPage} fallback={<InvoicesTableSkeleton />}>
-        <Table query={query} currentPage={currentPage} />
-      </Suspense>
-      <div className="mt-5 flex w-full justify-center">
+
+      <Table invoices={invoices} />
+
+      <div className="mt-6 flex w-full justify-center">
         <Pagination totalPages={totalPages} />
       </div>
-    </div>
+    </main>
   );
 }

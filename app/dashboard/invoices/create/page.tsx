@@ -8,8 +8,12 @@ export const metadata: Metadata = {
 };
  
  
-export default async function Page() {
+export default async function Page(props: {
+  searchParams?: Promise<{ customerId?: string }>;
+}) {
+  const searchParams = await props.searchParams;
   const customers = await fetchCustomers();
+  const initialCustomerId = searchParams?.customerId ?? null;
  
   return (
     <main>
@@ -23,7 +27,7 @@ export default async function Page() {
           },
         ]}
       />
-      <Form customers={customers} />
+      <Form customers={customers} initialCustomerId={initialCustomerId} />
     </main>
   );
 }

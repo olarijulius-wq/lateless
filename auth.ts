@@ -7,10 +7,16 @@ import bcrypt from 'bcrypt';
 import postgres from 'postgres';
  
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
  
 async function getUser(email: string): Promise<User | undefined> {
   try {
-    const user = await sql<User[]>`SELECT * FROM users WHERE email=${email}`;
+    const normalizedEmail = normalizeEmail(email);
+    const user =
+      await sql<User[]>`SELECT * FROM users WHERE lower(email) = ${normalizedEmail}`;
     return user[0];
   } catch (error) {
     console.error('Failed to fetch user:', error);
@@ -41,4 +47,17 @@ export const { auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
+  callbacks: {
+    ...authConfig.callbacks,
+    async jwt({ token, user }) {
+      if (user?.id) token.id = user.id;
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && token?.id) {
+        (session.user as { id?: string }).id = token.id as string;
+      }
+      return session;
+    },
+  },
 });
