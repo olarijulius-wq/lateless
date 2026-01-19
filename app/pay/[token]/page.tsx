@@ -1,16 +1,10 @@
 import { notFound } from 'next/navigation';
 import postgres from 'postgres';
 import PublicPayButton from '@/app/ui/invoices/public-pay-button';
+import { formatCurrency } from '@/app/lib/utils';
 import { verifyPayToken } from '@/app/lib/pay-link';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
-
-function formatCurrency(amount: number, currency: string) {
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency,
-  }).format(amount / 100);
-}
 
 function formatDate(value: string | null) {
   if (!value) return '—';

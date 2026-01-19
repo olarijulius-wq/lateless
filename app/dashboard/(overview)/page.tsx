@@ -30,21 +30,19 @@ export default async function Page() {
         </Suspense>
       </div>
 
-      {/* Chart + latest invoices allpool */}
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense fallback={<RevenueChartSkeleton />}>
-            <RevenueChart />
-          </Suspense>
-        </div>
-        <div className="flex flex-col gap-6">
-          <Suspense fallback={<LatestInvoicesSkeleton />}>
-            <LatestInvoices />
-          </Suspense>
-          <Suspense fallback={<LatestInvoicesSkeleton />}>
-            <LatePayers />
-          </Suspense>
-        </div>
+      <div className="mt-6">
+        <Suspense fallback={<RevenueChartSkeleton />}>
+          <RevenueChart />
+        </Suspense>
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Suspense fallback={<LatestInvoicesSkeleton />}>
+          <LatestInvoices />
+        </Suspense>
+        <Suspense fallback={<LatestInvoicesSkeleton />}>
+          <LatePayers />
+        </Suspense>
       </div>
     </main>
   );

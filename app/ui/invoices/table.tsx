@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { UpdateInvoice, DeleteInvoice } from '@/app/ui/invoices/buttons';
 import PayInvoiceButton from '@/app/ui/invoices/pay-button';
 import InvoiceStatus from '@/app/ui/invoices/status';
-import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
+import { formatDateToLocal, formatCurrencySuffix } from '@/app/lib/utils';
 import type { InvoicesTable as InvoicesTableType } from '@/app/lib/definitions';
 
 export default function InvoicesTable({
@@ -44,7 +44,7 @@ export default function InvoicesTable({
                 <div className="flex w-full items-center justify-between pt-4">
                   <div>
                     <p className="text-xl font-medium">
-                      {formatCurrency(invoice.amount)}
+                      {formatCurrencySuffix(invoice.amount)}
                     </p>
                     <Link
                       href={`/dashboard/invoices/${invoice.id}`}
@@ -123,7 +123,7 @@ export default function InvoicesTable({
                     {invoice.email}
                   </td>
                   <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3 text-sky-200">
-                    {formatCurrency(invoice.amount)}
+                    {formatCurrencySuffix(invoice.amount)}
                   </td>
                   <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3 text-slate-300">
                     {formatDateToLocal(invoice.date)}

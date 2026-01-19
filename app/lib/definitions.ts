@@ -39,6 +39,8 @@ export type LatestInvoice = {
   image_url: string;
   email: string;
   amount: string;
+  invoice_number: string | null;
+  status: 'pending' | 'paid';
 };
 
 // The database returns a number for amount, but we later format it to a string with the formatCurrency function

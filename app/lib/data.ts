@@ -12,7 +12,7 @@ import {
   LatePayerStat,
   Revenue,
 } from './definitions';
-import { formatCurrency } from './utils';
+import { formatCurrency, formatCurrencySuffix } from './utils';
 import { auth } from '@/auth';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
 
@@ -207,7 +207,14 @@ export async function fetchLatestInvoices() {
 
   try {
     const data = await sql<LatestInvoiceRaw[]>`
-      SELECT invoices.amount, customers.name, customers.image_url, customers.email, invoices.id
+      SELECT
+        invoices.amount,
+        customers.name,
+        customers.image_url,
+        customers.email,
+        invoices.id,
+        invoices.invoice_number,
+        invoices.status
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE lower(invoices.user_email) = ${userEmail}
@@ -218,7 +225,7 @@ export async function fetchLatestInvoices() {
 
     const latestInvoices = data.map((invoice) => ({
       ...invoice,
-      amount: formatCurrency(invoice.amount),
+      amount: formatCurrencySuffix(invoice.amount),
     }));
 
     return latestInvoices;
@@ -258,8 +265,8 @@ export async function fetchCardData() {
 
     const numberOfInvoices = Number(data[0][0].count ?? '0');
     const numberOfCustomers = Number(data[1][0].count ?? '0');
-    const totalPaidInvoices = formatCurrency(data[2][0].paid ?? '0');
-    const totalPendingInvoices = formatCurrency(data[2][0].pending ?? '0');
+    const totalPaidInvoices = formatCurrencySuffix(data[2][0].paid ?? '0');
+    const totalPendingInvoices = formatCurrencySuffix(data[2][0].pending ?? '0');
 
     return {
       numberOfCustomers,
@@ -463,7 +470,7 @@ export async function fetchInvoicesByCustomerId(customerId: string) {
   }
 }
 
-export async function fetchLatePayerStats() {
+export async function fetchLatePayerStats(limit = 10) {
   const userEmail = await requireUserEmail();
 
   try {
@@ -497,7 +504,7 @@ export async function fetchLatePayerStats() {
         ) > 0
       GROUP BY customers.id, customers.name, customers.email
       ORDER BY avg_delay_days DESC
-      LIMIT 10
+      LIMIT ${limit}
     `;
 
     return data;

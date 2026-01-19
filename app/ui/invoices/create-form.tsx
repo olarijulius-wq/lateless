@@ -5,7 +5,6 @@ import Link from 'next/link';
 import {
   CheckIcon,
   ClockIcon,
-  CurrencyDollarIcon,
   UserCircleIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '@/app/ui/button';
@@ -76,13 +75,15 @@ export default function Form({
                 name="amount"
                 type="number"
                 step="0.01"
-                placeholder="Enter USD amount"
+                placeholder="Enter amount in EUR"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
                 className="peer block w-full rounded-md border border-slate-800 bg-slate-950/60 py-2 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/40"
                 aria-describedby="amount-error"
               />
-              <CurrencyDollarIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-sky-300" />
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500 transition peer-focus:text-sky-300">
+                €
+              </span>
             </div>
             <div id="amount-error" aria-live="polite" aria-atomic="true">
               {state?.ok === false &&

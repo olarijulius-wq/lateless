@@ -1,12 +1,24 @@
 import { Revenue } from './definitions';
 
 
-export const formatCurrency = (amount: number) => {
-  return (amount / 100).toLocaleString('en-US', {
+export function formatCurrency(
+  amount: number,
+  currency: string = 'EUR',
+  locale: string = 'et-EE',
+) {
+  return (amount / 100).toLocaleString(locale, {
     style: 'currency',
-    currency: 'USD',
+    currency,
   });
-};
+}
+
+export function formatCurrencySuffix(
+  amount: number,
+  currency: string = 'EUR',
+  locale: string = 'et-EE',
+) {
+  return formatCurrency(amount, currency, locale);
+}
 
 export const formatDateToLocal = (
   dateStr: string,
@@ -58,10 +70,15 @@ export const generatePagination = (currentPage: number, totalPages: number) => {
 
 export function generateYAxis(revenue: { revenue: number }[]) {
   const max = Math.max(0, ...revenue.map((r) => Number(r.revenue) || 0));
+  const formatter = new Intl.NumberFormat('et-EE', {
+    style: 'currency',
+    currency: 'EUR',
+    maximumFractionDigits: 0,
+  });
 
   // Safety: kui pole andmeid
   if (max <= 0) {
-    return { yAxisLabels: ['$0'], topLabel: 1 };
+    return { yAxisLabels: [formatter.format(0)], topLabel: 1 };
   }
 
   // Dünaamiline "nice" samm (1 / 2 / 5 * 10^n)
@@ -80,7 +97,7 @@ export function generateYAxis(revenue: { revenue: number }[]) {
 
   const yAxisLabels: string[] = [];
   for (let v = topLabel; v >= 0; v -= step) {
-    yAxisLabels.push(`$${v.toLocaleString()}`);
+    yAxisLabels.push(formatter.format(v));
   }
 
   return { yAxisLabels, topLabel };

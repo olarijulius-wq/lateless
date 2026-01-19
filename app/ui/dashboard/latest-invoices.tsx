@@ -1,18 +1,9 @@
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
-// import Image from 'next/image';
 import { lusitana } from '@/app/ui/fonts';
 import { fetchLatestInvoices } from '@/app/lib/data';
+import InvoiceStatus from '@/app/ui/invoices/status';
 import Link from 'next/link';
-
-function InitialAvatar({ name }: { name: string }) {
-  const initial = (name?.trim()?.charAt(0) || '?').toUpperCase();
-  return (
-    <div className="mr-4 flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
-      {initial}
-    </div>
-  );
-}
 
 export default async function LatestInvoices() {
   const latestInvoices = await fetchLatestInvoices();
@@ -24,7 +15,7 @@ export default async function LatestInvoices() {
         Latest Invoices
       </h2>
 
-      <div className="flex grow flex-col justify-between rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+      <div className="flex grow flex-col justify-between rounded-md border border-slate-800 bg-slate-900/80 p-4 shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
         {isEmpty ? (
           <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-6">
             <p className="text-sm text-slate-200">
@@ -47,45 +38,62 @@ export default async function LatestInvoices() {
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-6">
-            {latestInvoices.map((invoice, i) => (
-              <div
-                key={invoice.id}
-                className={clsx(
-                  'flex flex-row items-center justify-between py-4 text-slate-200',
-                  { 'border-t border-slate-800': i !== 0 },
-                )}
-              >
-                <div className="flex items-center">
-                  {invoice.image_url ? (
-                    <div className="mr-4 flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/20 text-sm font-semibold text-sky-300">
-                      {invoice.name.charAt(0).toUpperCase()}
-                    </div>
-                  ) : (
-                    <InitialAvatar name={invoice.name} />
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-4 py-2">
+            <div className="hidden grid-cols-[120px_minmax(0,1fr)_120px_110px] gap-4 border-b border-slate-800 px-2 py-2 text-xs uppercase tracking-[0.12em] text-slate-500 sm:grid">
+              <span>Invoice</span>
+              <span>Customer</span>
+              <span className="text-right">Amount</span>
+              <span className="text-right">Status</span>
+            </div>
+            {latestInvoices.map((invoice, i) => {
+              const invoiceLabel = invoice.invoice_number
+                ? `#${invoice.invoice_number}`
+                : `#${invoice.id.slice(0, 6).toUpperCase()}`;
+
+              return (
+                <div
+                  key={invoice.id}
+                  className={clsx(
+                    'grid grid-cols-1 gap-3 px-2 py-3 text-slate-200 sm:grid-cols-[120px_minmax(0,1fr)_120px_110px] sm:items-center',
+                    { 'border-t border-slate-800': i !== 0 },
                   )}
+                >
+                  <div className="text-xs font-semibold text-slate-300 sm:text-sm">
+                    {invoiceLabel}
+                  </div>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold md:text-base">
+                    <p className="truncate text-sm font-semibold text-slate-100">
                       {invoice.name}
                     </p>
-                    <p className="hidden text-sm text-slate-400 sm:block">
+                    <p className="truncate text-xs text-slate-500 sm:hidden">
                       {invoice.email}
                     </p>
                   </div>
+                  <div
+                    className={`${lusitana.className} text-sm font-semibold text-sky-200 sm:text-right`}
+                  >
+                    {invoice.amount}
+                  </div>
+                  <div className="sm:flex sm:justify-end">
+                    <InvoiceStatus status={invoice.status} />
+                  </div>
                 </div>
-                <p
-                  className={`${lusitana.className} truncate text-sm font-medium text-sky-200 md:text-base`}
-                >
-                  {invoice.amount}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
-        <div className="flex items-center pb-2 pt-6">
-          <ArrowPathIcon className="h-5 w-5 text-slate-400" />
-          <h3 className="ml-2 text-sm text-slate-400">Updated just now</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-2 pt-6">
+          <div className="flex items-center">
+            <ArrowPathIcon className="h-5 w-5 text-slate-400" />
+            <h3 className="ml-2 text-sm text-slate-400">Updated just now</h3>
+          </div>
+          <Link
+            href="/dashboard/invoices"
+            className="text-xs text-sky-300 hover:underline"
+          >
+            View all invoices
+          </Link>
         </div>
       </div>
     </div>
