@@ -5,6 +5,8 @@ import styles from '@/app/ui/home.module.css';
 import { lusitana } from '@/app/ui/fonts';
 import Image from 'next/image';
 import { PLAN_CONFIG } from '@/app/lib/config';
+import ViewPricingButton from '@/app/ui/landing/view-pricing-button';
+import PlanSelectButton from '@/app/ui/landing/plan-select-button';
 
 export default function Page() {
   const studioLimit = PLAN_CONFIG.studio.maxPerMonth;
@@ -72,12 +74,7 @@ export default function Page() {
               <span>Start free</span>
               <ArrowRightIcon className="w-4" />
             </Link>
-            <Link
-              href="#pricing"
-              className="flex items-center gap-3 rounded-lg border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-200 hover:border-slate-500 hover:bg-slate-800/60"
-            >
-              View pricing
-            </Link>
+            <ViewPricingButton className="flex items-center gap-3 rounded-lg border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-200 hover:border-slate-500 hover:bg-slate-800/60" />
           </div>
         </div>
         <div className="flex items-center justify-center p-6 md:w-3/5 md:px-28 md:py-12">
@@ -159,12 +156,12 @@ export default function Page() {
               <li>Automatic reminders (day 1, 7, 21)</li>
               <li>Late payer analytics</li>
             </ul>
-            <Link
-              href="/dashboard/settings"
+            <PlanSelectButton
+              plan="solo"
               className="mt-auto inline-flex items-center justify-center rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800/60"
             >
               Choose Solo
-            </Link>
+            </PlanSelectButton>
           </div>
 
           <div className="relative flex h-full flex-col rounded-xl border border-slate-800 bg-slate-900/90 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)] transition hover:border-slate-500">
@@ -189,12 +186,12 @@ export default function Page() {
               <li>Everything in Solo</li>
               <li>Better suited for agencies and small teams</li>
             </ul>
-            <Link
-              href="/dashboard/settings"
+            <PlanSelectButton
+              plan="pro"
               className="mt-auto inline-flex items-center justify-center rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:border-amber-300/60 hover:bg-amber-500/20"
             >
               Choose Pro
-            </Link>
+            </PlanSelectButton>
           </div>
 
           <div className="flex h-full flex-col rounded-xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)] transition hover:border-slate-600">
@@ -214,12 +211,12 @@ export default function Page() {
               <li>Everything in Pro</li>
               <li>Best for high-volume billing</li>
             </ul>
-            <Link
-              href="/dashboard/settings"
+            <PlanSelectButton
+              plan="studio"
               className="mt-auto inline-flex items-center justify-center rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-800/60"
             >
               Choose Studio
-            </Link>
+            </PlanSelectButton>
           </div>
         </div>
       </section>

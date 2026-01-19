@@ -1,9 +1,11 @@
 import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import UpgradeButton from './upgrade-button';
 import ManageBillingButton from './manage-billing-button';
 import { fetchCompanyProfile, fetchUserPlanAndUsage } from '@/app/lib/data';
 import CompanyProfileForm from './company-profile-form';
 import { PLAN_CONFIG, type PlanId } from '@/app/lib/config';
+import { auth } from '@/auth';
 
 export const metadata: Metadata = {
   title: 'Settings',
@@ -12,6 +14,11 @@ export const metadata: Metadata = {
 export default async function SettingsPage(props: {
   searchParams?: Promise<{ success?: string; canceled?: string }>;
 }) {
+  const session = await auth();
+  if (!session?.user?.email) {
+    redirect('/login');
+  }
+
   const searchParams = await props.searchParams;
   const success = searchParams?.success === '1';
   const canceled = searchParams?.canceled === '1';
