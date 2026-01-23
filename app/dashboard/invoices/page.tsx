@@ -10,6 +10,7 @@ import {
   fetchUserPlanAndUsage,
 } from '@/app/lib/data';
 import ExportInvoicesButton from './export-button';
+import { PLAN_CONFIG } from '@/app/lib/config';
 
 export const metadata: Metadata = {
   title: 'Invoices',
@@ -34,6 +35,7 @@ export default async function Page(props: {
   const { plan: planId, invoiceCount, maxPerMonth } = plan;
   const hasUnlimited = !Number.isFinite(maxPerMonth);
   const canCreate = hasUnlimited || invoiceCount < maxPerMonth;
+  const canExportCsv = PLAN_CONFIG[planId].canExportCsv;
 
   return (
     <main>
@@ -49,7 +51,7 @@ export default async function Page(props: {
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
           <div className="flex items-center gap-3">
-            <ExportInvoicesButton />
+            <ExportInvoicesButton canExportCsv={canExportCsv} />
             {canCreate ? (
               <CreateInvoice />
             ) : (

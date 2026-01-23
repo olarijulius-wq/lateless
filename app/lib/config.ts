@@ -3,31 +3,51 @@ export const PLAN_IDS = ['free', 'solo', 'pro', 'studio'] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 
 export type PlanConfig = {
+  id: PlanId;
   name: string;
   maxPerMonth: number;
   priceMonthlyEuro: number;
+  canExportCsv: boolean;
+  hasReminders: boolean;
+  hasLatePayerAnalytics: boolean;
 };
 
 export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
   free: {
+    id: 'free',
     name: 'Free',
     maxPerMonth: 3,
     priceMonthlyEuro: 0,
+    canExportCsv: false,
+    hasReminders: false,
+    hasLatePayerAnalytics: false,
   },
   solo: {
+    id: 'solo',
     name: 'Solo',
     maxPerMonth: 50,
     priceMonthlyEuro: 29,
+    canExportCsv: true,
+    hasReminders: true,
+    hasLatePayerAnalytics: true,
   },
   pro: {
+    id: 'pro',
     name: 'Pro',
     maxPerMonth: 250,
     priceMonthlyEuro: 59,
+    canExportCsv: true,
+    hasReminders: true,
+    hasLatePayerAnalytics: true,
   },
   studio: {
+    id: 'studio',
     name: 'Studio',
     maxPerMonth: Number.POSITIVE_INFINITY,
     priceMonthlyEuro: 99,
+    canExportCsv: true,
+    hasReminders: true,
+    hasLatePayerAnalytics: true,
   },
 };
 

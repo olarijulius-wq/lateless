@@ -4,10 +4,10 @@ import { Metadata } from 'next';
  
 export const metadata: Metadata = {
   title: {
-    template: '%s | Invoicify Dashboard',
-    default: 'Invoicify Dashboard',
+    template: '%s | Lateless Dashboard',
+    default: 'Lateless Dashboard',
   },
-  description: 'Invoicify Dashboard built with App Router.',
+  description: 'Lateless Dashboard built with App Router.',
   metadataBase: new URL('https://next-learn-dashboard.vercel.sh'),
 };
  

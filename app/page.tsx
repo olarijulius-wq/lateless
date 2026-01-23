@@ -28,8 +28,8 @@ export default function Page() {
               <strong>Get paid faster, automatically.</strong>
             </p>
             <p className="text-slate-400 md:text-lg">
-              Send invoices with one-click payment links, automate reminders,
-              and see which clients always pay late.
+              Lateless helps freelancers and small teams get paid on time with
+              smarter invoices, automatic reminders, and late payer insights.
             </p>
           </div>
 
@@ -125,8 +125,8 @@ export default function Page() {
                 Up to {PLAN_CONFIG.free.maxPerMonth} invoices per month
               </li>
               <li>One-click payments</li>
-              <li>Late payer analytics (for paid invoices)</li>
-              <li>Basic email reminders</li>
+              <li>Late payer analytics (Solo+)</li>
+              <li>Manual reminders (no automation)</li>
             </ul>
             <Link
               href="/signup"

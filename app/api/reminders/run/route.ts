@@ -72,8 +72,12 @@ export async function POST(req: Request) {
       FROM invoices
       JOIN customers
         ON customers.id = invoices.customer_id
+      JOIN users
+        ON lower(users.email) = lower(invoices.user_email)
       WHERE
-        invoices.status = 'pending'
+        users.plan in ('solo', 'pro', 'studio')
+        AND users.subscription_status in ('active', 'trialing')
+        AND invoices.status = 'pending'
         AND invoices.due_date IS NOT NULL
         AND invoices.due_date < current_date
         AND invoices.reminder_level < 3
@@ -125,7 +129,7 @@ export async function POST(req: Request) {
         `Pay here: ${payLink}`,
         '',
         'Thank you,',
-        'Invoicify',
+        'Lateless',
       ].join('\n');
 
       const bodyHtml = `
@@ -136,7 +140,7 @@ export async function POST(req: Request) {
           <li><strong>Due date:</strong> ${dueDateLabel}</li>
         </ul>
         <p><a href="${payLink}">Pay this invoice now</a></p>
-        <p>Thank you,<br />Invoicify</p>
+        <p>Thank you,<br />Lateless</p>
       `;
 
       await sendInvoiceReminderEmail({

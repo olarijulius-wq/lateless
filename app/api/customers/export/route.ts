@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import postgres from 'postgres';
 import { auth } from '@/auth';
+import { PLAN_CONFIG, resolveEffectivePlan } from '@/app/lib/config';
 
 export const runtime = 'nodejs';
 
@@ -20,19 +21,29 @@ export async function GET() {
 
   const email = normalizeEmail(session.user.email);
 
-  // Kontrolli, et kasutaja on Pro
-  const userRows = await sql<{ is_pro: boolean }[]>`
-    select is_pro
+  const userRows = await sql<
+    { plan: string | null; subscription_status: string | null }[]
+  >`
+    select plan, subscription_status
     from public.users
     where lower(email) = ${email}
     limit 1
   `;
 
-  const isPro = userRows[0]?.is_pro ?? false;
+  const effectivePlan = resolveEffectivePlan(
+    userRows[0]?.plan ?? null,
+    userRows[0]?.subscription_status ?? null,
+  );
+  const planConfig = PLAN_CONFIG[effectivePlan];
 
-  if (!isPro) {
+  if (!planConfig.canExportCsv) {
     return NextResponse.json(
-      { error: 'Pro plan required to export customers CSV.' },
+      {
+        error: 'PLAN_REQUIRED',
+        message:
+          'CSV export is available on Solo, Pro, and Studio. Upgrade your plan in Settings.',
+        requiredPlan: 'solo',
+      },
       { status: 403 },
     );
   }
