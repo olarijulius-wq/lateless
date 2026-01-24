@@ -1,4 +1,4 @@
-# Invoicify
+# Lateless
 
 Invoicify is a multi-tenant invoicing dashboard built with Next.js 15 (App Router) and TypeScript. The UI is styled with Tailwind CSS and uses @heroicons for icons. Application data is stored in Postgres and accessed through postgres.js. Authentication is implemented using NextAuth with a Credentials provider (bcrypt password hashing). The application supports a Free vs Pro model with Stripe subscriptions, Pro-only CSV exports, and tenant isolation so each user sees only their own customers and invoices.
 
@@ -70,3 +70,12 @@ The project is functioning end-to-end. Recent hardening and UX improvements incl
 ## Future roadmap (optional)
 
 Possible next steps include: adding DB-level indexes and constraints for tenant columns and normalized emails (via migrations), and migrating tenant association from user_email to user_id across domain tables to support future email-change functionality and stronger referential integrity.
+
+## Database migrations
+
+This project uses simple SQL migrations stored in the `migrations/` folder.
+
+For a fresh database, apply the baseline schema:
+
+```bash
+psql "$POSTGRES_URL" -f migrations/001_initial_schema.sql
