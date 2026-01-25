@@ -39,7 +39,8 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export async function POST(req: Request) {
+// ÜHINE job, mida POST ja GET mõlemad kasutavad
+async function runReminderJob(req: Request) {
   const token = getAuthToken(req);
   const expectedToken = process.env.REMINDER_CRON_TOKEN;
 
@@ -156,7 +157,6 @@ export async function POST(req: Request) {
         bodyHtml,
         bodyText,
       });
-
     } catch (error) {
       console.error('Reminder send failed:', reminder.id, error);
     }
@@ -168,4 +168,13 @@ export async function POST(req: Request) {
     updatedInvoiceIds,
     dryRun: false,
   });
+}
+
+// SIIT ALATES AINULT 2 HANDLERIT
+export async function POST(req: Request) {
+  return runReminderJob(req);
+}
+
+export async function GET(req: Request) {
+  return runReminderJob(req);
 }
