@@ -76,6 +76,7 @@ export async function POST(req: Request) {
         ON lower(users.email) = lower(invoices.user_email)
       WHERE
         users.plan in ('solo', 'pro', 'studio')
+        AND users.is_verified = true
         AND users.subscription_status in ('active', 'trialing')
         AND invoices.status = 'pending'
         AND invoices.due_date IS NOT NULL
@@ -111,6 +112,12 @@ export async function POST(req: Request) {
   `;
 
   const updatedInvoiceIds = reminders.map((reminder) => reminder.id);
+
+  if (reminders.length === 0) {
+    console.log(
+      'No reminders to send (either none overdue or owners not verified).',
+    );
+  }
 
   for (const reminder of reminders) {
     try {

@@ -9,11 +9,32 @@ import { AuthError } from 'next-auth';
 import bcrypt from 'bcrypt';
 import { getNextInvoiceNumber, upsertCompanyProfile } from '@/app/lib/data';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from '@/app/lib/config';
+import { checkRateLimit } from '@/app/lib/rate-limit';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
+}
+
+async function getRecentFailedLoginCount(email: string): Promise<number> {
+  const normalizedEmail = normalizeEmail(email);
+  const [{ count = '0' } = { count: '0' }] = await sql<{ count: string }[]>`
+    select count(*)::text as count
+    from login_attempts
+    where lower(email) = ${normalizedEmail}
+      and success = false
+      and attempted_at >= now() - interval '15 minutes'
+  `;
+  return Number(count);
+}
+
+async function recordLoginAttempt(email: string, success: boolean): Promise<void> {
+  const normalizedEmail = normalizeEmail(email);
+  await sql`
+    insert into login_attempts (email, success)
+    values (${normalizedEmail}, ${success})
+  `;
 }
 
 const requiredText = (schema: z.ZodTypeAny) =>
@@ -193,6 +214,8 @@ function buildPlanLimitMessage(plan: PlanId) {
   return `${config.name} plan limit reached (${limitLabel}). Upgrade your plan to create more invoices.`;
 }
 
+const MAX_DAILY_INVOICES = 100;
+
 export async function createInvoice(
   prevState: CreateInvoiceState | null,
   formData: FormData,
@@ -224,6 +247,21 @@ export async function createInvoice(
     };
   }
 
+  const rate = await checkRateLimit(
+    `createInvoice:${userEmail}`,
+    20,
+    60 * 1000,
+  );
+
+  if (!rate.ok) {
+    return {
+      ok: false,
+      code: 'LIMIT_REACHED',
+      message:
+        'Too many invoices created in a short time. Please wait a moment and try again.',
+    };
+  }
+
   const plan = await fetchUserPlan(userEmail);
   const planConfig = PLAN_CONFIG[plan];
 
@@ -237,6 +275,25 @@ export async function createInvoice(
         message: buildPlanLimitMessage(plan),
       };
     }
+  }
+
+  const [{ count: dailyCount = '0' } = { count: '0' }] = await sql<{
+    count: string;
+  }[]>`
+    select count(*)::text as count
+    from invoices
+    where lower(user_email) = ${userEmail}
+      and date >= current_date
+      and date < (current_date + interval '1 day')
+  `;
+
+  if (Number(dailyCount) >= MAX_DAILY_INVOICES) {
+    return {
+      ok: false,
+      code: 'LIMIT_REACHED',
+      message:
+        'Daily safety limit reached (100 invoices per day). Please try again tomorrow.',
+    };
   }
 
   const { customerId, amount, status, dueDate } = validatedFields.data;
@@ -706,12 +763,40 @@ export async function authenticate(
   prevState: string | undefined,
   formData: FormData,
 ) {
+  const emailValue = formData.get('email');
+  const normalizedEmail =
+    typeof emailValue === 'string' ? normalizeEmail(emailValue) : null;
+
   try {
+    if (normalizedEmail) {
+      const rate = await checkRateLimit(
+        `login:${normalizedEmail}`,
+        5,
+        15 * 60 * 1000,
+      );
+
+      if (!rate.ok) {
+        return 'Too many login attempts. Please wait a few minutes and try again.';
+      }
+
+      const failedCount = await getRecentFailedLoginCount(normalizedEmail);
+      if (failedCount >= 10) {
+        return 'Too many login attempts. Please try again in 15 minutes.';
+      }
+    }
+
     await signIn('credentials', formData);
+
+    if (normalizedEmail) {
+      await recordLoginAttempt(normalizedEmail, true);
+    }
   } catch (error) {
     if (error instanceof AuthError) {
       switch (error.type) {
         case 'CredentialsSignin':
+          if (normalizedEmail) {
+            await recordLoginAttempt(normalizedEmail, false);
+          }
           return 'Invalid credentials.';
         default:
           return 'Something went wrong.';

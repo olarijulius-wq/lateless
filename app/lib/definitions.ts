@@ -8,6 +8,7 @@ export type User = {
   email: string;
   password: string;
   plan?: 'free' | 'solo' | 'pro' | 'studio';
+  is_verified?: boolean;
 };
 
 export type Customer = {
