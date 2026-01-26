@@ -101,50 +101,52 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             .
           </div>
         ) : (
-          <table className="min-w-full text-slate-100">
-            <thead className="rounded-lg bg-slate-950/40 text-left text-sm font-semibold text-slate-300">
-              <tr>
-                <th scope="col" className="px-4 py-5 font-medium sm:pl-6">
-                  Invoice
-                </th>
-                <th scope="col" className="px-3 py-5 font-medium">
-                  Date
-                </th>
-                <th scope="col" className="px-3 py-5 font-medium">
-                  Status
-                </th>
-                <th scope="col" className="px-3 py-5 font-medium">
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-slate-950/40">
-              {invoices.map((invoice) => (
-                <tr
-                  key={invoice.id}
-                  className="w-full border-b border-slate-800 py-3 text-sm last-of-type:border-none [&:first-child>td:first-child]:rounded-tl-lg [&:first-child>td:last-child]:rounded-tr-lg [&:last-child>td:first-child]:rounded-bl-lg [&:last-child>td:last-child]:rounded-br-lg"
-                >
-                  <td className="whitespace-nowrap bg-slate-900/60 py-3 pl-6 pr-3">
-                    <Link
-                      href={`/dashboard/invoices/${invoice.id}`}
-                      className="text-sky-300 hover:text-sky-200"
-                    >
-                      #{invoice.id.slice(0, 8)}
-                    </Link>
-                  </td>
-                  <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3 text-slate-300">
-                    {formatDateToLocal(invoice.date)}
-                  </td>
-                  <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3">
-                    <InvoiceStatus status={invoice.status} />
-                  </td>
-                  <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3 text-sky-200">
-                    {formatCurrency(invoice.amount)}
-                  </td>
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <table className="min-w-[600px] text-slate-100">
+              <thead className="rounded-lg bg-slate-950/40 text-left text-sm font-semibold text-slate-300">
+                <tr>
+                  <th scope="col" className="px-4 py-5 font-medium sm:pl-6">
+                    Invoice
+                  </th>
+                  <th scope="col" className="px-3 py-5 font-medium">
+                    Date
+                  </th>
+                  <th scope="col" className="px-3 py-5 font-medium">
+                    Status
+                  </th>
+                  <th scope="col" className="px-3 py-5 font-medium">
+                    Amount
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-slate-950/40">
+                {invoices.map((invoice) => (
+                  <tr
+                    key={invoice.id}
+                    className="w-full border-b border-slate-800 py-3 text-sm last-of-type:border-none [&:first-child>td:first-child]:rounded-tl-lg [&:first-child>td:last-child]:rounded-tr-lg [&:last-child>td:first-child]:rounded-bl-lg [&:last-child>td:last-child]:rounded-br-lg"
+                  >
+                    <td className="whitespace-nowrap bg-slate-900/60 py-3 pl-6 pr-3">
+                      <Link
+                        href={`/dashboard/invoices/${invoice.id}`}
+                        className="text-sky-300 hover:text-sky-200"
+                      >
+                        #{invoice.id.slice(0, 8)}
+                      </Link>
+                    </td>
+                    <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3 text-slate-300">
+                      {formatDateToLocal(invoice.date)}
+                    </td>
+                    <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3">
+                      <InvoiceStatus status={invoice.status} />
+                    </td>
+                    <td className="whitespace-nowrap bg-slate-900/60 px-3 py-3 text-sky-200">
+                      {formatCurrency(invoice.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </main>

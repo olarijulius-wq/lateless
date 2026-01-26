@@ -29,17 +29,18 @@ export default async function Page() {
       </div>
 
       <div className="space-y-6">
+        <Suspense fallback={<RevenueChartSkeleton />}>
+          <RevenueChart />
+        </Suspense>
+
         <div className="grid gap-6 md:grid-cols-2">
-          <Suspense fallback={<RevenueChartSkeleton />}>
-            <RevenueChart />
-          </Suspense>
           <Suspense fallback={<LatestInvoicesSkeleton />}>
             <LatestInvoices />
           </Suspense>
+          <Suspense fallback={<LatestInvoicesSkeleton />}>
+            <LatePayers />
+          </Suspense>
         </div>
-        <Suspense fallback={<LatestInvoicesSkeleton />}>
-          <LatePayers />
-        </Suspense>
       </div>
     </main>
   );

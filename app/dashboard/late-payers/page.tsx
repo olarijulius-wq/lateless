@@ -50,9 +50,9 @@ export default async function Page() {
         </div>
       ) : (
         <>
-          <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 text-sm md:hidden">
-            <p className="text-slate-400">You have</p>
-            <p className="text-2xl font-semibold text-slate-100">
+          <div className="rounded-xl border bg-white p-4 text-sm dark:bg-neutral-900 md:hidden">
+            <p className="text-slate-500 dark:text-slate-400">You have</p>
+            <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
               {totalLatePayers} late payers
             </p>
             <p className="mt-1 text-xs text-slate-500">
@@ -78,14 +78,16 @@ export default async function Page() {
                   <Link
                     key={payer.customer_id}
                     href={`/dashboard/customers/${payer.customer_id}`}
-                    className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 text-sm text-slate-200"
+                    className="rounded-xl border bg-white p-4 text-sm text-slate-900 dark:bg-neutral-900 dark:text-slate-200"
                   >
                     <div className="space-y-1">
-                      <p className="truncate font-semibold text-slate-100">
+                      <p className="truncate font-medium">
                         {payer.name}
                       </p>
-                      <p className="truncate text-xs text-slate-400">{payer.email}</p>
-                      <p className="text-xs text-slate-300">
+                      <p className="truncate text-xs text-muted-foreground">
+                        {payer.email}
+                      </p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">
                         {payer.paid_invoices} late invoices, avg{' '}
                         {formatDelay(payer.avg_delay_days)}
                       </p>

@@ -51,28 +51,40 @@ export default async function Page(props: {
         <div className="w-full sm:flex-1">
           <Search placeholder="Search invoices..." />
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <ExportInvoicesButton canExportCsv={canExportCsv} />
           {canCreate && <CreateInvoice />}
+          {!canCreate && (
+            <a
+              href="/dashboard/settings"
+              className="hidden items-center rounded-md border border-amber-400/50 px-3 py-2 text-xs font-semibold text-amber-100 transition hover:border-amber-300 hover:text-amber-50 sm:inline-flex"
+            >
+              View all plans
+            </a>
+          )}
         </div>
       </div>
 
       {!canCreate && (
-        <div className="mx-auto my-4 w-full max-w-xl rounded-xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-100">
-          <p className="text-sm font-semibold sm:text-base">
-            {planName} plan limit reached
+        <>
+          <p className="hidden text-xs text-amber-200 sm:block">
+            {planName} plan limit reached. Upgrade to keep sending invoices.
           </p>
-          <p className="mt-1 text-xs text-amber-100/80 sm:text-sm">
-            You have used all {limitLabel} invoices for this month. Upgrade to keep
-            sending invoices.
-          </p>
-          <a
-            href="/dashboard/settings"
-            className="mt-3 inline-flex items-center rounded-md bg-amber-400 px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm shadow-amber-900/30 transition hover:bg-amber-300"
-          >
-            View plans
-          </a>
-        </div>
+          <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-100 sm:hidden">
+            <p className="text-sm font-semibold">
+              {planName} plan limit reached
+            </p>
+            <p className="mt-1 text-xs text-amber-100/80">
+              You have used all {limitLabel} invoices for this month.
+            </p>
+            <a
+              href="/dashboard/settings"
+              className="mt-3 inline-flex w-full items-center justify-center rounded-md bg-amber-400 px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm shadow-amber-900/30 transition hover:bg-amber-300"
+            >
+              View all plans
+            </a>
+          </div>
+        </>
       )}
 
       {!hasUnlimited && (

@@ -77,58 +77,51 @@ export default async function LatePayers() {
             </p>
           </div>
         ) : (
-          <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-            <div className="space-y-3 md:hidden">
-              {latePayers.map((payer) => (
-                <Link
-                  key={payer.customer_id}
-                  href={`/dashboard/customers/${payer.customer_id}`}
-                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-4"
-                >
-                  <div className="flex flex-col gap-1">
-                    <p className="truncate text-sm font-medium text-slate-100">
-                      {payer.name}
-                    </p>
-                    <p className="truncate text-xs text-slate-400">
-                      {payer.email}
-                    </p>
-                    <p className="text-xs text-slate-300">
-                      {payer.paid_invoices} invoices, avg {formatDelay(payer.avg_delay_days)}.
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-
-            <div className="hidden md:block">
-              <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-4">
+            <div className="rounded-xl border bg-white p-4 dark:bg-neutral-900 md:hidden">
+              <div className="space-y-3">
                 {latePayers.map((payer) => (
                   <Link
                     key={payer.customer_id}
                     href={`/dashboard/customers/${payer.customer_id}`}
-                    className="group rounded-md border border-slate-800 bg-slate-950/70 p-3 transition hover:border-slate-600"
+                    className="flex flex-col gap-1 text-sm"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-100">
-                          {payer.name}
-                        </p>
-                        <p className="truncate text-xs text-slate-400">
-                          {payer.email}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-200">
-                        {formatDelay(payer.avg_delay_days)}
-                      </span>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
-                      <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1">
-                        {payer.paid_invoices} paid
-                      </span>
-                      <span className="text-xs text-slate-500 group-hover:text-slate-300">
-                        View customer
-                      </span>
-                    </div>
+                    <p className="truncate font-medium text-slate-900 dark:text-slate-100">
+                      {payer.name}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {payer.email}
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      {payer.paid_invoices} invoices, avg {formatDelay(payer.avg_delay_days)}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <div className="hidden rounded-lg border border-slate-800 bg-slate-950/60 md:block">
+              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-4 border-b border-slate-800 px-4 py-3 text-xs uppercase tracking-[0.12em] text-slate-500">
+                <span>Name</span>
+                <span>Email</span>
+                <span className="text-right">Stats</span>
+              </div>
+              <div className="divide-y divide-slate-800">
+                {latePayers.map((payer) => (
+                  <Link
+                    key={payer.customer_id}
+                    href={`/dashboard/customers/${payer.customer_id}`}
+                    className="flex flex-col gap-2 px-4 py-3 text-sm text-slate-200 transition hover:bg-slate-900 md:flex-row md:items-center md:justify-between"
+                  >
+                    <span className="min-w-0 font-medium text-slate-100 md:w-[30%] md:truncate">
+                      {payer.name}
+                    </span>
+                    <span className="min-w-0 text-slate-400 md:w-[40%] md:truncate">
+                      {payer.email}
+                    </span>
+                    <span className="text-xs text-slate-300 md:w-[30%] md:text-right">
+                      {payer.paid_invoices} invoices, avg {formatDelay(payer.avg_delay_days)}
+                    </span>
                   </Link>
                 ))}
               </div>
