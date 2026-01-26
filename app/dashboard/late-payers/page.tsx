@@ -60,57 +60,60 @@ export default async function Page() {
             </p>
           </div>
 
-          {isEmpty ? (
-            <>
-              <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-6 text-sm text-slate-200 md:hidden">
-                No late payers yet. Once clients start paying invoices late, they’ll
-                appear here.
-              </div>
-              <div className="hidden rounded-md border border-slate-800 bg-slate-900/80 p-6 text-sm text-slate-200 md:block">
-                No late payers yet. Once clients start paying invoices late, they’ll
-                appear here.
-              </div>
-            </>
+          {latePayers.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-400">
+              No late payers yet. Once some clients start paying late, they’ll show
+              up here with their average delay.
+            </p>
           ) : (
             <>
+              {/* MOBILE: üks kaart iga late payer’i kohta, ilma igasuguste lisahallide “pillideta” */}
               <div className="mt-4 space-y-3 md:hidden">
                 {latePayers.map((payer) => (
                   <Link
                     key={payer.customer_id}
                     href={`/dashboard/customers/${payer.customer_id}`}
-                    className="w-full space-y-2 rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-slate-100"
+                    className="block rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-slate-100"
                   >
-                    <div className="space-y-1">
-                      <p className="text-xs text-slate-400">Customer</p>
-                      <p className="truncate text-sm font-semibold text-slate-100">
-                        {payer.name}
-                      </p>
-                    </div>
+                    <div className="flex justify-between gap-4">
+                      {/* Vasak pool – nimi + email */}
+                      <div className="flex-1 space-y-1">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                          Customer
+                        </p>
+                        <p className="truncate text-sm font-semibold text-slate-100">
+                          {payer.name}
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          {payer.email}
+                        </p>
+                      </div>
 
-                    <div className="space-y-1">
-                      <p className="text-xs text-slate-400">Email</p>
-                      <p className="truncate text-sm text-slate-200">
-                        {payer.email}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-xs text-slate-400">Paid invoices</p>
-                      <p className="text-sm text-slate-100">
-                        {payer.paid_invoices}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="text-xs text-slate-400">Avg delay</p>
-                      <p className="text-sm text-amber-200">
-                        {formatDelay(payer.avg_delay_days).replace('+', '')} late
-                      </p>
+                      {/* Parem pool – arv + viivitus */}
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="text-right">
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                            Paid invoices
+                          </p>
+                          <p className="text-sm text-slate-100">
+                            {payer.paid_invoices}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                            Avg delay
+                          </p>
+                          <p className="text-xs text-amber-200">
+                            {formatDelay(payer.avg_delay_days).replace('+', '')} late
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </Link>
                 ))}
               </div>
 
+              {/* DESKTOP: jäta oma olemasolev tabel / grid siia */}
               <div className="hidden rounded-md border border-slate-800 bg-slate-900/80 md:block">
                 <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_140px_160px] gap-4 border-b border-slate-800 px-6 py-3 text-xs uppercase tracking-[0.12em] text-slate-500">
                   <span>Customer</span>
