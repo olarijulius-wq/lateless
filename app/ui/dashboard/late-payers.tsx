@@ -78,26 +78,47 @@ export default async function LatePayers() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="rounded-xl border bg-white p-4 dark:bg-neutral-900 md:hidden">
-              <div className="space-y-3">
-                {latePayers.map((payer) => (
-                  <Link
-                    key={payer.customer_id}
-                    href={`/dashboard/customers/${payer.customer_id}`}
-                    className="flex flex-col gap-1 text-sm"
-                  >
-                    <p className="truncate font-medium text-slate-900 dark:text-slate-100">
-                      {payer.name}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {payer.email}
-                    </p>
-                    <p className="text-xs text-slate-600 dark:text-slate-300">
-                      {payer.paid_invoices} invoices, avg {formatDelay(payer.avg_delay_days)}
-                    </p>
-                  </Link>
-                ))}
-              </div>
+            <div className="mt-3 space-y-3 md:hidden">
+              {latePayers.map((payer) => (
+                <Link
+                  key={payer.customer_id}
+                  href={`/dashboard/customers/${payer.customer_id}`}
+                  className="block rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-slate-100"
+                >
+                  <div className="flex justify-between gap-4">
+                    <div className="flex-1 space-y-1">
+                      <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                        Customer
+                      </p>
+                      <p className="truncate text-sm font-semibold text-slate-100">
+                        {payer.name}
+                      </p>
+                      <p className="truncate text-xs text-slate-400">
+                        {payer.email}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="text-right">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                          Paid invoices
+                        </p>
+                        <p className="text-sm text-slate-100">
+                          {payer.paid_invoices}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">
+                          Avg delay
+                        </p>
+                        <p className="text-xs text-amber-200">
+                          {formatDelay(payer.avg_delay_days).replace('+', '')} late
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
             </div>
 
             <div className="hidden rounded-lg border border-slate-800 bg-slate-950/60 md:block">
