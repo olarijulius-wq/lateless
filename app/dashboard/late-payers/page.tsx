@@ -24,7 +24,7 @@ export default async function Page() {
     : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
         <h1 className={`${lusitana.className} mb-2 text-xl md:text-2xl`}>
           Late payers
@@ -48,56 +48,82 @@ export default async function Page() {
             View plans
           </Link>
         </div>
-      ) : isEmpty ? (
-        <>
-          <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-5">
-            <p className="text-sm text-slate-400">Total late payers</p>
-            <p className="text-2xl font-semibold text-slate-100">0</p>
-            <p className="mt-2 text-xs text-slate-500">Avg delay: 0 days</p>
-          </div>
-          <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-6 text-sm text-slate-200">
-            No late payers yet. Once clients start paying invoices late, they’ll
-            appear here.
-          </div>
-        </>
       ) : (
         <>
-          <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Total late payers</p>
-                <p className="text-2xl font-semibold text-slate-100">
-                  {totalLatePayers}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-400">Avg delay</p>
-                <p className="text-lg font-semibold text-amber-200">
-                  {formatDelay(averageDelay)}
-                </p>
-              </div>
-            </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 text-sm md:hidden">
+            <p className="text-slate-400">You have</p>
+            <p className="text-2xl font-semibold text-slate-100">
+              {totalLatePayers} late payers
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Average delay {formatDelay(averageDelay)}
+            </p>
           </div>
-          <div className="space-y-3 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
-            {latePayers.map((payer) => (
-              <Link
-                key={payer.customer_id}
-                href={`/dashboard/customers/${payer.customer_id}`}
-                className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 text-sm text-slate-200 transition hover:border-slate-600"
-              >
-                <p className="truncate font-semibold text-slate-100">
-                  {payer.name}
-                </p>
-                <p className="truncate text-xs text-slate-400">{payer.email}</p>
-                <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
-                  <span>{payer.paid_invoices} paid invoices</span>
-                  <span className="text-amber-200">
-                    Avg delay: {formatDelay(payer.avg_delay_days)}
-                  </span>
+
+          {isEmpty ? (
+            <>
+              <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-6 text-sm text-slate-200 md:hidden">
+                No late payers yet. Once clients start paying invoices late, they’ll
+                appear here.
+              </div>
+              <div className="hidden rounded-md border border-slate-800 bg-slate-900/80 p-6 text-sm text-slate-200 md:block">
+                No late payers yet. Once clients start paying invoices late, they’ll
+                appear here.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-3 md:hidden">
+                {latePayers.map((payer) => (
+                  <Link
+                    key={payer.customer_id}
+                    href={`/dashboard/customers/${payer.customer_id}`}
+                    className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 text-sm text-slate-200"
+                  >
+                    <div className="space-y-1">
+                      <p className="truncate font-semibold text-slate-100">
+                        {payer.name}
+                      </p>
+                      <p className="truncate text-xs text-slate-400">{payer.email}</p>
+                      <p className="text-xs text-slate-300">
+                        {payer.paid_invoices} late invoices, avg{' '}
+                        {formatDelay(payer.avg_delay_days)}
+                      </p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+
+              <div className="hidden rounded-md border border-slate-800 bg-slate-900/80 md:block">
+                <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_140px_160px] gap-4 border-b border-slate-800 px-6 py-3 text-xs uppercase tracking-[0.12em] text-slate-500">
+                  <span>Customer</span>
+                  <span>Email</span>
+                  <span className="text-right">Paid invoices</span>
+                  <span className="text-right">Avg delay</span>
                 </div>
-              </Link>
-            ))}
-          </div>
+                <div className="divide-y divide-slate-800">
+                  {latePayers.map((payer) => (
+                    <Link
+                      key={payer.customer_id}
+                      href={`/dashboard/customers/${payer.customer_id}`}
+                      className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_140px_160px] items-center gap-4 px-6 py-4 text-sm text-slate-200 transition hover:bg-slate-900"
+                    >
+                      <span className="truncate font-semibold text-slate-100">
+                        {payer.name}
+                      </span>
+                      <span className="truncate text-slate-400">{payer.email}</span>
+                      <span className="text-right text-slate-300">
+                        {payer.paid_invoices}
+                      </span>
+                      <span className="text-right text-amber-200">
+                        {formatDelay(payer.avg_delay_days)}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

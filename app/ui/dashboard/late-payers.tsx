@@ -78,24 +78,60 @@ export default async function LatePayers() {
           </div>
         ) : (
           <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-            <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+            <div className="space-y-3 md:hidden">
               {latePayers.map((payer) => (
                 <Link
                   key={payer.customer_id}
                   href={`/dashboard/customers/${payer.customer_id}`}
-                  className="rounded-md border border-slate-800 bg-slate-950/70 p-3 transition hover:border-slate-600"
+                  className="rounded-xl border border-slate-800 bg-slate-950/70 p-4"
                 >
-                  <p className="truncate text-sm font-semibold text-slate-100">
-                    {payer.name}
-                  </p>
-                  <p className="truncate text-xs text-slate-400">
-                    {payer.email}
-                  </p>
-                  <p className="mt-3 text-xs text-slate-300">
-                    {payer.paid_invoices} invoices, avg {formatDelay(payer.avg_delay_days)}.
-                  </p>
+                  <div className="flex flex-col gap-1">
+                    <p className="truncate text-sm font-medium text-slate-100">
+                      {payer.name}
+                    </p>
+                    <p className="truncate text-xs text-slate-400">
+                      {payer.email}
+                    </p>
+                    <p className="text-xs text-slate-300">
+                      {payer.paid_invoices} invoices, avg {formatDelay(payer.avg_delay_days)}.
+                    </p>
+                  </div>
                 </Link>
               ))}
+            </div>
+
+            <div className="hidden md:block">
+              <div className="grid gap-3 md:grid-cols-2">
+                {latePayers.map((payer) => (
+                  <Link
+                    key={payer.customer_id}
+                    href={`/dashboard/customers/${payer.customer_id}`}
+                    className="group rounded-md border border-slate-800 bg-slate-950/70 p-3 transition hover:border-slate-600"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-100">
+                          {payer.name}
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          {payer.email}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-200">
+                        {formatDelay(payer.avg_delay_days)}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
+                      <span className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1">
+                        {payer.paid_invoices} paid
+                      </span>
+                      <span className="text-xs text-slate-500 group-hover:text-slate-300">
+                        View customer
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         )}
