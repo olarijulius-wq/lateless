@@ -214,7 +214,8 @@ export async function fetchLatestInvoices() {
         customers.email,
         invoices.id,
         invoices.invoice_number,
-        invoices.status
+        invoices.status,
+        invoices.due_date
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE lower(invoices.user_email) = ${userEmail}

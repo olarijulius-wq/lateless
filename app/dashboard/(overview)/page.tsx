@@ -18,10 +18,8 @@ export const metadata: Metadata = {
 
 export default async function Page() {
   return (
-    <main>
-      <h1 className={`${lusitana.className} mb-4 text-xl md:text-2xl`}>
-        Dashboard
-      </h1>
+    <main className="space-y-6">
+      <h1 className={`${lusitana.className} text-xl md:text-2xl`}>Dashboard</h1>
 
       {/* Cards ALATI üleval ja oma grid’is */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -30,16 +28,15 @@ export default async function Page() {
         </Suspense>
       </div>
 
-      <div className="mt-6">
-        <Suspense fallback={<RevenueChartSkeleton />}>
-          <RevenueChart />
-        </Suspense>
-      </div>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Suspense fallback={<LatestInvoicesSkeleton />}>
-          <LatestInvoices />
-        </Suspense>
+      <div className="space-y-6">
+        <div className="grid gap-6 md:grid-cols-2">
+          <Suspense fallback={<RevenueChartSkeleton />}>
+            <RevenueChart />
+          </Suspense>
+          <Suspense fallback={<LatestInvoicesSkeleton />}>
+            <LatestInvoices />
+          </Suspense>
+        </div>
         <Suspense fallback={<LatestInvoicesSkeleton />}>
           <LatePayers />
         </Suspense>

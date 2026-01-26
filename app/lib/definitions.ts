@@ -42,6 +42,7 @@ export type LatestInvoice = {
   amount: string;
   invoice_number: string | null;
   status: 'pending' | 'paid';
+  due_date: string | null;
 };
 
 // The database returns a number for amount, but we later format it to a string with the formatCurrency function

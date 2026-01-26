@@ -36,6 +36,8 @@ export default async function Page(props: {
   const hasUnlimited = !Number.isFinite(maxPerMonth);
   const canCreate = hasUnlimited || invoiceCount < maxPerMonth;
   const canExportCsv = PLAN_CONFIG[planId].canExportCsv;
+  const planName = PLAN_CONFIG[planId].name;
+  const limitLabel = Number.isFinite(maxPerMonth) ? maxPerMonth : 'unlimited';
 
   return (
     <main>
@@ -45,32 +47,39 @@ export default async function Page(props: {
         </h1>
       </div>
 
-      <div className="mb-4 flex w-full items-center justify-between gap-3">
-        <div className="flex-1">
+      <div className="mb-4 flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="w-full sm:flex-1">
           <Search placeholder="Search invoices..." />
         </div>
-        <div className="flex flex-col items-start gap-1 sm:items-end">
-          <div className="flex items-center gap-3">
-            <ExportInvoicesButton canExportCsv={canExportCsv} />
-            {canCreate ? (
-              <CreateInvoice />
-            ) : (
-              <a
-                href="/dashboard/settings"
-                className="flex h-10 items-center rounded-lg border border-amber-500 bg-amber-500/90 px-4 text-sm font-medium text-slate-900 shadow hover:bg-amber-400"
-              >
-                Plan limit reached - View plans
-              </a>
-            )}
-          </div>
-
-          {!hasUnlimited && (
-            <p className="text-xs text-slate-400">
-              {invoiceCount} / {maxPerMonth} invoices used on {planId} plan.
-            </p>
-          )}
+        <div className="flex items-center gap-3">
+          <ExportInvoicesButton canExportCsv={canExportCsv} />
+          {canCreate && <CreateInvoice />}
         </div>
       </div>
+
+      {!canCreate && (
+        <div className="mx-auto my-4 w-full max-w-xl rounded-xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-100">
+          <p className="text-sm font-semibold sm:text-base">
+            {planName} plan limit reached
+          </p>
+          <p className="mt-1 text-xs text-amber-100/80 sm:text-sm">
+            You have used all {limitLabel} invoices for this month. Upgrade to keep
+            sending invoices.
+          </p>
+          <a
+            href="/dashboard/settings"
+            className="mt-3 inline-flex items-center rounded-md bg-amber-400 px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm shadow-amber-900/30 transition hover:bg-amber-300"
+          >
+            View plans
+          </a>
+        </div>
+      )}
+
+      {!hasUnlimited && (
+        <p className="text-xs text-slate-400">
+          {invoiceCount} / {maxPerMonth} invoices used on {planId} plan.
+        </p>
+      )}
 
       <Table invoices={invoices} />
 

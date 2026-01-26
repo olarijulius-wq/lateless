@@ -4,6 +4,7 @@ import { lusitana } from '@/app/ui/fonts';
 import { fetchLatestInvoices } from '@/app/lib/data';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import Link from 'next/link';
+import { formatDateToLocal } from '@/app/lib/utils';
 
 export default async function LatestInvoices() {
   const latestInvoices = await fetchLatestInvoices();
@@ -38,48 +39,89 @@ export default async function LatestInvoices() {
             </div>
           </div>
         ) : (
-          <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-4 py-2">
-            <div className="hidden grid-cols-[120px_minmax(0,1fr)_120px_110px] gap-4 border-b border-slate-800 px-2 py-2 text-xs uppercase tracking-[0.12em] text-slate-500 sm:grid">
-              <span>Invoice</span>
-              <span>Customer</span>
-              <span className="text-right">Amount</span>
-              <span className="text-right">Status</span>
-            </div>
-            {latestInvoices.map((invoice, i) => {
-              const invoiceLabel = invoice.invoice_number
-                ? `#${invoice.invoice_number}`
-                : `#${invoice.id.slice(0, 6).toUpperCase()}`;
+          <div className="rounded-lg border border-slate-800 bg-slate-950/60 px-4 py-3">
+            <div className="space-y-3 md:hidden">
+              {latestInvoices.map((invoice) => {
+                const invoiceLabel = invoice.invoice_number
+                  ? `#${invoice.invoice_number}`
+                  : `#${invoice.id.slice(0, 6).toUpperCase()}`;
 
-              return (
-                <div
-                  key={invoice.id}
-                  className={clsx(
-                    'grid grid-cols-1 gap-3 px-2 py-3 text-slate-200 sm:grid-cols-[120px_minmax(0,1fr)_120px_110px] sm:items-center',
-                    { 'border-t border-slate-800': i !== 0 },
-                  )}
-                >
-                  <div className="text-xs font-semibold text-slate-300 sm:text-sm">
-                    {invoiceLabel}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-100">
-                      {invoice.name}
-                    </p>
-                    <p className="truncate text-xs text-slate-500 sm:hidden">
-                      {invoice.email}
-                    </p>
-                  </div>
+                return (
                   <div
-                    className={`${lusitana.className} text-sm font-semibold text-sky-200 sm:text-right`}
+                    key={invoice.id}
+                    className="rounded-lg border border-slate-800 bg-slate-950/70 p-3"
                   >
-                    {invoice.amount}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-slate-300">
+                          {invoiceLabel}
+                        </p>
+                        <p className="text-sm font-semibold text-slate-100">
+                          {invoice.name}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {invoice.email}
+                        </p>
+                      </div>
+                      <InvoiceStatus status={invoice.status} />
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
+                      <span className={`${lusitana.className} text-sm text-sky-200`}>
+                        {invoice.amount}
+                      </span>
+                      <span>
+                        Due{' '}
+                        {invoice.due_date ? formatDateToLocal(invoice.due_date) : '—'}
+                      </span>
+                    </div>
                   </div>
-                  <div className="sm:flex sm:justify-end">
-                    <InvoiceStatus status={invoice.status} />
+                );
+              })}
+            </div>
+
+            <div className="hidden md:block">
+              <div className="grid grid-cols-[120px_minmax(0,1fr)_120px_110px] gap-4 border-b border-slate-800 px-2 py-2 text-xs uppercase tracking-[0.12em] text-slate-500">
+                <span>Invoice</span>
+                <span>Customer</span>
+                <span className="text-right">Amount</span>
+                <span className="text-right">Status</span>
+              </div>
+              {latestInvoices.map((invoice, i) => {
+                const invoiceLabel = invoice.invoice_number
+                  ? `#${invoice.invoice_number}`
+                  : `#${invoice.id.slice(0, 6).toUpperCase()}`;
+
+                return (
+                  <div
+                    key={invoice.id}
+                    className={clsx(
+                      'grid grid-cols-[120px_minmax(0,1fr)_120px_110px] items-center gap-4 px-2 py-3 text-slate-200',
+                      { 'border-t border-slate-800': i !== 0 },
+                    )}
+                  >
+                    <div className="text-xs font-semibold text-slate-300 sm:text-sm">
+                      {invoiceLabel}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-100">
+                        {invoice.name}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">
+                        {invoice.email}
+                      </p>
+                    </div>
+                    <div
+                      className={`${lusitana.className} text-sm font-semibold text-sky-200 sm:text-right`}
+                    >
+                      {invoice.amount}
+                    </div>
+                    <div className="flex justify-end">
+                      <InvoiceStatus status={invoice.status} />
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
 
