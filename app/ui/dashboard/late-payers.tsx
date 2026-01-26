@@ -33,9 +33,23 @@ export default async function LatePayers() {
             </Link>
           </>
         ) : (
-          <h2 className={`${lusitana.className} text-xl text-slate-100 md:text-2xl`}>
-            Late payers
-          </h2>
+          <>
+            <h2 className={`${lusitana.className} text-xl text-slate-100 md:text-2xl`}>
+              Late payers
+            </h2>
+            <div className="flex flex-col items-end gap-1">
+              <span
+                className="inline-flex cursor-not-allowed items-center rounded-md bg-sky-500/40 px-3 py-2 text-xs font-semibold text-white/70 opacity-60"
+                aria-disabled="true"
+                title="Available on Solo, Pro, and Studio plans"
+              >
+                View all late payers
+              </span>
+              <p className="text-xs text-slate-400">
+                Available on Solo, Pro, and Studio plans.
+              </p>
+            </div>
+          </>
         )}
       </div>
 

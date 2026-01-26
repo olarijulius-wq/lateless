@@ -12,6 +12,11 @@ export default function ExportCustomersButton({
 }: ExportCustomersButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const title = loading
+    ? 'Exporting…'
+    : canExportCsv
+      ? 'Download CSV'
+      : 'Available on Solo, Pro, and Studio plans';
 
   async function handleExport() {
     if (!canExportCsv) return;
@@ -58,6 +63,7 @@ export default function ExportCustomersButton({
       <Button
         type="button"
         onClick={handleExport}
+        title={title}
         aria-disabled={loading || !canExportCsv}
         disabled={loading || !canExportCsv}
         className="secondary"
@@ -65,12 +71,8 @@ export default function ExportCustomersButton({
         {loading ? 'Exporting…' : 'Export CSV'}
       </Button>
       {!canExportCsv && (
-        <p className="text-xs text-amber-200">
-          CSV export is available on Solo and above —{' '}
-          <a href="/dashboard/settings" className="underline">
-            upgrade in Settings
-          </a>
-          .
+        <p className="text-xs text-slate-400">
+          Available on Solo, Pro, and Studio plans.
         </p>
       )}
       {error && (

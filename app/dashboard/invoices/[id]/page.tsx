@@ -6,9 +6,10 @@ import DuplicateInvoiceButton from '@/app/ui/invoices/duplicate-button';
 import PayInvoiceButton from '@/app/ui/invoices/pay-button';
 import CopyLinkButton from '@/app/ui/invoices/copy-link-button';
 import { formatCurrency, formatDateToLocal } from '@/app/lib/utils';
-import { fetchInvoiceById } from '@/app/lib/data';
+import { fetchInvoiceById, fetchUserPlanAndUsage } from '@/app/lib/data';
 import { updateInvoiceStatus } from '@/app/lib/actions';
 import { generatePayLink } from '@/app/lib/pay-link';
+import { PLAN_CONFIG } from '@/app/lib/config';
 
 export const metadata: Metadata = {
   title: 'Invoice',
@@ -17,7 +18,10 @@ export const metadata: Metadata = {
 export default async function Page(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const id = params.id;
-  const invoice = await fetchInvoiceById(id);
+  const [invoice, { plan }] = await Promise.all([
+    fetchInvoiceById(id),
+    fetchUserPlanAndUsage(),
+  ]);
 
   if (!invoice) {
     notFound();
@@ -40,6 +44,14 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000');
   const payLink = generatePayLink(baseUrl, invoice.id);
+  const canExportPdf = PLAN_CONFIG[plan].canExportCsv;
+  const pdfTitle = canExportPdf
+    ? 'Download PDF'
+    : 'Available on Solo, Pro, and Studio plans';
+  const pdfBaseClass =
+    'rounded-md border border-slate-800 px-3 py-2 text-sm text-slate-200';
+  const pdfEnabledClass = `${pdfBaseClass} transition hover:border-sky-400/60 hover:bg-slate-800/80`;
+  const pdfDisabledClass = `${pdfBaseClass} cursor-not-allowed opacity-60`;
 
   return (
     <main className="space-y-6">
@@ -93,13 +105,31 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Link
-            href={`/api/invoices/${invoice.id}/pdf`}
-            className="rounded-md border border-slate-800 px-3 py-2 text-sm text-slate-200 transition hover:border-sky-400/60 hover:bg-slate-800/80"
-          >
-            Download PDF
-          </Link>
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="flex flex-col items-start gap-1">
+            {canExportPdf ? (
+              <Link
+                href={`/api/invoices/${invoice.id}/pdf`}
+                className={pdfEnabledClass}
+                title={pdfTitle}
+              >
+                Download PDF
+              </Link>
+            ) : (
+              <span
+                className={pdfDisabledClass}
+                title={pdfTitle}
+                aria-disabled="true"
+              >
+                Download PDF
+              </span>
+            )}
+            {!canExportPdf && (
+              <p className="text-xs text-slate-400">
+                Available on Solo, Pro, and Studio plans.
+              </p>
+            )}
+          </div>
           <form action={updateStatus}>
             <button
               type="submit"

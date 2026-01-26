@@ -162,8 +162,11 @@ async function runReminderJob(req: Request) {
     }
   }
 
+  const ranAt = new Date().toISOString();
+  console.log(`[reminders] ranAt=${ranAt} updated=${reminders.length}`);
+
   return NextResponse.json({
-    ranAt: new Date().toISOString(),
+    ranAt,
     updatedCount: reminders.length,
     updatedInvoiceIds,
     dryRun: false,
@@ -176,5 +179,5 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  return runReminderJob(req);
+  return POST(req);
 }
