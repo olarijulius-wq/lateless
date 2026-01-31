@@ -1,11 +1,20 @@
 import { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import UpgradeButton from './upgrade-button';
 import ManageBillingButton from './manage-billing-button';
-import { fetchCompanyProfile, fetchUserPlanAndUsage } from '@/app/lib/data';
+import {
+  fetchCompanyProfile,
+  fetchStripeConnectAccountId,
+  fetchStripeConnectStatus,
+  fetchUserPlanAndUsage,
+  requireUserEmail,
+  type StripeConnectStatus,
+} from '@/app/lib/data';
 import CompanyProfileForm from './company-profile-form';
 import { PLAN_CONFIG, type PlanId } from '@/app/lib/config';
 import { auth } from '@/auth';
+import ConnectStripeButton from './connect-stripe-button';
 
 export const metadata: Metadata = {
   title: 'Settings',
@@ -19,6 +28,7 @@ export default async function SettingsPage(props: {
     redirect('/login');
   }
 
+  const userEmail = await requireUserEmail();
   const searchParams = await props.searchParams;
   const success = searchParams?.success === '1';
   const canceled = searchParams?.canceled === '1';
@@ -45,6 +55,9 @@ export default async function SettingsPage(props: {
     maxPerMonth,
   } = await fetchUserPlanAndUsage();
   const companyProfile = await fetchCompanyProfile();
+  const stripeConnectAccountId = await fetchStripeConnectAccountId();
+  const connectStatus: StripeConnectStatus =
+    await fetchStripeConnectStatus(userEmail);
   const periodEndLabel = formatEtDateTime(currentPeriodEnd);
   const planConfig = PLAN_CONFIG[plan];
   const isUnlimited = !Number.isFinite(planConfig.maxPerMonth);
@@ -53,6 +66,20 @@ export default async function SettingsPage(props: {
     year: 'numeric',
   }).format(new Date());
   const invoiceNumberPreview = `INV-${previewYear}-0001`;
+  const connectStatusPill: {
+    label: string;
+    className: string;
+  } | null = connectStatus
+    ? connectStatus.payoutsEnabled
+      ? {
+          label: 'Payouts enabled',
+          className: 'bg-emerald-500/20 text-emerald-200',
+        }
+      : {
+          label: 'Payouts not enabled yet',
+          className: 'bg-amber-500/20 text-amber-200',
+        }
+    : null;
 
   const planCards: Array<{
     id: Exclude<PlanId, 'free'>;
@@ -204,6 +231,15 @@ export default async function SettingsPage(props: {
         })}
       </div>
 
+      {!stripeConnectAccountId && (
+        <div className="mb-6 rounded-md border border-slate-800 bg-slate-900/80 p-4">
+          <p className="mb-3 text-sm text-slate-300">
+            Connect your Stripe account to receive payouts directly.
+          </p>
+          <ConnectStripeButton />
+        </div>
+      )}
+
       {/* Billing portal */}
       <div className="grid gap-3 sm:grid-cols-2">
         <ManageBillingButton />
@@ -213,6 +249,46 @@ export default async function SettingsPage(props: {
         Use “Manage billing / Cancel” to cancel your subscription, update
         payment method, or view invoices.
       </p>
+
+      <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900/80 p-4 space-y-2">
+        <h2 className="text-base font-semibold text-slate-100">Payouts</h2>
+
+        {!connectStatus ? (
+          <>
+            <p className="text-sm text-slate-300">
+              You haven&apos;t connected Stripe payouts yet.
+            </p>
+            <p className="text-xs text-slate-500">
+              Connect Stripe above to start receiving payouts.
+            </p>
+            <Link
+              href="/dashboard/settings/payouts"
+              className="inline-flex items-center rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:text-white"
+            >
+              Learn more about payouts
+            </Link>
+          </>
+        ) : (
+          <>
+            <div>
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${connectStatusPill?.className ?? ''}`}
+              >
+                {connectStatusPill?.label}
+              </span>
+            </div>
+            <p className="text-sm text-slate-300">
+              View your payout status and open the Stripe Express dashboard.
+            </p>
+            <Link
+              href="/dashboard/settings/payouts"
+              className="inline-flex items-center rounded-md bg-sky-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-sky-400"
+            >
+              Open payouts
+            </Link>
+          </>
+        )}
+      </div>
     </div>
   );
 }

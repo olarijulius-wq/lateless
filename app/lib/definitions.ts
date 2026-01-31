@@ -8,7 +8,16 @@ export type User = {
   email: string;
   password: string;
   plan?: 'free' | 'solo' | 'pro' | 'studio';
+  is_pro?: boolean;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  subscription_status?: string | null;
+  cancel_at_period_end?: boolean | null;
+  current_period_end?: string | Date | null;
   is_verified?: boolean;
+  stripe_connect_account_id?: string | null;
+  stripe_connect_payouts_enabled?: boolean;
+  stripe_connect_details_submitted?: boolean;
 };
 
 export type Customer = {

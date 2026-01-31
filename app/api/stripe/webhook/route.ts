@@ -1,18 +1,17 @@
 // app/api/stripe/webhook/route.ts
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import postgres from "postgres";
 import {
   normalizePlan,
   planFromStripePriceId,
   isActiveSubscription,
 } from "@/app/lib/config";
+import { stripe } from "@/app/lib/stripe";
 
 export const runtime = "nodejs";
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: "require" });
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -262,6 +261,46 @@ export async function POST(req: Request) {
           "rows:",
           updated.length,
           updated[0],
+        );
+      }
+    }
+
+    if (event.type === "account.updated") {
+      try {
+        const account = event.data.object as Stripe.Account;
+        const accountId = account.id;
+        const detailsSubmitted = !!account.details_submitted;
+        const payoutsEnabled = !!account.payouts_enabled;
+
+        const result = await sql<{ email: string }[]>`
+          update users
+          set
+            stripe_connect_details_submitted = ${detailsSubmitted},
+            stripe_connect_payouts_enabled = ${payoutsEnabled}
+          where stripe_connect_account_id = ${accountId}
+          returning email
+        `;
+
+        if (result.length > 0) {
+          console.log(
+            "[stripe webhook] Updated Connect status for user",
+            result[0].email,
+            {
+              accountId,
+              detailsSubmitted,
+              payoutsEnabled,
+            },
+          );
+        } else {
+          console.log(
+            "[stripe webhook] account.updated received but no user with stripe_connect_account_id =",
+            accountId,
+          );
+        }
+      } catch (error) {
+        console.error(
+          "[stripe webhook] Error handling account.updated",
+          error,
         );
       }
     }

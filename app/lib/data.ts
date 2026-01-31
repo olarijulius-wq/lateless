@@ -22,7 +22,7 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-async function requireUserEmail() {
+export async function requireUserEmail() {
   const session = await auth();
   const email = session?.user?.email;
   if (!email) throw new Error('Unauthorized');
@@ -66,6 +66,66 @@ export async function fetchCompanyProfile(): Promise<CompanyProfile | null> {
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch company profile.');
+  }
+}
+
+export async function fetchStripeConnectAccountId(): Promise<string | null> {
+  const userEmail = await requireUserEmail();
+
+  try {
+    const data = await sql<{ stripe_connect_account_id: string | null }[]>`
+      SELECT stripe_connect_account_id
+      FROM public.users
+      WHERE lower(email) = ${userEmail}
+      LIMIT 1
+    `;
+
+    return data[0]?.stripe_connect_account_id ?? null;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch Stripe Connect account.');
+  }
+}
+
+export type StripeConnectStatus = {
+  accountId: string;
+  detailsSubmitted: boolean;
+  payoutsEnabled: boolean;
+} | null;
+
+export async function fetchStripeConnectStatus(
+  userEmail: string,
+): Promise<StripeConnectStatus> {
+  const normalizedEmail = normalizeEmail(userEmail);
+
+  try {
+    const data = await sql<{
+      stripe_connect_account_id: string | null;
+      stripe_connect_details_submitted: boolean | null;
+      stripe_connect_payouts_enabled: boolean | null;
+    }[]>`
+      SELECT
+        stripe_connect_account_id,
+        stripe_connect_details_submitted,
+        stripe_connect_payouts_enabled
+      FROM public.users
+      WHERE lower(email) = ${normalizedEmail}
+      LIMIT 1
+    `;
+
+    const row = data[0];
+    if (!row?.stripe_connect_account_id) {
+      return null;
+    }
+
+    return {
+      accountId: row.stripe_connect_account_id,
+      detailsSubmitted: !!row.stripe_connect_details_submitted,
+      payoutsEnabled: !!row.stripe_connect_payouts_enabled,
+    };
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch Stripe Connect status.');
   }
 }
 
