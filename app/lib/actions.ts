@@ -7,9 +7,11 @@ import { redirect } from 'next/navigation';
 import { signIn, auth } from '@/auth';
 import { AuthError } from 'next-auth';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { getNextInvoiceNumber, upsertCompanyProfile } from '@/app/lib/data';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from '@/app/lib/config';
 import { checkRateLimit } from '@/app/lib/rate-limit';
+import { sendEmailVerification } from '@/app/lib/email';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -738,6 +740,8 @@ export async function registerUser(prevState: SignupState, formData: FormData) {
   const { name, email, password } = validated.data;
   const normalizedEmail = normalizeEmail(email);
 
+  let userId: string | null = null;
+
   try {
     const existing = await sql`
       select id from users where lower(email) = ${normalizedEmail} limit 1
@@ -748,12 +752,38 @@ export async function registerUser(prevState: SignupState, formData: FormData) {
 
     const password_hash = await bcrypt.hash(password, 10);
 
-    await sql`
+    const [inserted] = await sql<{ id: string }[]>`
       insert into users (name, email, password)
       values (${name}, ${normalizedEmail}, ${password_hash})
+      returning id
     `;
+    userId = inserted?.id ?? null;
   } catch {
     return { message: 'Database error: failed to create account.' };
+  }
+
+  if (userId) {
+    const verificationToken = crypto.randomUUID();
+    try {
+      await sql`
+        update users
+        set verification_token = ${verificationToken},
+            verification_sent_at = now()
+        where id = ${userId}
+      `;
+
+      const baseUrl =
+        process.env.NEXT_PUBLIC_APP_URL ||
+        process.env.AUTH_URL ||
+        (process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : 'http://localhost:3000');
+      const verifyUrl = `${baseUrl}/verify/${verificationToken}`;
+
+      await sendEmailVerification({ to: normalizedEmail, verifyUrl });
+    } catch (error) {
+      console.error('Email verification setup failed:', error);
+    }
   }
 
   redirect('/login?signup=success');

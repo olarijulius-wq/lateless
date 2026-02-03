@@ -15,6 +15,8 @@ export type User = {
   cancel_at_period_end?: boolean | null;
   current_period_end?: string | Date | null;
   is_verified?: boolean;
+  verification_token?: string | null;
+  verification_sent_at?: string | null;
   stripe_connect_account_id?: string | null;
   stripe_connect_payouts_enabled?: boolean;
   stripe_connect_details_submitted?: boolean;

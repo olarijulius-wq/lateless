@@ -114,6 +114,7 @@ export default async function SettingsPage(props: {
   return (
     <div className="w-full max-w-3xl">
       <h1 className="mb-4 text-2xl font-semibold text-slate-100">Settings</h1>
+      {/* TODO: Add email verification banner + resend action when user.is_verified is false. */}
 
       {/* Checkout success / cancel teated */}
       {success && (
