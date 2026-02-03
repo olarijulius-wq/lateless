@@ -1,5 +1,6 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import { AuthError } from 'next-auth';
 import { authConfig } from './auth.config';
 import { z } from 'zod';
 import type { User } from '@/app/lib/definitions';
@@ -38,8 +39,13 @@ export const { auth, signIn, signOut } = NextAuth({
           const user = await getUser(email);
           if (!user) return null;
           const passwordsMatch = await bcrypt.compare(password, user.password);
- 
-          if (passwordsMatch) return user;
+
+          if (passwordsMatch) {
+            if (!user.is_verified) {
+              throw new AuthError('EMAIL_NOT_VERIFIED');
+            }
+            return user;
+          }
         }
  
         console.log('Invalid credentials');

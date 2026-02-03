@@ -828,6 +828,8 @@ export async function authenticate(
             await recordLoginAttempt(normalizedEmail, false);
           }
           return 'Invalid credentials.';
+        case 'EMAIL_NOT_VERIFIED':
+          return 'Please verify your email first – check your inbox for the verification link.';
         default:
           return 'Something went wrong.';
       }
