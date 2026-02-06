@@ -79,21 +79,26 @@ export default function Page() {
         </div>
         <div className="flex items-center justify-center p-6 md:w-3/5 md:px-28 md:py-12">
           {/* Add Hero Images Here */}
-          <Image
-            src="/hero-desktop.png"
-            width={1000}
-            height={760}
-            className="hidden md:block"
-            alt="Screenshots of the dashboard project showing desktop version"
-          />
-          <Image
-            src="/hero-mobile.png"
-            width={560}
-            height={620}
-            className="block md:hidden"
-            alt="Screenshot of the dashboard project showing mobile version"
-          />
-
+          <div className="relative hidden w-full aspect-[2500/1500] max-h-[80vh] overflow-hidden rounded-2xl md:block">
+            <Image
+              src="/hero-desktop.png"
+              fill
+              priority
+              sizes="(min-width: 768px) 100vw, 0px"
+              className="object-cover object-center"
+              alt="Screenshots of the dashboard project showing desktop version"
+            />
+          </div>
+          <div className="relative block w-full aspect-[1179/2229] max-h-[80vh] overflow-hidden rounded-2xl md:hidden">
+            <Image
+              src="/hero-mobile.png"
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover object-center"
+              alt="Screenshot of the dashboard project showing mobile version"
+            />
+          </div>
         </div>
       </div>
 
