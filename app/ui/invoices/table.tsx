@@ -92,8 +92,8 @@ export default function InvoicesTable({
                 <th scope="col" className="px-3 py-5 font-medium">
                   Status
                 </th>
-                <th scope="col" className="relative py-3 pl-6 pr-3">
-                  <span className="sr-only">Edit</span>
+                <th scope="col" className="px-4 py-5 font-medium text-center">
+                  Actions
                 </th>
               </tr>
             </thead>
@@ -142,8 +142,8 @@ export default function InvoicesTable({
                       )}
                     </div>
                   </td>
-                  <td className="whitespace-nowrap py-3 pl-6 pr-3">
-                    <div className="flex justify-end gap-3">
+                  <td className="whitespace-nowrap px-4 py-5 text-center">
+                    <div className="flex justify-center gap-3">
                       {invoice.status !== 'paid' && (
                         <PayInvoiceButton
                           invoiceId={invoice.id}

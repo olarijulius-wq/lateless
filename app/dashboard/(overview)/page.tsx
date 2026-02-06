@@ -10,6 +10,7 @@ import {
   CardsSkeleton,
 } from '@/app/ui/skeletons';
 import { Metadata } from 'next';
+import { RevealOnMount } from '@/app/ui/motion/reveal';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -31,17 +32,23 @@ export default async function Page() {
       </div>
 
       <div className="space-y-6">
-        <Suspense fallback={<RevenueChartSkeleton />}>
-          <RevenueChart />
-        </Suspense>
+        <RevealOnMount delay={0.08}>
+          <Suspense fallback={<RevenueChartSkeleton />}>
+            <RevenueChart />
+          </Suspense>
+        </RevealOnMount>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Suspense fallback={<LatestInvoicesSkeleton />}>
-            <LatestInvoices />
-          </Suspense>
-          <Suspense fallback={<LatestInvoicesSkeleton />}>
-            <LatePayers />
-          </Suspense>
+          <RevealOnMount delay={0.14} className="h-full">
+            <Suspense fallback={<LatestInvoicesSkeleton />}>
+              <LatestInvoices />
+            </Suspense>
+          </RevealOnMount>
+          <RevealOnMount delay={0.2} className="h-full">
+            <Suspense fallback={<LatestInvoicesSkeleton />}>
+              <LatePayers />
+            </Suspense>
+          </RevealOnMount>
         </div>
       </div>
     </main>

@@ -7,6 +7,7 @@ import Image from 'next/image';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import ViewPricingButton from '@/app/ui/landing/view-pricing-button';
 import PlanSelectButton from '@/app/ui/landing/plan-select-button';
+import { RevealOnScroll, StaggeredList } from '@/app/ui/motion/reveal';
 
 export default function Page() {
   const studioLimit = PLAN_CONFIG.studio.maxPerMonth;
@@ -21,63 +22,68 @@ export default function Page() {
       </div>
       <div className="mt-4 flex grow flex-col gap-6 md:flex-row">
         <div className="flex flex-col justify-center gap-6 rounded-2xl border border-slate-800 bg-slate-900/80 px-6 py-10 shadow-[0_18px_35px_rgba(0,0,0,0.45)] md:w-2/5 md:px-14">
-          <div className="space-y-4">
-            <p
-              className={`${lusitana.className} text-2xl text-slate-100 md:text-3xl md:leading-normal`}
-            >
-              <strong>Get paid faster, automatically.</strong>
-            </p>
-            <p className="text-slate-400 md:text-lg">
-              Lateless helps freelancers and small teams get paid on time with
-              smarter invoices, automatic reminders, and late payer insights.
-            </p>
-          </div>
+          <RevealOnScroll className="space-y-6">
+            <div className="space-y-4">
+              <p
+                className={`${lusitana.className} text-2xl text-slate-100 md:text-3xl md:leading-normal`}
+              >
+                <strong>Get paid faster, automatically.</strong>
+              </p>
+              <p className="text-slate-400 md:text-lg">
+                Lateless helps freelancers and small teams get paid on time with
+                smarter invoices, automatic reminders, and late payer insights.
+              </p>
+            </div>
 
-          <div className="space-y-4 text-sm text-slate-200 md:text-base">
-            <div>
-              <p className="font-semibold text-slate-100">One-click payments</p>
-              <p className="text-slate-400">
-                Every invoice ships with a Stripe &quot;Pay now&quot; button. When the
-                payment lands, the invoice closes itself.
-              </p>
+            <div className="space-y-4 text-sm text-slate-200 md:text-base">
+              <div>
+                <p className="font-semibold text-slate-100">One-click payments</p>
+                <p className="text-slate-400">
+                  Every invoice ships with a Stripe &quot;Pay now&quot; button. When the
+                  payment lands, the invoice closes itself.
+                </p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-100">Automatic reminders</p>
+                <p className="text-slate-400">
+                  No more chasing. Overdue invoices get reminders on day 1, 7,
+                  and 21 with the payment link included.
+                </p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-100">
+                  Late payer analytics
+                </p>
+                <p className="text-slate-400">
+                  Spot the clients who always pay 10+ days late and adjust your
+                  terms before they hurt cash flow.
+                </p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-100">Flexible plans</p>
+                <p className="text-slate-400">
+                  Free for up to {PLAN_CONFIG.free.maxPerMonth} invoices a month.
+                  Solo, Pro, and Studio for growing businesses.
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="font-semibold text-slate-100">Automatic reminders</p>
-              <p className="text-slate-400">
-                No more chasing. Overdue invoices get reminders on day 1, 7, and
-                21 with the payment link included.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-100">
-                Late payer analytics
-              </p>
-              <p className="text-slate-400">
-                Spot the clients who always pay 10+ days late and adjust your
-                terms before they hurt cash flow.
-              </p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-100">Flexible plans</p>
-              <p className="text-slate-400">
-                Free for up to {PLAN_CONFIG.free.maxPerMonth} invoices a month.
-                Solo, Pro, and Studio for growing businesses.
-              </p>
-            </div>
-          </div>
+          </RevealOnScroll>
 
           <div className="flex flex-wrap gap-3">
             <Link
               href="/signup"
-              className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <span>Start free</span>
               <ArrowRightIcon className="w-4" />
             </Link>
-            <ViewPricingButton className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" />
+            <ViewPricingButton className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" />
           </div>
         </div>
-        <div className="flex items-center justify-center p-6 md:w-3/5 md:px-28 md:py-12">
+        <RevealOnScroll
+          className="flex items-center justify-center p-6 md:w-3/5 md:px-28 md:py-12"
+          delay={0.12}
+        >
           {/* Add Hero Images Here */}
           <div className="relative hidden w-full aspect-[2500/1500] max-h-[80vh] overflow-hidden rounded-2xl md:block">
             <Image
@@ -99,7 +105,7 @@ export default function Page() {
               alt="Screenshot of the dashboard project showing mobile version"
             />
           </div>
-        </div>
+        </RevealOnScroll>
       </div>
 
       <section id="pricing" className="mt-16">
@@ -112,7 +118,11 @@ export default function Page() {
           </p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <StaggeredList
+          className="grid gap-6 md:grid-cols-2 xl:grid-cols-4"
+          itemClassName="h-full"
+          stagger={0.08}
+        >
           <div className="flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)] transition hover:border-slate-600">
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-slate-100">Free</h3>
@@ -135,7 +145,7 @@ export default function Page() {
             </ul>
             <Link
               href="/signup"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Start free
             </Link>
@@ -163,7 +173,7 @@ export default function Page() {
             </ul>
             <PlanSelectButton
               plan="solo"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Choose Solo
             </PlanSelectButton>
@@ -193,7 +203,7 @@ export default function Page() {
             </ul>
             <PlanSelectButton
               plan="pro"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Choose Pro
             </PlanSelectButton>
@@ -218,12 +228,12 @@ export default function Page() {
             </ul>
             <PlanSelectButton
               plan="studio"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Choose Studio
             </PlanSelectButton>
           </div>
-        </div>
+        </StaggeredList>
       </section>
     </main>
   );
