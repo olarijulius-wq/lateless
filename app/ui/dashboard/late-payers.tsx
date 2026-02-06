@@ -65,7 +65,7 @@ export default async function LatePayers() {
             </p>
             <Link
               href="/dashboard/settings"
-              className="mt-4 inline-flex items-center rounded-xl border border-sky-500/40 bg-sky-500/80 px-3 py-2 text-xs font-semibold text-slate-950 transition duration-200 ease-out hover:bg-sky-400/90 hover:scale-[1.01]"
+              className="mt-4 inline-flex items-center rounded-xl border border-slate-700/70 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01]"
             >
               View plans
             </Link>

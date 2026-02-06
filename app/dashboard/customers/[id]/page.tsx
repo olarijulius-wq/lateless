@@ -94,7 +94,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             No invoices for this customer yet.{' '}
             <Link
               href={`/dashboard/invoices/create?customerId=${customer.id}`}
-              className="text-sky-300 hover:text-sky-200"
+              className="text-slate-200 hover:text-slate-300"
             >
               Create invoice for this customer
             </Link>
@@ -128,7 +128,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
                     <td className="whitespace-nowrap py-3 pl-6 pr-3">
                       <Link
                         href={`/dashboard/invoices/${invoice.id}`}
-                        className="text-sky-300 hover:text-sky-200"
+                        className="text-slate-200 hover:text-slate-300"
                       >
                         #{invoice.id.slice(0, 8)}
                       </Link>
@@ -139,7 +139,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
                     <td className="whitespace-nowrap px-3 py-3">
                       <InvoiceStatus status={invoice.status} />
                     </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-sky-200">
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-300">
                       {formatCurrency(invoice.amount)}
                     </td>
                   </tr>

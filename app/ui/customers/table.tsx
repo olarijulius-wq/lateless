@@ -6,7 +6,7 @@ import { DeleteCustomer, UpdateCustomer } from '@/app/ui/customers/buttons';
 function InitialAvatar({ name }: { name: string }) {
   const initial = (name?.trim()?.charAt(0) || '?').toUpperCase();
   return (
-    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
+    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800/60 text-xs font-semibold text-slate-200">
       {initial}
     </div>
   );
@@ -45,7 +45,7 @@ export default async function CustomersTable({
                           )}
                           <Link
                             href={`/dashboard/customers/${customer.id}`}
-                            className="text-slate-100 hover:text-sky-200"
+                            className="text-slate-100 hover:text-slate-300"
                           >
                             {customer.name}
                           </Link>
@@ -58,7 +58,7 @@ export default async function CustomersTable({
                   <div className="flex w-full items-center justify-between border-b border-slate-800 py-5">
                     <div className="flex w-1/2 flex-col">
                       <p className="text-xs text-slate-400">Pending</p>
-                      <p className="font-medium text-sky-200">
+                      <p className="font-medium text-slate-300">
                         {customer.total_pending}
                       </p>
                     </div>
@@ -123,7 +123,7 @@ export default async function CustomersTable({
                         )}
                         <Link
                           href={`/dashboard/customers/${customer.id}`}
-                          className="hover:text-sky-200"
+                          className="hover:text-slate-300"
                         >
                           {customer.name}
                         </Link>
@@ -135,7 +135,7 @@ export default async function CustomersTable({
                     <td className="whitespace-nowrap px-4 py-5 text-sm text-slate-300">
                       {customer.total_invoices}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-5 text-sm text-sky-200">
+                    <td className="whitespace-nowrap px-4 py-5 text-sm text-slate-300">
                       {customer.total_pending}
                     </td>
                     <td className="whitespace-nowrap px-4 py-5 text-sm text-emerald-200 group-first-of-type:rounded-xl group-last-of-type:rounded-xl">

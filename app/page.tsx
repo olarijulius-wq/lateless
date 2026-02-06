@@ -69,12 +69,12 @@ export default function Page() {
           <div className="flex flex-wrap gap-3">
             <Link
               href="/signup"
-              className="inline-flex items-center gap-3 rounded-xl border border-sky-500/40 bg-sky-500/80 px-5 py-2.5 text-sm font-medium text-slate-950 transition duration-200 ease-out hover:bg-sky-400/90 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <span>Start free</span>
               <ArrowRightIcon className="w-4" />
             </Link>
-            <ViewPricingButton className="inline-flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-900/60 px-5 py-2.5 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" />
+            <ViewPricingButton className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" />
           </div>
         </div>
         <div className="flex items-center justify-center p-6 md:w-3/5 md:px-28 md:py-12">
@@ -130,7 +130,7 @@ export default function Page() {
             </ul>
             <Link
               href="/signup"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-sky-500/40 bg-sky-500/80 px-4 py-2 text-sm font-medium text-slate-950 transition duration-200 ease-out hover:bg-sky-400/90 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Start free
             </Link>
@@ -158,14 +158,14 @@ export default function Page() {
             </ul>
             <PlanSelectButton
               plan="solo"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Choose Solo
             </PlanSelectButton>
           </div>
 
           <div className="relative flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)] transition hover:border-slate-500">
-            <span className="absolute right-4 top-4 rounded-full border border-sky-400/40 bg-sky-500/10 px-2 py-1 text-xs font-semibold text-sky-200">
+            <span className="absolute right-4 top-4 rounded-full border border-slate-700/60 bg-slate-800/50 px-2 py-1 text-xs font-semibold text-slate-300">
               Most popular
             </span>
             <div className="mb-4">
@@ -188,7 +188,7 @@ export default function Page() {
             </ul>
             <PlanSelectButton
               plan="pro"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-sky-500/40 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-100 transition duration-200 ease-out hover:border-sky-400/70 hover:bg-sky-500/20 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Choose Pro
             </PlanSelectButton>
@@ -213,7 +213,7 @@ export default function Page() {
             </ul>
             <PlanSelectButton
               plan="studio"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               Choose Studio
             </PlanSelectButton>

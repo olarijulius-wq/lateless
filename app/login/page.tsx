@@ -21,7 +21,7 @@ export default function LoginPage() {
         </Suspense>
         <p className="mt-4 text-center text-sm text-slate-400">
           No account?{' '}
-          <a href="/signup" className="text-sky-300 hover:underline">
+          <a href="/signup" className="text-slate-200 hover:underline">
             Create one
           </a>
         </p>

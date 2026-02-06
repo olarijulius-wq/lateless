@@ -38,7 +38,7 @@ export default function EditInvoiceForm({
             <select
               id="customer"
               name="customerId"
-              className="peer block w-full cursor-pointer rounded-xl border border-slate-800 bg-slate-950/60 py-2 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+              className="peer block w-full cursor-pointer rounded-xl border border-slate-800 bg-slate-950/60 py-2 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
               value={customerId}
               onChange={(event) => setCustomerId(event.target.value)}
             >
@@ -51,7 +51,7 @@ export default function EditInvoiceForm({
                 </option>
               ))}
             </select>
-            <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-sky-300" />
+            <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-slate-300" />
           </div>
         </div>
 
@@ -70,9 +70,9 @@ export default function EditInvoiceForm({
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
                 placeholder="Enter amount in EUR"
-                className="peer block w-full rounded-xl border border-slate-800 bg-slate-950/60 py-2 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+                className="peer block w-full rounded-xl border border-slate-800 bg-slate-950/60 py-2 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
               />
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500 transition peer-focus:text-sky-300">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500 transition peer-focus:text-slate-300">
                 €
               </span>
             </div>
@@ -96,7 +96,7 @@ export default function EditInvoiceForm({
                   onChange={(event) =>
                     setStatus(event.target.value as 'pending' | 'paid')
                   }
-                  className="h-4 w-4 cursor-pointer border-slate-700 bg-slate-900 text-slate-200 focus:ring-2 focus:ring-sky-400"
+                  className="h-4 w-4 cursor-pointer border-slate-700 bg-slate-900 text-slate-200 focus:ring-2 focus:ring-slate-600"
                 />
                 <label
                   htmlFor="pending"
@@ -115,7 +115,7 @@ export default function EditInvoiceForm({
                   onChange={(event) =>
                     setStatus(event.target.value as 'pending' | 'paid')
                   }
-                  className="h-4 w-4 cursor-pointer border-slate-700 bg-slate-900 text-slate-200 focus:ring-2 focus:ring-sky-400"
+                  className="h-4 w-4 cursor-pointer border-slate-700 bg-slate-900 text-slate-200 focus:ring-2 focus:ring-slate-600"
                 />
                 <label
                   htmlFor="paid"
@@ -137,7 +137,7 @@ export default function EditInvoiceForm({
             type="date"
             value={dueDate}
             onChange={(event) => setDueDate(event.target.value)}
-            className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 py-2 pl-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+            className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 py-2 pl-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
             aria-describedby="dueDate-error"
           />
           <div id="dueDate-error" aria-live="polite" aria-atomic="true">

@@ -8,11 +8,11 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const baseClasses =
-  'inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50';
+  'inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-600/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-50';
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    'border border-sky-500/40 bg-sky-500/80 text-slate-950 hover:bg-sky-400/90 hover:scale-[1.01]',
+    'border border-slate-700/70 bg-slate-900 text-slate-100 hover:bg-slate-800 hover:scale-[1.01]',
   secondary:
     'border border-slate-700 bg-slate-900/60 text-slate-100 hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01]',
   destructive:

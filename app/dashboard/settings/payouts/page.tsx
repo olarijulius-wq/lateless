@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 };
 
 const primaryButtonClasses =
-  'flex h-10 items-center justify-center rounded-xl border border-sky-500/40 bg-sky-500/80 px-4 text-sm font-medium text-slate-950 transition duration-200 ease-out hover:bg-sky-400/90 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950';
+  'flex h-10 items-center justify-center rounded-xl border border-slate-700/70 bg-slate-900 px-4 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-600/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950';
 
 export default async function PayoutsPage() {
   const email = await requireUserEmail();

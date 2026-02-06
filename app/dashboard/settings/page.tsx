@@ -222,7 +222,7 @@ export default async function SettingsPage(props: {
                     className={
                       isCurrent
                         ? 'rounded-xl border border-slate-700 bg-slate-950/60 px-4 py-2 text-sm font-medium text-slate-300'
-                        : 'rounded-xl border border-sky-500/40 bg-sky-500/80 px-4 py-2 text-sm font-medium text-slate-950 transition duration-200 ease-out hover:bg-sky-400/90 hover:scale-[1.01]'
+                        : 'rounded-xl border border-slate-700/70 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01]'
                     }
                   />
                 </div>
@@ -283,7 +283,7 @@ export default async function SettingsPage(props: {
             </p>
             <Link
               href="/dashboard/settings/payouts"
-              className="inline-flex items-center rounded-xl border border-sky-500/40 bg-sky-500/80 px-3 py-2 text-sm font-medium text-slate-950 transition duration-200 ease-out hover:bg-sky-400/90 hover:scale-[1.01]"
+              className="inline-flex items-center rounded-xl border border-slate-700/70 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01]"
             >
               Open payouts
             </Link>

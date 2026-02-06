@@ -39,7 +39,9 @@ export default async function Page(props: {
         <div className="flex items-center gap-2">
           <ExportCustomersButton canExportCsv={canExportCsv} />
           <Link href="/dashboard/customers/create" className="shrink-0">
-            <Button>Create customer</Button>
+            <Button className="border border-slate-300 bg-white text-slate-900 shadow-[0_6px_14px_rgba(15,23,42,0.16)] hover:border-slate-300 hover:bg-slate-100">
+              Create customer
+            </Button>
           </Link>
         </div>
       </div>

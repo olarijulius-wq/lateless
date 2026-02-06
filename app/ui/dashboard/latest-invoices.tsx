@@ -34,7 +34,7 @@ export default async function LatestInvoices() {
             <div className="mt-4 flex flex-wrap gap-3">
               <Link
                 href="/dashboard/customers"
-                className="inline-flex items-center rounded-xl border border-sky-500/40 bg-sky-500/80 px-3 py-2 text-sm font-medium text-slate-950 transition duration-200 ease-out hover:bg-sky-400/90 hover:scale-[1.01]"
+                className="inline-flex items-center rounded-xl border border-slate-700/70 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01]"
               >
                 Add customer
               </Link>
@@ -74,7 +74,7 @@ export default async function LatestInvoices() {
                       <InvoiceStatus status={invoice.status} />
                     </div>
                     <div className="mt-3 flex items-center justify-between text-xs text-slate-300">
-                      <span className={`${lusitana.className} text-sm text-sky-200`}>
+                      <span className={`${lusitana.className} text-sm text-slate-300`}>
                         {invoice.amount}
                       </span>
                       <span>
@@ -119,7 +119,7 @@ export default async function LatestInvoices() {
                       </p>
                     </div>
                     <div
-                      className={`${lusitana.className} text-sm font-semibold text-sky-200 sm:text-right`}
+                      className={`${lusitana.className} text-sm font-semibold text-slate-300 sm:text-right`}
                     >
                       {invoice.amount}
                     </div>
@@ -140,7 +140,7 @@ export default async function LatestInvoices() {
           </div>
           <Link
             href="/dashboard/invoices"
-            className="text-xs text-sky-300 hover:underline"
+            className="text-xs text-slate-200 hover:underline"
           >
             View all invoices
           </Link>

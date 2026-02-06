@@ -41,7 +41,7 @@ export default function SignupForm() {
         <input
           name="name"
           type="text"
-          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
           placeholder="Your name"
           value={name}
           onChange={(event) => setName(event.target.value)}
@@ -58,7 +58,7 @@ export default function SignupForm() {
         <input
           name="email"
           type="email"
-          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
           placeholder="you@example.com"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -75,7 +75,7 @@ export default function SignupForm() {
         <input
           name="password"
           type="password"
-          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40"
+          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
           placeholder="At least 8 characters"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
@@ -95,7 +95,7 @@ export default function SignupForm() {
 
       <p className="text-center text-sm text-slate-400">
         Already have an account?{' '}
-        <Link href="/login" className="text-sky-300 hover:text-sky-200">
+        <Link href="/login" className="text-slate-200 hover:text-slate-300">
           Log in
         </Link>
       </p>

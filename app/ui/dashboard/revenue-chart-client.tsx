@@ -55,11 +55,11 @@ export function RevenueChartClient({ chartData }: { chartData: ChartDatum[] }) {
             type="monotone"
             dataKey="revenueCents"
             name="Revenue"
-            stroke="#38bdf8"
-            strokeOpacity={0.85}
+            stroke="#ffffff"
+            strokeOpacity={0.95}
             strokeWidth={2}
-            dot={{ r: 3 }}
-            activeDot={{ r: 5 }}
+            dot={{ r: 3, stroke: '#ffffff', fill: '#ffffff' }}
+            activeDot={{ r: 5, stroke: '#ffffff', fill: '#ffffff' }}
           />
         </LineChart>
       </ResponsiveContainer>

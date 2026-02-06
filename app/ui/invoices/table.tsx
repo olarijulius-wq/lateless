@@ -24,7 +24,7 @@ export default function InvoicesTable({
                 <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                   <div>
                     <div className="mb-2 flex items-center">
-                      <div className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
+                      <div className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-slate-800/60 text-xs font-semibold text-slate-200">
                         {invoice.name.charAt(0).toUpperCase()}
                       </div>
                       <p>{invoice.name}</p>
@@ -48,7 +48,7 @@ export default function InvoicesTable({
                     </p>
                     <Link
                       href={`/dashboard/invoices/${invoice.id}`}
-                      className="text-sm text-sky-300 hover:text-sky-200"
+                      className="text-sm text-slate-200 hover:text-slate-300"
                     >
                       {invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`}
                     </Link>
@@ -105,14 +105,14 @@ export default function InvoicesTable({
                 >
                   <td className="whitespace-nowrap py-3 pl-6 pr-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sky-500/20 text-xs font-semibold text-sky-300">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800/60 text-xs font-semibold text-slate-200">
                         {invoice.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
                         <p>{invoice.name}</p>
                         <Link
                           href={`/dashboard/invoices/${invoice.id}`}
-                          className="text-xs text-sky-300 hover:text-sky-200"
+                          className="text-xs text-slate-200 hover:text-slate-300"
                         >
                           {invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`}
                         </Link>
@@ -122,7 +122,7 @@ export default function InvoicesTable({
                   <td className="whitespace-nowrap px-3 py-3 text-slate-300">
                     {invoice.email}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-sky-200">
+                  <td className="whitespace-nowrap px-3 py-3 text-slate-300">
                     {formatCurrencySuffix(invoice.amount)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-3 text-slate-400">

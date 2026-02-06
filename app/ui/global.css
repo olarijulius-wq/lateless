@@ -10,13 +10,13 @@
   body {
     @apply min-h-screen bg-slate-950 text-slate-100;
     background-image:
-      radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.15), transparent 25%),
-      radial-gradient(circle at 80% 0%, rgba(59, 130, 246, 0.15), transparent 20%),
-      linear-gradient(145deg, #030712 0%, #060b18 35%, #0a1426 100%);
+      radial-gradient(circle at 15% 20%, rgba(30, 58, 138, 0.18), transparent 25%),
+      radial-gradient(circle at 80% 0%, rgba(15, 23, 42, 0.35), transparent 22%),
+      linear-gradient(145deg, #02040a 0%, #070b16 38%, #0b1426 100%);
   }
 
   ::selection {
-    background: rgba(56, 189, 248, 0.35);
+    background: rgba(30, 58, 138, 0.4);
     color: #e2e8f0;
   }
 }
