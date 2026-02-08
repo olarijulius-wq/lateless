@@ -24,7 +24,7 @@ export default function InvoicesTable({
                 <div className="flex items-center justify-between border-b border-slate-800 pb-4">
                   <div className="min-w-0">
                     <div className="mb-2 flex items-center">
-                      <div className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-slate-800/60 text-xs font-semibold text-slate-200">
+                      <div className="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-semibold text-white dark:bg-slate-800 dark:text-slate-100">
                         {invoice.name.charAt(0).toUpperCase()}
                       </div>
                       <p className="truncate text-sm font-semibold text-slate-100">
@@ -38,7 +38,7 @@ export default function InvoicesTable({
                   <div className="flex flex-col items-end">
                     <InvoiceStatus status={invoice.status} />
                     {invoice.status === 'pending' && invoice.days_overdue > 0 && (
-                      <span className="mt-1 text-xs text-amber-300">
+                      <span className="mt-1 inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300">
                         Overdue by {invoice.days_overdue} day
                         {invoice.days_overdue === 1 ? '' : 's'}
                       </span>
@@ -68,7 +68,7 @@ export default function InvoicesTable({
                     {invoice.status !== 'paid' && (
                       <PayInvoiceButton
                         invoiceId={invoice.id}
-                        className="rounded-md border border-emerald-500/40 px-2 py-1 text-xs text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-md px-2 py-1 text-xs"
                       />
                     )}
                     <UpdateInvoice id={invoice.id} />
@@ -79,7 +79,7 @@ export default function InvoicesTable({
             ))}
           </div>
           <table className="hidden min-w-full text-slate-100 md:table">
-            <thead className="rounded-lg bg-slate-950/40 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <thead className="rounded-lg bg-black text-left text-xs font-semibold uppercase tracking-[0.12em] text-white dark:bg-slate-900 dark:text-slate-100">
               <tr>
                 <th scope="col" className="px-4 py-5 font-medium sm:pl-6">
                   Customer
@@ -108,11 +108,11 @@ export default function InvoicesTable({
               {invoices?.map((invoice) => (
                 <tr
                   key={invoice.id}
-                  className="w-full transition hover:bg-slate-900/60 last-of-type:border-none [&:first-child>td:first-child]:rounded-tl-xl [&:first-child>td:last-child]:rounded-tr-xl [&:last-child>td:first-child]:rounded-bl-xl [&:last-child>td:last-child]:rounded-br-xl"
+                  className="w-full transition hover:bg-neutral-100 dark:hover:bg-slate-900/60 last-of-type:border-none [&:first-child>td:first-child]:rounded-tl-xl [&:first-child>td:last-child]:rounded-tr-xl [&:last-child>td:first-child]:rounded-bl-xl [&:last-child>td:last-child]:rounded-br-xl"
                 >
                   <td className="whitespace-nowrap py-3 pl-6 pr-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800/60 text-xs font-semibold text-slate-200">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-semibold text-white dark:bg-slate-800 dark:text-slate-100">
                         {invoice.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
@@ -142,7 +142,7 @@ export default function InvoicesTable({
                     <div className="flex flex-col">
                       <InvoiceStatus status={invoice.status} />
                       {invoice.status === 'pending' && invoice.days_overdue > 0 && (
-                        <span className="mt-1 text-xs text-amber-300">
+                        <span className="mt-1 inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300">
                           Overdue by {invoice.days_overdue} day
                           {invoice.days_overdue === 1 ? '' : 's'}
                         </span>
@@ -154,7 +154,7 @@ export default function InvoicesTable({
                       {invoice.status !== 'paid' && (
                         <PayInvoiceButton
                           invoiceId={invoice.id}
-                          className="rounded-md border border-emerald-500/40 px-2 py-1 text-xs text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-md px-2 py-1 text-xs"
                         />
                       )}
                       <UpdateInvoice id={invoice.id} />

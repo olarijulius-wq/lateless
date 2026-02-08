@@ -16,7 +16,7 @@ export default function PlanSelectButton({
   const router = useRouter();
 
   const handleClick = () => {
-    router.push(`/dashboard/settings?plan=${plan}`);
+    router.push(`/dashboard/settings/billing?plan=${plan}`);
   };
 
   return (

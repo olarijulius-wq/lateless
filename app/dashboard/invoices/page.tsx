@@ -12,6 +12,7 @@ import {
 import ExportInvoicesButton from './export-button';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
+import { primaryButtonClasses, secondaryButtonClasses } from '@/app/ui/button';
 
 export const metadata: Metadata = {
   title: 'Invoices',
@@ -61,7 +62,7 @@ export default async function Page(props: {
             {!canCreate && (
               <a
                 href="/dashboard/settings"
-                className="hidden items-center rounded-xl border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-100 transition duration-200 ease-out hover:border-amber-300 hover:bg-amber-500/20 hover:scale-[1.01] sm:inline-flex"
+                className={`hidden sm:inline-flex ${secondaryButtonClasses} px-3 py-2 text-xs`}
               >
                 View all plans
               </a>
@@ -84,7 +85,7 @@ export default async function Page(props: {
             </p>
             <a
               href="/dashboard/settings"
-              className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-amber-400/50 bg-amber-400 px-3 py-2 text-xs font-semibold text-slate-900 transition duration-200 ease-out hover:bg-amber-300 hover:scale-[1.01]"
+              className={`${primaryButtonClasses} mt-3 w-full px-3 py-2 text-xs`}
             >
               View all plans
             </a>

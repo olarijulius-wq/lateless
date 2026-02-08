@@ -1122,7 +1122,7 @@ export async function enableTwoFactor() {
   `;
 
   if (!user?.is_verified) {
-    redirect('/dashboard/settings?twoFactor=verify-required');
+    redirect('/dashboard/profile?twoFactor=verify-required');
   }
 
   await sql`
@@ -1131,8 +1131,8 @@ export async function enableTwoFactor() {
     where id = ${user.id}
   `;
 
-  revalidatePath('/dashboard/settings');
-  redirect('/dashboard/settings?twoFactor=enabled');
+  revalidatePath('/dashboard/profile');
+  redirect('/dashboard/profile?twoFactor=enabled');
 }
 
 export async function disableTwoFactor() {
@@ -1152,8 +1152,8 @@ export async function disableTwoFactor() {
     where lower(email) = ${normalizedEmail}
   `;
 
-  revalidatePath('/dashboard/settings');
-  redirect('/dashboard/settings?twoFactor=disabled');
+  revalidatePath('/dashboard/profile');
+  redirect('/dashboard/profile?twoFactor=disabled');
 }
 
 export type PasswordResetRequestState = {

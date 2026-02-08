@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
-import { Button } from '@/app/ui/button';
+import { Button, secondaryButtonClasses } from '@/app/ui/button';
 import { duplicateInvoice, type DuplicateInvoiceState } from '@/app/lib/actions';
 
 export default function DuplicateInvoiceButton({ id }: { id: string }) {
@@ -26,7 +26,7 @@ export default function DuplicateInvoiceButton({ id }: { id: string }) {
           <p className="text-sm">{state.message}</p>
           {state.code === 'LIMIT_REACHED' && (
             <Link
-              className="mt-2 inline-flex items-center rounded-xl border border-amber-300/40 px-3 py-2 text-sm font-medium text-amber-100 transition duration-200 ease-out hover:bg-amber-500/10 hover:scale-[1.01]"
+              className={`${secondaryButtonClasses} mt-2 px-3 py-2`}
               href="/dashboard/settings"
             >
               Upgrade to Pro

@@ -15,9 +15,11 @@ export async function POST() {
 
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.AUTH_URL ||
     (process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000');
+  const payoutsUrl = `${baseUrl}/dashboard/settings/payouts`;
 
   try {
     const [user] = await sql<
@@ -52,8 +54,8 @@ export async function POST() {
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
       type: 'account_onboarding',
-      refresh_url: `${baseUrl}/dashboard/settings/payouts`,
-      return_url: `${baseUrl}/dashboard/settings/payouts`,
+      refresh_url: payoutsUrl,
+      return_url: payoutsUrl,
     });
 
     return NextResponse.json({ url: accountLink.url });

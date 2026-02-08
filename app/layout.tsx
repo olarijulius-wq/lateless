@@ -1,6 +1,8 @@
 import '@/app/ui/global.css';
 import { inter } from '@/app/ui/fonts';
 import { Metadata } from 'next';
+import { ThemeProvider } from '@/app/ui/theme/theme-provider';
+import ThemeInitScript from '@/app/ui/theme/theme-init-script';
  
 export const metadata: Metadata = {
   title: {
@@ -17,9 +19,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} antialiased bg-slate-950 text-slate-100`}>
-        {children}
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body
+        className={`${inter.className} min-h-screen antialiased text-black dark:text-white`}
+      >
+        <ThemeInitScript />
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

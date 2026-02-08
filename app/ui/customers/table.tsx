@@ -6,7 +6,7 @@ import { DeleteCustomer, UpdateCustomer } from '@/app/ui/customers/buttons';
 function InitialAvatar({ name }: { name: string }) {
   const initial = (name?.trim()?.charAt(0) || '?').toUpperCase();
   return (
-    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800/60 text-xs font-semibold text-slate-200">
+    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-xs font-semibold text-white dark:bg-slate-800 dark:text-slate-100">
       {initial}
     </div>
   );
@@ -59,14 +59,18 @@ export default async function CustomersTable({
 
                   <div className="flex w-full items-center justify-between border-b border-slate-800 py-5">
                     <div className="flex w-1/2 flex-col">
-                      <p className="text-xs text-slate-400">Pending</p>
-                      <p className="text-sm font-medium text-slate-100">
+                      <p className="inline-flex w-fit items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300">
+                        Pending
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-amber-800 dark:text-amber-200">
                         {customer.total_pending}
                       </p>
                     </div>
                     <div className="flex w-1/2 flex-col">
-                      <p className="text-xs text-slate-400">Paid</p>
-                      <p className="text-sm font-medium text-slate-100">
+                      <p className="inline-flex w-fit items-center rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:border-emerald-400/50 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        Paid
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-emerald-800 dark:text-emerald-200">
                         {customer.total_paid}
                       </p>
                     </div>
@@ -84,7 +88,7 @@ export default async function CustomersTable({
             </div>
 
             <table className="hidden min-w-full rounded-md text-slate-100 md:table">
-              <thead className="rounded-md bg-slate-950/40 text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+              <thead className="rounded-md bg-black text-left text-xs font-semibold uppercase tracking-[0.12em] text-white dark:bg-slate-900 dark:text-slate-100">
                 <tr>
                   <th scope="col" className="px-4 py-5 font-medium sm:pl-6">
                     Name
@@ -111,7 +115,7 @@ export default async function CustomersTable({
                 {customers.map((customer) => (
                   <tr
                     key={customer.id}
-                    className="group transition hover:bg-slate-900/60"
+                    className="group transition hover:bg-neutral-100 dark:hover:bg-slate-900/60"
                   >
                     <td className="whitespace-nowrap py-5 pl-4 pr-3 text-sm text-slate-100 group-first-of-type:rounded-xl group-last-of-type:rounded-xl sm:pl-6">
                       <div className="flex items-center gap-3">
@@ -140,10 +144,12 @@ export default async function CustomersTable({
                     <td className="whitespace-nowrap px-4 py-5 text-sm text-slate-300">
                       {customer.total_invoices}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-5 text-sm text-slate-300">
-                      {customer.total_pending}
+                    <td className="whitespace-nowrap px-4 py-5 text-sm">
+                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 font-medium text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300">
+                        {customer.total_pending}
+                      </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-5 text-sm text-emerald-200 group-first-of-type:rounded-xl group-last-of-type:rounded-xl">
+                    <td className="whitespace-nowrap px-4 py-5 text-sm text-emerald-800 dark:text-emerald-200 group-first-of-type:rounded-xl group-last-of-type:rounded-xl">
                       {customer.total_paid}
                     </td>
                     <td className="whitespace-nowrap px-4 py-5 text-center text-sm text-slate-200">

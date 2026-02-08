@@ -3,7 +3,13 @@
 import { useState } from 'react';
 import { Button } from '@/app/ui/button';
 
-export default function ConnectStripeButton() {
+type ConnectStripeButtonProps = {
+  label?: string;
+};
+
+export default function ConnectStripeButton({
+  label = 'Connect Stripe',
+}: ConnectStripeButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +44,7 @@ export default function ConnectStripeButton() {
         aria-disabled={loading}
         className="w-full"
       >
-        {loading ? 'Redirecting to Stripe...' : 'Connect Stripe'}
+        {loading ? 'Redirecting to Stripe...' : label}
       </Button>
 
       {error && <p className="mt-3 text-sm text-red-500">{error}</p>}

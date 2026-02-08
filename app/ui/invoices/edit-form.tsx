@@ -7,7 +7,7 @@ import {
   UserCircleIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { Button } from '@/app/ui/button';
+import { Button, secondaryButtonClasses } from '@/app/ui/button';
 import { updateInvoice, State } from '@/app/lib/actions';
 import { useActionState, useState } from 'react';
 
@@ -152,7 +152,7 @@ export default function EditInvoiceForm({
       <div className="mt-6 flex justify-end gap-4">
         <Link
           href="/dashboard/invoices"
-          className="flex h-10 items-center rounded-xl border border-slate-700 bg-slate-900/60 px-4 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01]"
+          className={secondaryButtonClasses}
         >
           Cancel
         </Link>

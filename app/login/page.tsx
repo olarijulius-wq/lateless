@@ -25,8 +25,8 @@ export default async function LoginPage(props: LoginPageProps) {
   return (
     <main className="flex items-center justify-center md:h-screen">
       <div className="relative mx-auto flex w-full max-w-[400px] flex-col space-y-2.5 p-4 md:-mt-32">
-        <div className="flex h-20 w-full items-end rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-[0_18px_35px_rgba(0,0,0,0.45)] md:h-36">
-          <div className="w-32 text-slate-100 md:w-36">
+        <div className="flex h-20 w-full items-end rounded-2xl border border-neutral-200 bg-white p-3 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)] md:h-36">
+          <div className="w-32 text-slate-900 dark:text-slate-100 md:w-36">
             <AcmeLogo />
           </div>
         </div>
@@ -55,9 +55,9 @@ export default async function LoginPage(props: LoginPageProps) {
         <Suspense>
           <LoginForm />
         </Suspense>
-        <p className="mt-4 text-center text-sm text-slate-400">
+        <p className="mt-4 text-center text-sm text-neutral-600 dark:text-slate-400">
           No account?{' '}
-          <a href="/signup" className="text-slate-200 hover:underline">
+          <a href="/signup" className="text-neutral-900 hover:underline dark:text-slate-200">
             Create one
           </a>
         </p>

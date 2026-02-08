@@ -104,7 +104,7 @@ export default async function LatePayers() {
                         <p className="text-xs text-slate-400">
                           Paid invoices
                         </p>
-                        <p className="text-sm text-slate-100">
+                        <p className="text-sm text-emerald-800 dark:text-emerald-300">
                           {payer.paid_invoices}
                         </p>
                       </div>
@@ -112,7 +112,7 @@ export default async function LatePayers() {
                         <p className="text-xs text-slate-400">
                           Avg delay
                         </p>
-                        <p className="text-sm text-slate-100">
+                        <p className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300">
                           {formatDelay(payer.avg_delay_days).replace('+', '')} late
                         </p>
                       </div>
@@ -133,7 +133,7 @@ export default async function LatePayers() {
                   <Link
                     key={payer.customer_id}
                     href={`/dashboard/customers/${payer.customer_id}`}
-                    className="flex flex-col gap-2 px-4 py-3 text-sm text-slate-200 transition hover:bg-slate-900 md:flex-row md:items-center md:justify-between"
+                    className="flex flex-col gap-2 px-4 py-3 text-sm text-slate-200 transition hover:bg-neutral-100 dark:hover:bg-slate-900 md:flex-row md:items-center md:justify-between"
                   >
                     <span className="min-w-0 font-medium text-slate-100 md:w-[30%] md:truncate">
                       {payer.name}
@@ -141,8 +141,14 @@ export default async function LatePayers() {
                     <span className="min-w-0 text-slate-400 md:w-[40%] md:truncate">
                       {payer.email}
                     </span>
-                    <span className="text-xs text-slate-300 md:w-[30%] md:text-right">
-                      {payer.paid_invoices} invoices, avg {formatDelay(payer.avg_delay_days)}
+                    <span className="text-xs md:w-[30%] md:text-right">
+                      <span className="text-emerald-800 dark:text-emerald-300">
+                        {payer.paid_invoices} invoices
+                      </span>
+                      {', '}
+                      <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300">
+                        avg {formatDelay(payer.avg_delay_days)}
+                      </span>
                     </span>
                   </Link>
                 ))}

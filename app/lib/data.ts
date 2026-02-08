@@ -71,29 +71,19 @@ export async function fetchCompanyProfile(): Promise<CompanyProfile | null> {
 
 export async function fetchStripeConnectAccountId(): Promise<string | null> {
   const userEmail = await requireUserEmail();
-
-  try {
-    const data = await sql<{ stripe_connect_account_id: string | null }[]>`
-      SELECT stripe_connect_account_id
-      FROM public.users
-      WHERE lower(email) = ${userEmail}
-      LIMIT 1
-    `;
-
-    return data[0]?.stripe_connect_account_id ?? null;
-  } catch (error) {
-    console.error('Database Error:', error);
-    throw new Error('Failed to fetch Stripe Connect account.');
-  }
+  const status = await fetchStripeConnectStatusForUser(userEmail);
+  return status.accountId;
 }
 
 export type StripeConnectStatus = {
-  accountId: string;
-  detailsSubmitted: boolean;
+  hasAccount: boolean;
+  accountId: string | null;
   payoutsEnabled: boolean;
-} | null;
+  detailsSubmitted: boolean;
+  isReadyForTransfers: boolean;
+};
 
-export async function fetchStripeConnectStatus(
+export async function fetchStripeConnectStatusForUser(
   userEmail: string,
 ): Promise<StripeConnectStatus> {
   const normalizedEmail = normalizeEmail(userEmail);
@@ -114,18 +104,29 @@ export async function fetchStripeConnectStatus(
     `;
 
     const row = data[0];
-    if (!row?.stripe_connect_account_id) {
-      return null;
-    }
+    const accountId = row?.stripe_connect_account_id ?? null;
+    const hasAccount = !!accountId;
+    const detailsSubmitted = !!row?.stripe_connect_details_submitted;
+    const payoutsEnabled = !!row?.stripe_connect_payouts_enabled;
+    const isReadyForTransfers =
+      hasAccount && detailsSubmitted && payoutsEnabled;
 
     return {
-      accountId: row.stripe_connect_account_id,
-      detailsSubmitted: !!row.stripe_connect_details_submitted,
-      payoutsEnabled: !!row.stripe_connect_payouts_enabled,
+      hasAccount,
+      accountId,
+      detailsSubmitted,
+      payoutsEnabled,
+      isReadyForTransfers,
     };
   } catch (error) {
     console.error('Database Error:', error);
-    throw new Error('Failed to fetch Stripe Connect status.');
+    return {
+      hasAccount: false,
+      accountId: null,
+      detailsSubmitted: false,
+      payoutsEnabled: false,
+      isReadyForTransfers: false,
+    };
   }
 }
 
@@ -337,7 +338,12 @@ export async function fetchCardData() {
     };
   } catch (error) {
     console.error('Database Error:', error);
-    throw new Error('Failed to fetch card data.');
+    return {
+      numberOfCustomers: 0,
+      numberOfInvoices: 0,
+      totalPaidInvoices: formatCurrencySuffix(0),
+      totalPendingInvoices: formatCurrencySuffix(0),
+    };
   }
 }
 

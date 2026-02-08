@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import clsx from 'clsx';
 
 type PayInvoiceButtonProps = {
   invoiceId: string;
@@ -11,6 +12,8 @@ export default function PayInvoiceButton({
   invoiceId,
   className,
 }: PayInvoiceButtonProps) {
+  const payNowButtonClasses =
+    'inline-flex items-center justify-center rounded-xl border border-emerald-700 bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition duration-200 ease-out hover:bg-emerald-700 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-emerald-400/40 dark:bg-black dark:text-emerald-300 dark:hover:bg-emerald-500/10 dark:focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-60';
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleClick() {
@@ -44,10 +47,7 @@ export default function PayInvoiceButton({
       type="button"
       onClick={handleClick}
       disabled={isLoading}
-      className={
-        className ??
-        'rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100 transition duration-200 ease-out hover:border-emerald-400/70 hover:bg-emerald-500/20 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:cursor-not-allowed disabled:opacity-60'
-      }
+      className={clsx(payNowButtonClasses, className)}
     >
       {isLoading ? 'Redirecting...' : 'Pay now'}
     </button>

@@ -35,13 +35,13 @@ export default function SignupForm() {
   return (
     <form action={formAction} className="space-y-4" onSubmit={handleSubmit}>
       <div>
-        <label className="mb-2 block text-sm font-medium text-slate-200">
+        <label className="mb-2 block text-sm font-medium text-neutral-700 dark:text-slate-200">
           Name
         </label>
         <input
           name="name"
           type="text"
-          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
+          className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 transition focus:border-neutral-500 focus:ring-2 focus:ring-neutral-500/50 dark:border-neutral-700 dark:bg-black dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-600/50"
           placeholder="Your name"
           value={name}
           onChange={(event) => setName(event.target.value)}
@@ -52,13 +52,13 @@ export default function SignupForm() {
       </div>
 
       <div>
-        <label className="mb-2 block text-sm font-medium text-slate-200">
+        <label className="mb-2 block text-sm font-medium text-neutral-700 dark:text-slate-200">
           Email
         </label>
         <input
           name="email"
           type="email"
-          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
+          className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 transition focus:border-neutral-500 focus:ring-2 focus:ring-neutral-500/50 dark:border-neutral-700 dark:bg-black dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-600/50"
           placeholder="you@example.com"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -69,13 +69,13 @@ export default function SignupForm() {
       </div>
 
       <div>
-        <label className="mb-2 block text-sm font-medium text-slate-200">
+        <label className="mb-2 block text-sm font-medium text-neutral-700 dark:text-slate-200">
           Password
         </label>
         <input
           name="password"
           type="password"
-          className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
+          className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-400 transition focus:border-neutral-500 focus:ring-2 focus:ring-neutral-500/50 dark:border-neutral-700 dark:bg-black dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:ring-slate-600/50"
           placeholder="At least 8 characters"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
@@ -93,9 +93,9 @@ export default function SignupForm() {
         Create account
       </Button>
 
-      <p className="text-center text-sm text-slate-400">
+      <p className="text-center text-sm text-neutral-600 dark:text-slate-400">
         Already have an account?{' '}
-        <Link href="/login" className="text-slate-200 hover:text-slate-300">
+        <Link href="/login" className="text-neutral-900 hover:text-neutral-700 dark:text-slate-200 dark:hover:text-slate-300">
           Log in
         </Link>
       </p>

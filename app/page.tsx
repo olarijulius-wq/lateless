@@ -1,246 +1,288 @@
-import AcmeLogo from '@/app/ui/acme-logo';
-import { ArrowRightIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import styles from '@/app/ui/home.module.css';
+import { PLAN_CONFIG, PLAN_IDS } from '@/app/lib/config';
 import { lusitana } from '@/app/ui/fonts';
-import Image from 'next/image';
-import { PLAN_CONFIG } from '@/app/lib/config';
-import ViewPricingButton from '@/app/ui/landing/view-pricing-button';
-import PlanSelectButton from '@/app/ui/landing/plan-select-button';
-import { RevealOnScroll, StaggeredList } from '@/app/ui/motion/reveal';
+import { RevealOnMount, RevealOnScroll } from '@/app/ui/motion/reveal';
+import TopNav from '@/app/ui/marketing/top-nav';
+import HeroVisual from '@/app/ui/marketing/hero-visual';
+
+const primaryCtaClasses =
+  'inline-flex items-center justify-center rounded-full border border-white bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-neutral-200';
+
+const secondaryCtaClasses =
+  'inline-flex items-center justify-center rounded-full border border-neutral-700 px-5 py-2.5 text-sm font-medium text-neutral-200 transition hover:border-neutral-500 hover:text-white';
+
+const planOrder = PLAN_IDS;
+
+function formatLimit(maxPerMonth: number) {
+  return Number.isFinite(maxPerMonth)
+    ? `Up to ${maxPerMonth} invoices / month`
+    : 'Unlimited invoices / month';
+}
+
+function formatPlatformFee(fee: number | null) {
+  return `Lateless platform fee: ${fee ?? 0}% per paid invoice`;
+}
+
+function extractEmail(value: string | undefined) {
+  if (!value) return null;
+  const match = value.match(/<([^>]+)>/);
+  if (match?.[1]) return match[1];
+  return value.includes('@') ? value : null;
+}
+
+const features = [
+  {
+    title: 'Integrate this weekend',
+    description:
+      'Lateless is hosted and works with Stripe Checkout out of the box. No custom gateway implementation required.',
+  },
+  {
+    title: 'Automated reminders',
+    description:
+      'Overdue invoices get follow-up emails on day 1, day 7, and day 21 with payment links included.',
+  },
+  {
+    title: 'Late payer analytics',
+    description:
+      'Spot clients who consistently pay late and adjust terms before late payments hurt your cash flow.',
+  },
+  {
+    title: 'Secure and privacy-conscious',
+    description:
+      'Passwords are hashed with bcrypt, optional 2FA is available, and Stripe handles all card data securely.',
+  },
+];
+
+const workflowSteps = [
+  {
+    title: 'Create your workspace',
+    description: 'Sign up, connect Stripe, and configure branding details.',
+  },
+  {
+    title: 'Add customers and send invoices',
+    description:
+      'Create customers, issue invoices, and share one-click Pay now links.',
+  },
+  {
+    title: 'Let Lateless handle the chasing',
+    description:
+      'Automatic reminders, late payer overviews, and revenue charts run in the background.',
+  },
+];
 
 export default function Page() {
-  const studioLimit = PLAN_CONFIG.studio.maxPerMonth;
-  const studioLimitLabel = Number.isFinite(studioLimit)
-    ? `Up to ${studioLimit} invoices per month`
-    : 'Unlimited invoices per month';
+  const contactEmail =
+    extractEmail(process.env.REMINDER_FROM_EMAIL) ?? 'hello@lateless.org';
 
   return (
-    <main className="flex min-h-screen flex-col p-6 text-slate-100">
-      <div className={styles.shape}>
-        <AcmeLogo />
-      </div>
-      <div className="mt-4 flex grow flex-col gap-6 md:flex-row">
-        <div className="flex flex-col justify-center gap-6 rounded-2xl border border-slate-800 bg-slate-900/80 px-6 py-10 shadow-[0_18px_35px_rgba(0,0,0,0.45)] md:w-2/5 md:px-14">
-          <RevealOnScroll className="space-y-6">
-            <div className="space-y-4">
-              <p
-                className={`${lusitana.className} text-2xl text-slate-100 md:text-3xl md:leading-normal`}
-              >
-                <strong>Get paid faster, automatically.</strong>
-              </p>
-              <p className="text-slate-400 md:text-lg">
-                Lateless helps freelancers and small teams get paid on time with
-                smarter invoices, automatic reminders, and late payer insights.
-              </p>
-            </div>
+    <main className="min-h-screen bg-black text-white">
+      <TopNav />
 
-            <div className="space-y-4 text-sm text-slate-200 md:text-base">
-              <div>
-                <p className="font-semibold text-slate-100">One-click payments</p>
-                <p className="text-slate-400">
-                  Every invoice ships with a Stripe &quot;Pay now&quot; button. When the
-                  payment lands, the invoice closes itself.
-                </p>
-              </div>
-              <div>
-                <p className="font-semibold text-slate-100">Automatic reminders</p>
-                <p className="text-slate-400">
-                  No more chasing. Overdue invoices get reminders on day 1, 7,
-                  and 21 with the payment link included.
-                </p>
-              </div>
-              <div>
-                <p className="font-semibold text-slate-100">
-                  Late payer analytics
-                </p>
-                <p className="text-slate-400">
-                  Spot the clients who always pay 10+ days late and adjust your
-                  terms before they hurt cash flow.
-                </p>
-              </div>
-              <div>
-                <p className="font-semibold text-slate-100">Flexible plans</p>
-                <p className="text-slate-400">
-                  Free for up to {PLAN_CONFIG.free.maxPerMonth} invoices a month.
-                  Solo, Pro, and Studio for growing businesses.
-                </p>
-              </div>
-            </div>
+      <section className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center gap-12 px-6 py-16 md:grid-cols-2 md:py-20">
+        <RevealOnMount className="space-y-8">
+          <p className="text-xs uppercase tracking-[0.2em] text-neutral-400">
+            For freelancers and small teams
+          </p>
+
+          <div className="space-y-5">
+            <h1
+              className={`${lusitana.className} text-5xl leading-[1.04] text-white sm:text-6xl lg:text-7xl`}
+            >
+              Get paid faster.
+              <br />
+              Automatically.
+            </h1>
+            <p className="max-w-xl text-base leading-relaxed text-neutral-300 sm:text-lg">
+              Lateless sends smart invoices with one-click Stripe payments,
+              automatic reminders, and late payer analytics.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <a href="#pricing" className={primaryCtaClasses}>
+              Start free
+            </a>
+            <a href="#pricing" className={secondaryCtaClasses}>
+              View pricing
+            </a>
+          </div>
+
+          <p className="text-sm text-neutral-500">
+            Built for developers and small agencies who live in Stripe and
+            Next.js.
+          </p>
+        </RevealOnMount>
+
+        <RevealOnMount delay={0.08} className="md:pl-6">
+          <HeroVisual />
+        </RevealOnMount>
+      </section>
+
+      <section id="features" className="border-t border-neutral-900">
+        <div className="mx-auto w-full max-w-6xl px-6 py-20">
+          <RevealOnScroll className="mb-10 max-w-2xl">
+            <h2 className={`${lusitana.className} text-4xl text-white sm:text-5xl`}>
+              Why Lateless
+            </h2>
+            <p className="mt-3 text-neutral-300">
+              Focus on shipping and client work while your invoicing flow handles
+              payments and follow-up automatically.
+            </p>
           </RevealOnScroll>
 
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/signup"
-              className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-            >
-              <span>Start free</span>
-              <ArrowRightIcon className="w-4" />
-            </Link>
-            <ViewPricingButton className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" />
-            <Link
-              href="/login"
-              className="inline-flex items-center rounded-xl border border-slate-600/80 bg-slate-900 px-5 py-2.5 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-800 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-            >
-              Log in
-            </Link>
+          <div className="grid gap-4 md:grid-cols-2">
+            {features.map((feature, index) => (
+              <RevealOnScroll
+                key={feature.title}
+                delay={index * 0.04}
+                className="rounded-2xl border border-neutral-800 bg-neutral-900/55 p-5"
+              >
+                <h3 className="text-base font-semibold text-white">
+                  {feature.title}
+                </h3>
+                <p
+                  id={feature.title === 'Secure and privacy-conscious' ? 'security' : undefined}
+                  className="mt-2 text-sm leading-relaxed text-neutral-300"
+                >
+                  {feature.description}
+                </p>
+              </RevealOnScroll>
+            ))}
           </div>
         </div>
-        <RevealOnScroll
-          className="flex items-center justify-center p-6 md:w-3/5 md:px-28 md:py-12"
-          delay={0.12}
-        >
-          {/* Add Hero Images Here */}
-          <div className="relative hidden w-full aspect-[2500/1500] max-h-[80vh] overflow-hidden rounded-2xl md:block">
-            <Image
-              src="/hero-desktop.png"
-              fill
-              priority
-              sizes="(min-width: 768px) 100vw, 0px"
-              className="object-cover object-center"
-              alt="Screenshots of the dashboard project showing desktop version"
-            />
-          </div>
-          <div className="relative block w-full aspect-[1179/2229] max-h-[80vh] overflow-hidden rounded-2xl md:hidden">
-            <Image
-              src="/hero-mobile.png"
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover object-center"
-              alt="Screenshot of the dashboard project showing mobile version"
-            />
-          </div>
-        </RevealOnScroll>
-      </div>
-
-      <section id="pricing" className="mt-16">
-        <div className="mb-8 max-w-2xl">
-          <h2 className={`${lusitana.className} text-2xl md:text-3xl`}>
-            Pricing
-          </h2>
-          <p className="mt-2 text-sm text-slate-400 md:text-base">
-            Start free, then scale your plan as you grow.
-          </p>
-        </div>
-
-        <StaggeredList
-          className="grid gap-6 md:grid-cols-2 xl:grid-cols-4"
-          itemClassName="h-full"
-          stagger={0.08}
-        >
-          <div className="flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)] transition hover:border-slate-600">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-slate-100">Free</h3>
-              <p className="text-sm text-slate-400">
-                Best for trying things out
-              </p>
-            </div>
-            <div className="mb-6">
-              <p className="text-2xl font-semibold text-slate-100">
-                €{PLAN_CONFIG.free.priceMonthlyEuro} / month
-              </p>
-            </div>
-            <ul className="mb-6 space-y-2 text-sm text-slate-300">
-              <li>
-                Up to {PLAN_CONFIG.free.maxPerMonth} invoices per month
-              </li>
-              <li>One-click payments</li>
-              <li>Late payer analytics (Solo+)</li>
-              <li>Manual reminders (no automation)</li>
-            </ul>
-            <Link
-              href="/signup"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-            >
-              Start free
-            </Link>
-          </div>
-
-          <div className="flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)] transition hover:border-slate-600">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-slate-100">Solo</h3>
-              <p className="text-sm text-slate-400">
-                For freelancers and solo founders
-              </p>
-            </div>
-            <div className="mb-6">
-              <p className="text-2xl font-semibold text-slate-100">
-                €{PLAN_CONFIG.solo.priceMonthlyEuro} / month
-              </p>
-            </div>
-            <ul className="mb-6 space-y-2 text-sm text-slate-300">
-              <li>
-                Up to {PLAN_CONFIG.solo.maxPerMonth} invoices per month
-              </li>
-              <li>One-click payments</li>
-              <li>Automatic reminders (day 1, 7, 21)</li>
-              <li>Late payer analytics</li>
-            </ul>
-            <PlanSelectButton
-              plan="solo"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-            >
-              Choose Solo
-            </PlanSelectButton>
-          </div>
-
-          <div className="relative flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/90 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)] transition hover:border-slate-500">
-            <span className="absolute right-4 top-4 rounded-full border border-slate-700/60 bg-slate-800/50 px-2 py-1 text-xs font-semibold text-slate-300">
-              Most popular
-            </span>
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-slate-100">Pro</h3>
-              <p className="text-sm text-slate-400">
-                For small teams and agencies
-              </p>
-            </div>
-            <div className="mb-6">
-              <p className="text-2xl font-semibold text-slate-100">
-                €{PLAN_CONFIG.pro.priceMonthlyEuro} / month
-              </p>
-            </div>
-            <ul className="mb-6 space-y-2 text-sm text-slate-300">
-              <li>
-                Up to {PLAN_CONFIG.pro.maxPerMonth} invoices per month
-              </li>
-              <li>Everything in Solo</li>
-              <li>Better suited for agencies and small teams</li>
-            </ul>
-            <PlanSelectButton
-              plan="pro"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-            >
-              Choose Pro
-            </PlanSelectButton>
-          </div>
-
-          <div className="flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)] transition hover:border-slate-600">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold text-slate-100">Studio</h3>
-              <p className="text-sm text-slate-400">
-                For studios and heavier usage
-              </p>
-            </div>
-            <div className="mb-6">
-              <p className="text-2xl font-semibold text-slate-100">
-                €{PLAN_CONFIG.studio.priceMonthlyEuro} / month
-              </p>
-            </div>
-            <ul className="mb-6 space-y-2 text-sm text-slate-300">
-              <li>{studioLimitLabel}</li>
-              <li>Everything in Pro</li>
-              <li>Best for high-volume billing</li>
-            </ul>
-            <PlanSelectButton
-              plan="studio"
-              className="mt-auto inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-            >
-              Choose Studio
-            </PlanSelectButton>
-          </div>
-        </StaggeredList>
       </section>
+
+      <section id="how-it-works" className="border-t border-neutral-900">
+        <div className="mx-auto w-full max-w-6xl px-6 py-20">
+          <RevealOnScroll className="mb-10 max-w-2xl">
+            <h2 className={`${lusitana.className} text-4xl text-white sm:text-5xl`}>
+              How it works
+            </h2>
+            <p className="mt-3 text-neutral-300">
+              Three steps to go from manual chasing to an automated invoice flow.
+            </p>
+          </RevealOnScroll>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {workflowSteps.map((step, index) => (
+              <RevealOnScroll
+                key={step.title}
+                delay={index * 0.05}
+                className="rounded-2xl border border-neutral-800 bg-neutral-900/55 p-5"
+              >
+                <p className="text-xs uppercase tracking-[0.2em] text-neutral-500">
+                  Step {index + 1}
+                </p>
+                <h3 className="mt-3 text-base font-semibold text-white">
+                  {step.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-neutral-300">
+                  {step.description}
+                </p>
+              </RevealOnScroll>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="pricing" className="border-t border-neutral-900">
+        <div className="mx-auto w-full max-w-6xl px-6 py-20">
+          <RevealOnScroll className="mb-10 max-w-2xl">
+            <h2 className={`${lusitana.className} text-4xl text-white sm:text-5xl`}>
+              Pricing for every stage.
+            </h2>
+            <p className="mt-3 text-neutral-300">
+              Stripe processing fees are separate. Lateless adds a small platform
+              fee per paid invoice depending on your plan.
+            </p>
+          </RevealOnScroll>
+
+          <div className="grid gap-5 lg:grid-cols-4">
+            {planOrder.map((planId, index) => {
+              const plan = PLAN_CONFIG[planId];
+              const isPopular = planId === 'solo';
+
+              return (
+                <RevealOnScroll
+                  key={plan.id}
+                  delay={index * 0.04}
+                  className="group relative flex h-full flex-col rounded-2xl border border-neutral-800 bg-neutral-900/75 p-6 shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition hover:-translate-y-0.5 hover:border-neutral-700 hover:shadow-[0_24px_42px_rgba(0,0,0,0.45)]"
+                >
+                  {isPopular ? (
+                    <span className="absolute right-4 top-4 rounded-full border border-neutral-600 bg-neutral-800 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200">
+                      Most popular
+                    </span>
+                  ) : null}
+
+                  <p className="text-sm font-medium text-neutral-300">{plan.name}</p>
+                  <p className="mt-3 text-3xl font-semibold text-white">
+                    €{plan.priceMonthlyEuro}
+                    <span className="text-sm font-normal text-neutral-400"> / month</span>
+                  </p>
+
+                  <ul className="mt-5 space-y-2 text-sm text-neutral-300">
+                    <li>{formatLimit(plan.maxPerMonth)}</li>
+                    <li>{formatPlatformFee(plan.platformFeePercent)}</li>
+                  </ul>
+
+                  <Link
+                    href={`/login?plan=${plan.id}`}
+                    className={`${primaryCtaClasses} mt-6 w-full`}
+                  >
+                    Start with {plan.name}
+                  </Link>
+                </RevealOnScroll>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-neutral-900">
+        <div className="mx-auto w-full max-w-6xl px-6 py-16">
+          <RevealOnScroll className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.18em] text-neutral-300">
+              Built for developers.
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm text-neutral-400">
+              Keep your billing workflow close to your product and ops tooling.
+            </p>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <pre className="overflow-x-auto rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-xs leading-relaxed text-emerald-300">
+{`// Fetch pending invoices
+const res = await fetch('/api/invoices?status=pending')
+const { invoices } = await res.json();`}
+              </pre>
+              <pre className="overflow-x-auto rounded-xl border border-neutral-800 bg-neutral-950 p-4 text-xs leading-relaxed text-emerald-300">
+{`// Send public pay link
+const payLink = 'https://lateless.org/pay/<token>'
+await sendReminderEmail({ payLink });`}
+              </pre>
+            </div>
+          </RevealOnScroll>
+        </div>
+      </section>
+
+      <footer className="border-t border-neutral-900">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-8 text-sm text-neutral-400 md:flex-row md:items-center md:justify-between">
+          <p>Lateless - get paid faster, automatically.</p>
+          <div className="flex flex-wrap items-center gap-4">
+            <a href="#pricing" className="transition hover:text-white">
+              Docs
+            </a>
+            <a href="#security" className="transition hover:text-white">
+              Security
+            </a>
+            <a href="#" className="transition hover:text-white">
+              Status
+            </a>
+            <a href={`mailto:${contactEmail}`} className="transition hover:text-white">
+              Contact
+            </a>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }

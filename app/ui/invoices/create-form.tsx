@@ -7,7 +7,11 @@ import {
   ClockIcon,
   UserCircleIcon,
 } from '@heroicons/react/24/outline';
-import { Button } from '@/app/ui/button';
+import {
+  Button,
+  secondaryButtonClasses,
+  primaryButtonClasses,
+} from '@/app/ui/button';
 import { useActionState, useState } from 'react';
 import { createInvoice, type CreateInvoiceState } from '@/app/lib/actions';
 
@@ -178,7 +182,7 @@ export default function Form({
           <div className="mt-4 rounded-xl border border-amber-400/50 bg-amber-500/10 p-3 text-amber-100">
             <p className="text-sm">{state.message}</p>
             <a
-              className="mt-2 inline-flex items-center rounded-xl border border-amber-300/40 px-3 py-2 text-sm font-medium text-amber-100 transition duration-200 ease-out hover:bg-amber-500/10 hover:scale-[1.01]"
+              className={`${primaryButtonClasses} mt-2 px-3 py-2`}
               href="/dashboard/settings"
             >
               View plans
@@ -194,7 +198,7 @@ export default function Form({
       <div className="mt-6 flex justify-end gap-4">
         <Link
           href="/dashboard/invoices"
-          className="flex h-10 items-center rounded-xl border border-slate-700 bg-slate-900/60 px-4 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01]"
+          className={secondaryButtonClasses}
         >
           Cancel
         </Link>

@@ -31,20 +31,24 @@ export default function NavLinks() {
     <>
       {links.map((link) => {
         const LinkIcon = link.icon;
+        const isActive =
+          link.href === '/dashboard'
+            ? pathname === '/dashboard'
+            : pathname === link.href || pathname.startsWith(`${link.href}/`);
 
         return (
           <Link
             key={link.name}
             href={link.href}
             className={clsx(
-              'flex h-[48px] grow items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-sm font-medium text-slate-300 transition duration-200 ease-out hover:border-slate-600 hover:bg-slate-900/80 hover:text-slate-100 hover:scale-[1.01] md:flex-none md:justify-start md:p-2 md:px-3',
+              'flex h-[44px] grow items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 transition duration-200 ease-out hover:border-neutral-300 hover:bg-neutral-50 hover:text-neutral-900 md:flex-none md:justify-start dark:border-neutral-900 dark:bg-black dark:text-neutral-400 dark:hover:border-neutral-800 dark:hover:bg-neutral-950 dark:hover:text-neutral-100',
               {
-                'border-slate-600/80 bg-slate-900/90 text-slate-100 shadow-[0_0_0_1px_rgba(51,65,85,0.6)]':
-                  pathname === link.href,
+                'border-neutral-300 bg-neutral-100 text-neutral-900 shadow-[0_0_0_1px_rgba(115,115,115,0.25)] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:shadow-[0_0_0_1px_rgba(163,163,163,0.25)]':
+                  isActive,
               },
             )}
           >
-            <LinkIcon className="w-6" />
+            <LinkIcon className="w-5" />
             <p className="hidden md:block">{link.name}</p>
           </Link>
         );

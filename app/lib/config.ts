@@ -7,6 +7,7 @@ export type PlanConfig = {
   name: string;
   maxPerMonth: number;
   priceMonthlyEuro: number;
+  platformFeePercent: number | null;
   canExportCsv: boolean;
   hasReminders: boolean;
   hasLatePayerAnalytics: boolean;
@@ -18,6 +19,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
     name: 'Free',
     maxPerMonth: 3,
     priceMonthlyEuro: 0,
+    platformFeePercent: 2,
     canExportCsv: false,
     hasReminders: false,
     hasLatePayerAnalytics: false,
@@ -27,6 +29,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
     name: 'Solo',
     maxPerMonth: 50,
     priceMonthlyEuro: 29,
+    platformFeePercent: 1,
     canExportCsv: true,
     hasReminders: true,
     hasLatePayerAnalytics: true,
@@ -36,6 +39,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
     name: 'Pro',
     maxPerMonth: 250,
     priceMonthlyEuro: 59,
+    platformFeePercent: 0,
     canExportCsv: true,
     hasReminders: true,
     hasLatePayerAnalytics: true,
@@ -45,6 +49,7 @@ export const PLAN_CONFIG: Record<PlanId, PlanConfig> = {
     name: 'Studio',
     maxPerMonth: Number.POSITIVE_INFINITY,
     priceMonthlyEuro: 99,
+    platformFeePercent: 0,
     canExportCsv: true,
     hasReminders: true,
     hasLatePayerAnalytics: true,

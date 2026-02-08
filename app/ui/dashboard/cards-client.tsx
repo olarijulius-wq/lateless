@@ -36,13 +36,13 @@ function Card({ title, value, type }: CardProps) {
   const Icon = iconMap[type];
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+    <div className="rounded-2xl border border-neutral-200 bg-white p-3 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
       <div className="flex items-center p-3">
-        {Icon ? <Icon className="h-5 w-5 text-slate-200" /> : null}
-        <h3 className="ml-2 text-sm font-medium text-slate-200">{title}</h3>
+        {Icon ? <Icon className="h-5 w-5 text-neutral-700 dark:text-slate-200" /> : null}
+        <h3 className="ml-2 text-sm font-medium text-neutral-700 dark:text-slate-200">{title}</h3>
       </div>
       <p
-        className={`${lusitana.className} truncate rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-8 text-center text-2xl text-slate-50`}
+        className={`${lusitana.className} truncate rounded-xl border border-neutral-200 bg-white px-4 py-8 text-center text-2xl text-neutral-900 dark:border-neutral-800 dark:bg-black dark:text-slate-50`}
       >
         {value}
       </p>

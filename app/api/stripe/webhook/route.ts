@@ -268,39 +268,36 @@ export async function POST(req: Request) {
     if (event.type === "account.updated") {
       try {
         const account = event.data.object as Stripe.Account;
-        const accountId = account.id;
-        const detailsSubmitted = !!account.details_submitted;
+        const connectAccountId = account.id;
         const payoutsEnabled = !!account.payouts_enabled;
+        const detailsSubmitted = !!account.details_submitted;
 
         const result = await sql<{ email: string }[]>`
-          update users
+          update public.users
           set
-            stripe_connect_details_submitted = ${detailsSubmitted},
-            stripe_connect_payouts_enabled = ${payoutsEnabled}
-          where stripe_connect_account_id = ${accountId}
+            stripe_connect_payouts_enabled = ${payoutsEnabled},
+            stripe_connect_details_submitted = ${detailsSubmitted}
+          where stripe_connect_account_id = ${connectAccountId}
           returning email
         `;
 
-        if (result.length > 0) {
-          console.log(
-            "[stripe webhook] Updated Connect status for user",
-            result[0].email,
-            {
-              accountId,
-              detailsSubmitted,
-              payoutsEnabled,
-            },
-          );
-        } else {
-          console.log(
-            "[stripe webhook] account.updated received but no user with stripe_connect_account_id =",
-            accountId,
+        console.log(
+          "[connect webhook] account.updated synced",
+          connectAccountId,
+          payoutsEnabled,
+          detailsSubmitted,
+        );
+
+        if (result.length === 0) {
+          console.warn(
+            "[connect webhook] account.updated no matching user for account",
+            connectAccountId,
           );
         }
-      } catch (error) {
+      } catch (accountUpdatedError) {
         console.error(
-          "[stripe webhook] Error handling account.updated",
-          error,
+          "[connect webhook] account.updated sync failed",
+          accountUpdatedError,
         );
       }
     }

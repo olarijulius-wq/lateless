@@ -145,7 +145,7 @@ export default async function Page(props: PageProps) {
               Secure payment powered by Stripe.
             </p>
             {invoice.status === 'paid' ? (
-              <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+              <span className="rounded-full bg-black px-3 py-1 text-xs font-semibold text-white dark:border dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
                 Paid
               </span>
             ) : (

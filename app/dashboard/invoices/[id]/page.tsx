@@ -10,7 +10,11 @@ import { fetchInvoiceById, fetchUserPlanAndUsage } from '@/app/lib/data';
 import { updateInvoiceStatus } from '@/app/lib/actions';
 import { generatePayLink } from '@/app/lib/pay-link';
 import { PLAN_CONFIG } from '@/app/lib/config';
-import { toolbarButtonClasses } from '@/app/ui/button';
+import {
+  primaryButtonClasses,
+  secondaryButtonClasses,
+  toolbarButtonClasses,
+} from '@/app/ui/button';
 
 export const metadata: Metadata = {
   title: 'Invoice',
@@ -49,10 +53,8 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   const pdfTitle = canExportPdf
     ? 'Download PDF'
     : 'Available on Solo, Pro, and Studio plans';
-  const pdfBaseClass =
-    'inline-flex h-9 items-center rounded-xl border border-slate-700 bg-slate-950/60 px-3 text-sm font-medium text-slate-50';
-  const pdfEnabledClass = `${pdfBaseClass} transition-colors transition-transform duration-150 ease-out hover:bg-slate-900/80 hover:text-slate-200 hover:scale-[1.02]`;
-  const pdfDisabledClass = `${pdfBaseClass} cursor-not-allowed opacity-60`;
+  const pdfEnabledClass = `${secondaryButtonClasses} h-9 px-3`;
+  const pdfDisabledClass = `${secondaryButtonClasses} h-9 cursor-not-allowed px-3 opacity-60`;
 
   return (
     <main className="space-y-6">
@@ -134,7 +136,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           <form action={updateStatus}>
             <button
               type="submit"
-              className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 transition duration-200 ease-out hover:border-emerald-400/60 hover:bg-emerald-500/10 hover:scale-[1.01]"
+              className={`${primaryButtonClasses} px-3 py-2`}
             >
               {statusLabel}
             </button>

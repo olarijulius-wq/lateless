@@ -5,6 +5,10 @@ import { fetchLatestInvoices } from '@/app/lib/data';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import Link from 'next/link';
 import { formatDateToLocal } from '@/app/lib/utils';
+import {
+  primaryButtonClasses,
+  secondaryButtonClasses,
+} from '@/app/ui/button';
 
 export default async function LatestInvoices() {
   const latestInvoices = await fetchLatestInvoices();
@@ -18,7 +22,7 @@ export default async function LatestInvoices() {
         </h2>
         <Link
           href="/dashboard/invoices"
-          className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01]"
+          className={`${primaryButtonClasses} px-3 py-2 text-xs`}
         >
           View all
         </Link>
@@ -34,13 +38,13 @@ export default async function LatestInvoices() {
             <div className="mt-4 flex flex-wrap gap-3">
               <Link
                 href="/dashboard/customers"
-                className="inline-flex items-center rounded-xl border border-slate-700/70 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01]"
+                className={`${secondaryButtonClasses} px-3 py-2`}
               >
                 Add customer
               </Link>
               <Link
                 href="/dashboard/invoices/create"
-                className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01]"
+                className={`${primaryButtonClasses} px-3 py-2`}
               >
                 Create invoice
               </Link>

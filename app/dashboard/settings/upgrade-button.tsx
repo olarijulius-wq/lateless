@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { type PlanId } from '@/app/lib/config';
+import { primaryButtonClasses } from '@/app/ui/button';
 
 type UpgradeButtonProps = {
   plan: Exclude<PlanId, 'free'>;
@@ -45,7 +46,7 @@ export default function UpgradeButton({
       disabled={loading || disabled}
       className={
         className ??
-        'rounded-xl border border-slate-700/70 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50'
+        primaryButtonClasses
       }
     >
       {loading ? 'Redirecting...' : label}

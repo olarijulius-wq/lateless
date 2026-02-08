@@ -1,6 +1,7 @@
 import RevenueChart from '@/app/ui/dashboard/revenue-chart';
 import LatestInvoices from '@/app/ui/dashboard/latest-invoices';
 import LatePayers from '@/app/ui/dashboard/late-payers';
+import { LatelessLiveView } from '@/app/ui/dashboard/live-view';
 import { lusitana } from '@/app/ui/fonts';
 import { Suspense } from 'react';
 import CardWrapper from '@/app/ui/dashboard/cards';
@@ -24,10 +25,19 @@ export default async function Page() {
         Dashboard
       </h1>
 
-      {/* Cards ALATI üleval ja oma grid’is */}
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Suspense fallback={<CardsSkeleton />}>
-          <CardWrapper />
+      <div className="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="grid gap-6 sm:grid-cols-2">
+          <Suspense fallback={<CardsSkeleton />}>
+            <CardWrapper />
+          </Suspense>
+        </div>
+
+        <Suspense
+          fallback={
+            <div className="h-full rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]" />
+          }
+        >
+          <LatelessLiveView />
         </Suspense>
       </div>
 

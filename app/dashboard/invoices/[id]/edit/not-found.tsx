@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { FaceFrownIcon } from '@heroicons/react/24/outline';
+import { secondaryButtonClasses } from '@/app/ui/button';
  
 export default function NotFound() {
   return (
@@ -9,7 +10,7 @@ export default function NotFound() {
       <p>Could not find the requested invoice.</p>
       <Link
         href="/dashboard/invoices"
-        className="mt-4 inline-flex items-center rounded-xl border border-slate-700/70 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01]"
+        className={`${secondaryButtonClasses} mt-4`}
       >
         Go Back
       </Link>

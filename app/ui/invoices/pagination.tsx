@@ -74,14 +74,14 @@ function PaginationNumber({
   isActive: boolean;
 }) {
   const className = clsx(
-    'flex h-10 w-10 items-center justify-center border border-slate-800 bg-slate-900/60 text-sm text-slate-200 transition duration-200 ease-out',
+    'flex h-10 w-10 items-center justify-center border border-neutral-300 bg-white text-sm text-neutral-900 transition duration-200 ease-out dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100',
     {
       'rounded-l-xl': position === 'first' || position === 'single',
       'rounded-r-xl': position === 'last' || position === 'single',
-      'z-10 border-slate-600/80 bg-slate-900 text-slate-100 shadow-[0_0_0_1px_rgba(51,65,85,0.6)]':
+      'z-10 border-neutral-300 bg-neutral-100 text-neutral-900 shadow-[0_0_0_1px_rgba(15,23,42,0.08)] dark:border-slate-600/80 dark:bg-slate-900 dark:text-slate-100 dark:shadow-[0_0_0_1px_rgba(51,65,85,0.6)]':
         isActive,
-      'hover:border-slate-600 hover:bg-slate-900/80 hover:scale-[1.01]': !isActive && position !== 'middle',
-      'text-slate-500': position === 'middle',
+      'hover:border-neutral-300 hover:bg-neutral-100 hover:scale-[1.01] dark:hover:border-slate-600 dark:hover:bg-slate-900/80': !isActive && position !== 'middle',
+      'text-neutral-500 dark:text-slate-500': position === 'middle',
     },
   );
 
@@ -104,10 +104,10 @@ function PaginationArrow({
   isDisabled?: boolean;
 }) {
   const className = clsx(
-    'flex h-10 w-10 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/60 text-slate-200 transition duration-200 ease-out',
+    'flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-300 bg-white text-neutral-900 transition duration-200 ease-out dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100',
     {
-      'pointer-events-none text-slate-600': isDisabled,
-      'hover:border-slate-600 hover:bg-slate-900/80 hover:scale-[1.01]': !isDisabled,
+      'pointer-events-none text-neutral-400 dark:text-slate-600': isDisabled,
+      'hover:border-neutral-300 hover:bg-neutral-100 hover:scale-[1.01] dark:hover:border-slate-600 dark:hover:bg-slate-900/80': !isDisabled,
       'mr-2 md:mr-4': direction === 'left',
       'ml-2 md:ml-4': direction === 'right',
     },

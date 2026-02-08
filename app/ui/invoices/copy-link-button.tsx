@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { secondaryButtonClasses } from '@/app/ui/button';
 
 type CopyLinkButtonProps = {
   text: string;
@@ -23,7 +24,7 @@ export default function CopyLinkButton({ text }: CopyLinkButtonProps) {
     <button
       type="button"
       onClick={handleCopy}
-      className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-900/80 hover:scale-[1.01]"
+      className={`${secondaryButtonClasses} px-3 py-2 text-xs`}
     >
       {copied ? 'Copied' : 'Copy link'}
     </button>

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import postgres from 'postgres';
 import AcmeLogo from '@/app/ui/acme-logo';
 import ResetPasswordForm from './reset-password-form';
+import { secondaryButtonClasses } from '@/app/ui/button';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -51,7 +52,7 @@ export default async function ResetPasswordPage(props: ResetPasswordPageProps) {
               </p>
               <Link
                 href="/forgot-password"
-                className="inline-flex items-center rounded-xl border border-slate-700/70 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:bg-slate-800 hover:scale-[1.01]"
+                className={`${secondaryButtonClasses} px-3 py-2`}
               >
                 Request a new reset link
               </Link>
