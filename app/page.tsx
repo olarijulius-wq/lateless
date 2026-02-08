@@ -78,6 +78,12 @@ export default function Page() {
               <ArrowRightIcon className="w-4" />
             </Link>
             <ViewPricingButton className="inline-flex items-center gap-3 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 shadow-[0_8px_18px_rgba(15,23,42,0.18)] transition duration-200 ease-out hover:bg-slate-100 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950" />
+            <Link
+              href="/login"
+              className="inline-flex items-center rounded-xl border border-slate-600/80 bg-slate-900 px-5 py-2.5 text-sm font-medium text-slate-100 transition duration-200 ease-out hover:border-slate-500 hover:bg-slate-800 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+            >
+              Log in
+            </Link>
           </div>
         </div>
         <RevealOnScroll

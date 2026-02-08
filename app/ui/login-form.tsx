@@ -101,6 +101,9 @@ export default function LoginForm() {
   const activeTwoFactorState = twoFactorState.needsTwoFactor
     ? twoFactorState
     : state;
+  const twoFactorInfoMessage =
+    activeTwoFactorState.message ===
+    'We have sent a 6-digit login code to your email.';
 
   if (state.needsTwoFactor || twoFactorState.needsTwoFactor) {
     return (
@@ -137,7 +140,14 @@ export default function LoginForm() {
           />
 
           {activeTwoFactorState.message && (
-            <p className="mt-3 text-sm text-red-500" aria-live="polite">
+            <p
+              className={
+                twoFactorInfoMessage
+                  ? 'mt-3 rounded-lg border border-slate-700/70 bg-slate-800/60 px-3 py-2 text-sm text-slate-200'
+                  : 'mt-3 text-sm text-red-500'
+              }
+              aria-live="polite"
+            >
               {activeTwoFactorState.message}
             </p>
           )}
