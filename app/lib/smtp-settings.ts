@@ -336,13 +336,22 @@ async function sendWithSmtp(
   bodyHtml: string,
   bodyText: string,
 ) {
+  const smtpHost = settings.smtp_host;
+  const smtpPort = settings.smtp_port;
+  const smtpUsername = settings.smtp_username;
+  const smtpPassword = settings.smtp_password;
+
+  if (!smtpHost || !smtpPort || !smtpUsername || !smtpPassword) {
+    throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
+  }
+
   const transportOptions: SMTPTransport.Options = {
-    host: settings.smtp_host,
-    port: settings.smtp_port,
+    host: smtpHost,
+    port: smtpPort,
     secure: Boolean(settings.smtp_secure),
     auth: {
-      user: settings.smtp_username,
-      pass: settings.smtp_password,
+      user: smtpUsername,
+      pass: smtpPassword,
     },
   };
   const transporter = nodemailer.createTransport(transportOptions);
