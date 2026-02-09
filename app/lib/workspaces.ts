@@ -438,21 +438,19 @@ export async function acceptInviteForCurrentUser(token: string) {
     };
   }
 
-  await sql.begin(async (tx) => {
-    await tx`
-      insert into public.workspace_members (workspace_id, user_id, role)
-      values (${invite.workspace_id}, ${user.id}, ${invite.role})
-      on conflict (workspace_id, user_id)
-      do update set role = excluded.role
-    `;
+  await sql`
+    insert into public.workspace_members (workspace_id, user_id, role)
+    values (${invite.workspace_id}, ${user.id}, ${invite.role})
+    on conflict (workspace_id, user_id)
+    do update set role = excluded.role
+  `;
 
-    await tx`
-      update public.workspace_invites
-      set accepted_at = now()
-      where id = ${invite.id}
-        and accepted_at is null
-    `;
-  });
+  await sql`
+    update public.workspace_invites
+    set accepted_at = now()
+    where id = ${invite.id}
+      and accepted_at is null
+  `;
 
   return {
     ok: true as const,
