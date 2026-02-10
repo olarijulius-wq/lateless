@@ -1,35 +1,16 @@
 'use client';
 
-import {
-  UserGroupIcon,
-  HomeIcon,
-  DocumentDuplicateIcon,
-  Cog6ToothIcon,
-  ClockIcon,
-} from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
-
-// Map of links to display in the side navigation.
-const links = [
-  { name: 'Home', href: '/dashboard', icon: HomeIcon },
-  {
-    name: 'Invoices',
-    href: '/dashboard/invoices',
-    icon: DocumentDuplicateIcon,
-  },
-  { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
-  { name: 'Late payers', href: '/dashboard/late-payers', icon: ClockIcon },
-  { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
-];
+import { dashboardLinks } from '@/app/ui/dashboard/nav-links-data';
 
 export default function NavLinks() {
   const pathname = usePathname();
 
   return (
     <>
-      {links.map((link) => {
+      {dashboardLinks.map((link) => {
         const LinkIcon = link.icon;
         const isActive =
           link.href === '/dashboard'
