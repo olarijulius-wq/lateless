@@ -40,7 +40,7 @@ export default function Form({
             <select
               id="customer"
               name="customerId"
-              className="peer block w-full cursor-pointer rounded-xl border border-slate-300 bg-white py-2 pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-slate-600 dark:focus:ring-slate-600/50"
+              className="peer block w-full cursor-pointer rounded-xl border border-neutral-300 bg-white py-2 pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-600/30"
               value={customerId}
               onChange={(event) => setCustomerId(event.target.value)}
               aria-describedby="customer-error"
@@ -54,7 +54,7 @@ export default function Form({
                 </option>
               ))}
             </select>
-            <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-slate-700 dark:peer-focus:text-slate-300" />
+            <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-neutral-800 dark:peer-focus:text-neutral-200" />
           </div>
           <div id="customer-error" aria-live="polite" aria-atomic="true">
             {state?.ok === false &&
@@ -82,10 +82,10 @@ export default function Form({
                 placeholder="Enter amount in EUR"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
-                className="peer block w-full rounded-xl border border-slate-300 bg-white py-2 pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-slate-600 dark:focus:ring-slate-600/50"
+                className="peer block w-full rounded-xl border border-neutral-300 bg-white py-2 pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-600/30"
                 aria-describedby="amount-error"
               />
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500 transition peer-focus:text-slate-700 dark:peer-focus:text-slate-300">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500 transition peer-focus:text-neutral-800 dark:peer-focus:text-neutral-200">
                 €
               </span>
             </div>
@@ -106,7 +106,7 @@ export default function Form({
           <legend className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-200">
             Set the invoice status
           </legend>
-          <div className="rounded-xl border border-slate-300 bg-slate-50 px-[14px] py-3 dark:border-slate-800 dark:bg-slate-950/60">
+          <div className="rounded-xl border border-neutral-300 bg-neutral-50 px-[14px] py-3 dark:border-neutral-800 dark:bg-slate-950/60">
             <div className="flex gap-4">
               <div className="flex items-center">
                 <input
@@ -116,7 +116,7 @@ export default function Form({
                   value="pending"
                   checked={status === 'pending'}
                   onChange={(event) => setStatus(event.target.value)}
-                  className="h-4 w-4 cursor-pointer border-slate-400 bg-white text-slate-900 focus:ring-2 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-slate-600"
+                  className="h-4 w-4 cursor-pointer border-neutral-400 bg-white text-black accent-black focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-700 dark:bg-slate-900 dark:text-slate-200 dark:accent-neutral-100 dark:focus:ring-neutral-600/30"
                   aria-describedby="status-error"
                 />
                 <label
@@ -134,7 +134,7 @@ export default function Form({
                   value="paid"
                   checked={status === 'paid'}
                   onChange={(event) => setStatus(event.target.value)}
-                  className="h-4 w-4 cursor-pointer border-slate-400 bg-white text-slate-900 focus:ring-2 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-slate-600"
+                  className="h-4 w-4 cursor-pointer border-neutral-400 bg-white text-black accent-black focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-700 dark:bg-slate-900 dark:text-slate-200 dark:accent-neutral-100 dark:focus:ring-neutral-600/30"
                 />
                 <label
                   htmlFor="paid"
@@ -165,7 +165,7 @@ export default function Form({
             type="date"
             value={dueDate}
             onChange={(event) => setDueDate(event.target.value)}
-            className="block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-slate-600 dark:focus:ring-slate-600/50"
+            className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-600/30"
             aria-describedby="dueDate-error"
           />
           <div id="dueDate-error" aria-live="polite" aria-atomic="true">

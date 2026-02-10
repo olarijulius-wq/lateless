@@ -43,7 +43,7 @@ export default async function SideNav() {
           </div>
         </Link>
         <div className="flex grow flex-row justify-between space-x-2 md:flex-col md:space-x-0 md:space-y-2">
-          <NavLinks />
+          <NavLinks userEmail={userEmail} />
           <div className="hidden h-auto w-full grow rounded-md border border-neutral-200 bg-white md:block dark:border-neutral-900 dark:bg-black"></div>
           <details className="group relative">
             <summary className="flex h-[52px] w-full cursor-pointer list-none items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3 text-left text-sm text-neutral-700 transition hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-900 dark:bg-black dark:text-neutral-200 dark:hover:border-neutral-800 dark:hover:bg-neutral-950">

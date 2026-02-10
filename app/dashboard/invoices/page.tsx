@@ -1,6 +1,5 @@
 import { Metadata } from 'next';
 import { lusitana } from '@/app/ui/fonts';
-import Search from '@/app/ui/search';
 import Pagination from '@/app/ui/invoices/pagination';
 import Table from '@/app/ui/invoices/table';
 import { CreateInvoice } from '@/app/ui/invoices/buttons';
@@ -13,6 +12,7 @@ import ExportInvoicesButton from './export-button';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
 import { primaryButtonClasses, secondaryButtonClasses } from '@/app/ui/button';
+import MobileExpandableSearchToolbar from '@/app/ui/dashboard/mobile-expandable-search-toolbar';
 
 export const metadata: Metadata = {
   title: 'Invoices',
@@ -52,23 +52,23 @@ export default async function Page(props: {
           </h1>
         </div>
 
-        <div className="mb-4 flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="w-full sm:flex-1">
-            <Search placeholder="Search invoices..." />
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <ExportInvoicesButton canExportCsv={canExportCsv} />
-            {canCreate && <CreateInvoice />}
-            {!canCreate && (
-              <a
-                href="/dashboard/settings"
-                className={`hidden sm:inline-flex ${secondaryButtonClasses} px-3 py-2 text-xs`}
-              >
-                View all plans
-              </a>
-            )}
-          </div>
-        </div>
+        <MobileExpandableSearchToolbar
+          searchPlaceholder="Search invoices..."
+          actions={
+            <>
+              <ExportInvoicesButton canExportCsv={canExportCsv} />
+              {canCreate && <CreateInvoice />}
+              {!canCreate && (
+                <a
+                  href="/dashboard/settings"
+                  className={`hidden sm:inline-flex ${secondaryButtonClasses} px-3 py-2 text-xs`}
+                >
+                  View all plans
+                </a>
+              )}
+            </>
+          }
+        />
       </RevealOnMount>
 
       {!canCreate && (

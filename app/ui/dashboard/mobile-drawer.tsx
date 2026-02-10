@@ -11,7 +11,7 @@ import {
   UserCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { dashboardLinks } from '@/app/ui/dashboard/nav-links-data';
+import { getDashboardLinks } from '@/app/ui/dashboard/nav-links-data';
 import ThemeToggleMenuItem from '@/app/ui/dashboard/theme-toggle-menu-item';
 import { lusitana } from '@/app/ui/fonts';
 
@@ -23,6 +23,7 @@ type MobileDrawerProps = {
 export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const mainLinks = getDashboardLinks(userEmail);
 
   useEffect(() => {
     if (!open) return;
@@ -42,8 +43,6 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
       window.removeEventListener('keydown', handleEscape);
     };
   }, [open]);
-
-  const mainLinks = dashboardLinks.filter((link) => link.href !== '/dashboard');
 
   return (
     <>
@@ -92,7 +91,9 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
               {mainLinks.map((link) => {
                 const LinkIcon = link.icon;
                 const isActive =
-                  pathname === link.href || pathname.startsWith(`${link.href}/`);
+                  link.href === '/dashboard'
+                    ? pathname === '/dashboard'
+                    : pathname === link.href || pathname.startsWith(`${link.href}/`);
 
                 return (
                   <Link

@@ -9,6 +9,7 @@ import type {
   WorkspaceMember,
   WorkspaceRole,
 } from '@/app/lib/workspaces';
+import { SETTINGS_INPUT_CLASSES, SETTINGS_SELECT_CLASSES } from '@/app/ui/form-control';
 
 type TeamSettingsPanelProps = {
   workspaceName: string;
@@ -27,10 +28,10 @@ function formatDate(value: string) {
 
 function roleBadgeClass(role: WorkspaceRole | InvitableWorkspaceRole) {
   if (role === 'owner') {
-    return 'border border-violet-300 bg-violet-100 text-violet-900 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-200';
+    return 'border border-neutral-400 bg-neutral-200 text-neutral-900 dark:border-neutral-500/60 dark:bg-neutral-700/30 dark:text-neutral-100';
   }
   if (role === 'admin') {
-    return 'border border-sky-300 bg-sky-100 text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200';
+    return 'border border-neutral-300 bg-neutral-100 text-neutral-800 dark:border-neutral-600 dark:bg-neutral-800/60 dark:text-neutral-200';
   }
   return 'border border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-500/40 dark:bg-slate-500/10 dark:text-slate-200';
 }
@@ -135,12 +136,12 @@ export default function TeamSettingsPanel({
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder="member@company.com"
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+              className={SETTINGS_INPUT_CLASSES}
             />
             <select
               value={role}
               onChange={(event) => setRole(event.target.value as InvitableWorkspaceRole)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              className={SETTINGS_SELECT_CLASSES}
             >
               <option value="member">Member</option>
               <option value="admin">Admin</option>

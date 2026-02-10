@@ -3,6 +3,11 @@
 import Image from 'next/image';
 import { useEffect, useState, useTransition } from 'react';
 import { Button, secondaryButtonClasses } from '@/app/ui/button';
+import {
+  SETTINGS_INPUT_CLASSES,
+  SETTINGS_SELECT_CLASSES,
+  SETTINGS_TEXTAREA_CLASSES,
+} from '@/app/ui/form-control';
 
 type UserRole = 'owner' | 'admin' | 'member';
 
@@ -259,7 +264,7 @@ export default function DocumentsSettingsPanel() {
               }))
             }
             disabled={!canEdit || isPending}
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className={SETTINGS_INPUT_CLASSES}
           />
         </div>
 
@@ -278,7 +283,7 @@ export default function DocumentsSettingsPanel() {
               }))
             }
             disabled={!canEdit || isPending}
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className={SETTINGS_INPUT_CLASSES}
           />
         </div>
 
@@ -295,7 +300,7 @@ export default function DocumentsSettingsPanel() {
               }))
             }
             disabled={!canEdit || isPending}
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className={SETTINGS_SELECT_CLASSES}
           >
             {[2, 3, 4, 5, 6, 7, 8].map((padding) => (
               <option key={padding} value={padding}>
@@ -318,7 +323,7 @@ export default function DocumentsSettingsPanel() {
           rows={4}
           maxLength={500}
           disabled={!canEdit || isPending}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          className={SETTINGS_TEXTAREA_CLASSES}
           placeholder="Optional note shown at the bottom of invoices."
         />
       </section>

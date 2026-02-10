@@ -6,6 +6,10 @@ import type {
   UnsubscribedRecipient,
   WorkspaceUnsubscribeSettings,
 } from '@/app/lib/unsubscribe';
+import {
+  SETTINGS_CHECKBOX_CLASSES,
+  SETTINGS_TEXTAREA_CLASSES,
+} from '@/app/ui/form-control';
 
 type UserRole = 'owner' | 'admin' | 'member';
 
@@ -235,7 +239,7 @@ export default function UnsubscribeSettingsPanel() {
             checked={enabled}
             onChange={(event) => setEnabled(event.target.checked)}
             disabled={!canEditSettings || isPending}
-            className="h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+            className={SETTINGS_CHECKBOX_CLASSES}
           />
           Include unsubscribe link in reminders
         </label>
@@ -249,7 +253,7 @@ export default function UnsubscribeSettingsPanel() {
             onChange={(event) => setPageText(event.target.value)}
             rows={4}
             disabled={!canEditSettings || isPending}
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            className={SETTINGS_TEXTAREA_CLASSES}
             placeholder="You can add a short message shown on the unsubscribe confirmation page."
           />
         </div>

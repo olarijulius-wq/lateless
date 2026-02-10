@@ -4,8 +4,16 @@ import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import { useDebouncedCallback } from 'use-debounce';
 import { DARK_INPUT } from '@/app/ui/theme/tokens';
+import clsx from 'clsx';
  
-export default function Search({ placeholder }: { placeholder: string }) {
+type SearchProps = {
+  placeholder: string;
+  className?: string;
+  onFocus?: React.FocusEventHandler<HTMLInputElement>;
+  onBlur?: React.FocusEventHandler<HTMLInputElement>;
+};
+
+export default function Search({ placeholder, className, onFocus, onBlur }: SearchProps) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { replace } = useRouter();
@@ -22,13 +30,15 @@ export default function Search({ placeholder }: { placeholder: string }) {
   }, 300);
  
   return (
-    <div className="relative flex flex-1 shrink-0">
+    <div className={clsx('relative flex flex-1 shrink-0', className)}>
       <label htmlFor="search" className="sr-only">
         Search
       </label>
       <input
         className={`peer block w-full rounded-xl border border-slate-300 bg-white py-[9px] pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 ${DARK_INPUT}`}
         placeholder={placeholder}
+        onFocus={onFocus}
+        onBlur={onBlur}
         onChange={(e) => {
           handleSearch(e.target.value);
         }}

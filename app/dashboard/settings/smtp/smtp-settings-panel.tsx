@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { Button, secondaryButtonClasses } from '@/app/ui/button';
 import type { EmailProviderMode, WorkspaceEmailSettings } from '@/app/lib/smtp-settings';
+import {
+  SETTINGS_CHECKBOX_CLASSES,
+  SETTINGS_INPUT_CLASSES,
+  SETTINGS_SELECT_CLASSES,
+} from '@/app/ui/form-control';
 
 type ApiState = {
   canEdit: boolean;
@@ -241,7 +246,7 @@ export default function SmtpSettingsPanel() {
           value={provider}
           onChange={(event) => setProvider(event.target.value as EmailProviderMode)}
           disabled={!canEdit || isPending}
-          className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${disabledFieldClass}`}
+          className={`${SETTINGS_SELECT_CLASSES} ${disabledFieldClass}`}
         >
           <option value="resend">Resend (default)</option>
           <option value="smtp">Custom SMTP</option>
@@ -258,7 +263,7 @@ export default function SmtpSettingsPanel() {
               value={smtpHost}
               onChange={(event) => setSmtpHost(event.target.value)}
               disabled={!canEdit || isPending}
-              className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${disabledFieldClass}`}
+              className={`${SETTINGS_INPUT_CLASSES} ${disabledFieldClass}`}
               placeholder="smtp.mailprovider.com"
             />
           </div>
@@ -271,7 +276,7 @@ export default function SmtpSettingsPanel() {
               value={smtpPort}
               onChange={(event) => setSmtpPort(event.target.value)}
               disabled={!canEdit || isPending}
-              className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${disabledFieldClass}`}
+              className={`${SETTINGS_INPUT_CLASSES} ${disabledFieldClass}`}
               placeholder="587"
             />
           </div>
@@ -284,7 +289,7 @@ export default function SmtpSettingsPanel() {
               value={smtpUsername}
               onChange={(event) => setSmtpUsername(event.target.value)}
               disabled={!canEdit || isPending}
-              className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${disabledFieldClass}`}
+              className={`${SETTINGS_INPUT_CLASSES} ${disabledFieldClass}`}
               placeholder="SMTP username"
             />
           </div>
@@ -298,7 +303,7 @@ export default function SmtpSettingsPanel() {
               value={smtpPassword}
               onChange={(event) => setSmtpPassword(event.target.value)}
               disabled={!canEdit || isPending}
-              className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${disabledFieldClass}`}
+              className={`${SETTINGS_INPUT_CLASSES} ${disabledFieldClass}`}
               placeholder={smtpPasswordPresent ? '•••••••• (leave blank to keep current)' : 'SMTP password'}
             />
           </div>
@@ -311,7 +316,7 @@ export default function SmtpSettingsPanel() {
               value={fromName}
               onChange={(event) => setFromName(event.target.value)}
               disabled={!canEdit || isPending}
-              className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${disabledFieldClass}`}
+              className={`${SETTINGS_INPUT_CLASSES} ${disabledFieldClass}`}
               placeholder="Lateless"
             />
           </div>
@@ -324,7 +329,7 @@ export default function SmtpSettingsPanel() {
               value={fromEmail}
               onChange={(event) => setFromEmail(event.target.value)}
               disabled={!canEdit || isPending}
-              className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${disabledFieldClass}`}
+              className={`${SETTINGS_INPUT_CLASSES} ${disabledFieldClass}`}
               placeholder="billing@yourdomain.com"
             />
           </div>
@@ -337,7 +342,7 @@ export default function SmtpSettingsPanel() {
               value={replyTo}
               onChange={(event) => setReplyTo(event.target.value)}
               disabled={!canEdit || isPending}
-              className={`w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${disabledFieldClass}`}
+              className={`${SETTINGS_INPUT_CLASSES} ${disabledFieldClass}`}
               placeholder="support@yourdomain.com"
             />
           </div>
@@ -348,7 +353,7 @@ export default function SmtpSettingsPanel() {
               checked={smtpSecure}
               onChange={(event) => setSmtpSecure(event.target.checked)}
               disabled={!canEdit || isPending}
-              className="h-4 w-4 rounded border-slate-400 text-slate-900 focus:ring-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+              className={SETTINGS_CHECKBOX_CLASSES}
             />
             Use TLS/SSL (`secure`)
           </label>

@@ -3,10 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
-import { dashboardLinks } from '@/app/ui/dashboard/nav-links-data';
+import { getDashboardLinks } from '@/app/ui/dashboard/nav-links-data';
 
-export default function NavLinks() {
+type NavLinksProps = {
+  userEmail?: string;
+};
+
+export default function NavLinks({ userEmail = '' }: NavLinksProps) {
   const pathname = usePathname();
+  const dashboardLinks = getDashboardLinks(userEmail);
 
   return (
     <>

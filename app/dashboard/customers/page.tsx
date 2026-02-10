@@ -3,11 +3,11 @@ import CustomersTable from '@/app/ui/customers/table';
 import { fetchFilteredCustomers, fetchUserPlanAndUsage } from '@/app/lib/data';
 import Link from 'next/link';
 import { Button } from '@/app/ui/button';
-import Search from '@/app/ui/search';
 import { lusitana } from '@/app/ui/fonts';
 import ExportCustomersButton from './export-button';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
+import MobileExpandableSearchToolbar from '@/app/ui/dashboard/mobile-expandable-search-toolbar';
 
 export const metadata: Metadata = {
   title: 'Customers',
@@ -37,18 +37,19 @@ export default async function Page(props: {
           Customers
         </h1>
 
-        {/* Search + buttons ROW (search on the LEFT, buttons on the RIGHT) */}
-        <div className="mb-4 flex w-full items-center justify-between gap-3">
-          <Search placeholder="Search customers..." />
-          <div className="flex items-center gap-2">
-            <ExportCustomersButton canExportCsv={canExportCsv} />
-            <Link href="/dashboard/customers/create" className="shrink-0">
-              <Button variant="toolbar">
-                Create customer
-              </Button>
-            </Link>
-          </div>
-        </div>
+        <MobileExpandableSearchToolbar
+          searchPlaceholder="Search customers..."
+          actions={
+            <>
+              <ExportCustomersButton canExportCsv={canExportCsv} />
+              <Link href="/dashboard/customers/create" className="shrink-0">
+                <Button variant="toolbar">
+                  Create customer
+                </Button>
+              </Link>
+            </>
+          }
+        />
       </RevealOnMount>
 
       {/* Table */}
