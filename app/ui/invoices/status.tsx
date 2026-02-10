@@ -1,15 +1,19 @@
 import { CheckIcon, ClockIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
+import { DARK_PILL } from '@/app/ui/theme/tokens';
 
 export default function InvoiceStatus({ status }: { status: string }) {
+  const isKnownStatus = status === 'pending' || status === 'paid';
+
   return (
     <span
       className={clsx(
         'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium',
         {
-          'border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300':
+          [DARK_PILL]: !isKnownStatus,
+          'border-amber-500 bg-amber-500 text-black dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200':
             status === 'pending',
-          'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-400/50 dark:bg-emerald-500/10 dark:text-emerald-300':
+          'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200':
             status === 'paid',
         },
       )}
@@ -17,13 +21,13 @@ export default function InvoiceStatus({ status }: { status: string }) {
       {status === 'pending' ? (
         <>
           Pending
-          <ClockIcon className="ml-1 w-4 text-amber-700 dark:text-amber-300" />
+          <ClockIcon className="ml-1 w-4 text-amber-700 dark:text-amber-400" />
         </>
       ) : null}
       {status === 'paid' ? (
         <>
           Paid
-          <CheckIcon className="ml-1 w-4 text-emerald-700 dark:text-emerald-300" />
+          <CheckIcon className="ml-1 w-4 text-emerald-100 dark:text-emerald-400" />
         </>
       ) : null}
     </span>

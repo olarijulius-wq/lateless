@@ -46,7 +46,7 @@ export default async function Page(props: {
       <RevealOnMount>
         <div className="mb-3">
           <h1
-            className={`${lusitana.className} text-xl text-slate-100 md:text-2xl`}
+            className={`${lusitana.className} text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}
           >
             Invoices
           </h1>
@@ -73,14 +73,14 @@ export default async function Page(props: {
 
       {!canCreate && (
         <>
-          <p className="hidden text-xs text-amber-200 sm:block">
+          <p className="hidden text-xs text-amber-800 dark:text-amber-200 sm:block">
             {planName} plan limit reached. Upgrade to keep sending invoices.
           </p>
-          <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-100 sm:hidden">
+          <div className="rounded-xl border border-amber-300 bg-amber-100 p-4 text-amber-900 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-100 sm:hidden">
             <p className="text-sm font-semibold">
               {planName} plan limit reached
             </p>
-            <p className="mt-1 text-xs text-amber-100/80">
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-100/80">
               You have used all {limitLabel} invoices for this month.
             </p>
             <a
@@ -94,7 +94,7 @@ export default async function Page(props: {
       )}
 
       {!hasUnlimited && (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600 dark:text-slate-400">
           {invoiceCount} / {maxPerMonth} invoices used on {planId} plan.
         </p>
       )}

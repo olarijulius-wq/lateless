@@ -19,12 +19,12 @@ export default function Form({ customer }: { customer: CustomerForm }) {
 
   return (
     <form action={formAction}>
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-[0_18px_35px_rgba(0,0,0,0.45)] md:p-6">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:p-6 dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
         {/* Customer Name */}
         <div className="mb-4">
           <label
             htmlFor="name"
-            className="mb-2 block text-sm font-medium text-slate-200"
+            className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-200"
           >
             Customer name
           </label>
@@ -36,11 +36,11 @@ export default function Form({ customer }: { customer: CustomerForm }) {
               placeholder="Enter customer name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="peer block w-full rounded-xl border border-slate-800 bg-slate-950/60 py-2 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
+              className="peer block w-full rounded-xl border border-slate-300 bg-white py-2 pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-slate-600 dark:focus:ring-slate-600/50"
               aria-describedby="name-error"
               required
             />
-            <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-slate-300" />
+            <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-slate-700 dark:peer-focus:text-slate-300" />
           </div>
           <div id="name-error" aria-live="polite" aria-atomic="true">
             {state.errors?.name?.map((error: string) => (
@@ -55,7 +55,7 @@ export default function Form({ customer }: { customer: CustomerForm }) {
         <div className="mb-0">
           <label
             htmlFor="email"
-            className="mb-2 block text-sm font-medium text-slate-200"
+            className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-200"
           >
             Email
           </label>
@@ -67,11 +67,11 @@ export default function Form({ customer }: { customer: CustomerForm }) {
               placeholder="Enter email address"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="peer block w-full rounded-xl border border-slate-800 bg-slate-950/60 py-2 pl-10 text-sm text-slate-100 outline-none placeholder:text-slate-500 transition focus:border-slate-600 focus:ring-2 focus:ring-slate-600/50"
+              className="peer block w-full rounded-xl border border-slate-300 bg-white py-2 pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-slate-500 focus:ring-2 focus:ring-slate-500/40 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-slate-600 dark:focus:ring-slate-600/50"
               aria-describedby="email-error"
               required
             />
-            <EnvelopeIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-slate-300" />
+            <EnvelopeIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-slate-700 dark:peer-focus:text-slate-300" />
           </div>
           <div id="email-error" aria-live="polite" aria-atomic="true">
             {state.errors?.email?.map((error: string) => (

@@ -32,7 +32,7 @@ export default async function Page(props: {
       <RevealOnMount>
         {/* Title */}
         <h1
-          className={`${lusitana.className} mb-3 text-xl text-slate-100 md:text-2xl`}
+          className={`${lusitana.className} mb-3 text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}
         >
           Customers
         </h1>

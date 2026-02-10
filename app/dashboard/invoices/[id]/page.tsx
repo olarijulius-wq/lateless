@@ -15,6 +15,7 @@ import {
   secondaryButtonClasses,
   toolbarButtonClasses,
 } from '@/app/ui/button';
+import { DARK_INPUT, DARK_SURFACE } from '@/app/ui/theme/tokens';
 
 export const metadata: Metadata = {
   title: 'Invoice',
@@ -60,10 +61,10 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
     <main className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-100">
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
             Invoice {displayNumber}
           </h1>
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-slate-600 dark:text-zinc-400">
             {invoice.customer_name} • {invoice.customer_email}
           </p>
         </div>
@@ -84,26 +85,26 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+      <div className={`rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_12px_24px_rgba(15,23,42,0.06)] ${DARK_SURFACE} dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="text-sm text-slate-400">Amount</p>
-            <p className="text-2xl font-semibold text-slate-100">
+            <p className="text-sm text-slate-600 dark:text-zinc-400">Amount</p>
+            <p className="text-2xl font-semibold text-slate-900 dark:text-zinc-100">
               {formatCurrency(invoice.amount)}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-slate-400">Date</p>
-            <p className="text-sm text-slate-200">
+            <p className="text-sm text-slate-600 dark:text-zinc-400">Date</p>
+            <p className="text-sm text-slate-700 dark:text-zinc-200">
               {formatDateToLocal(invoice.date)}
             </p>
-            <p className="mt-2 text-sm text-slate-400">Due date</p>
-            <p className="text-sm text-slate-200">
+            <p className="mt-2 text-sm text-slate-600 dark:text-zinc-400">Due date</p>
+            <p className="text-sm text-slate-700 dark:text-zinc-200">
               {invoice.due_date ? formatDateToLocal(invoice.due_date) : '—'}
             </p>
           </div>
           <div>
-            <p className="text-sm text-slate-400">Status</p>
+            <p className="text-sm text-slate-600 dark:text-zinc-400">Status</p>
             <InvoiceStatus status={invoice.status} />
           </div>
         </div>
@@ -128,7 +129,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
               </span>
             )}
             {!canExportPdf && (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-zinc-400">
                 Available on Solo, Pro, and Studio plans.
               </p>
             )}
@@ -148,11 +149,11 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
-        <p className="text-sm font-semibold text-slate-100">
+      <div className={`rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_12px_24px_rgba(15,23,42,0.06)] ${DARK_SURFACE} dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>
+        <p className="text-sm font-semibold text-slate-900 dark:text-zinc-100">
           Client payment link
         </p>
-        <p className="mt-1 text-sm text-slate-400">
+        <p className="mt-1 text-sm text-slate-600 dark:text-zinc-400">
           Share this link with your client. They can pay without logging in.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -160,7 +161,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
             type="text"
             readOnly
             value={payLink}
-            className="min-w-0 w-full flex-1 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-200 outline-none"
+            className={`min-w-0 w-full flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 outline-none ${DARK_INPUT}`}
           />
           <CopyLinkButton text={payLink} />
         </div>

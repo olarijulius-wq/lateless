@@ -26,16 +26,16 @@ const formatEuroFromCents = (value: number) =>
 export function RevenueChartClient({ chartData }: { chartData: ChartDatum[] }) {
   const { theme } = useTheme();
   const dark = theme === 'dark';
-  const gridStroke = dark ? '#262626' : '#e5e5e5';
-  const axisStroke = dark ? '#a3a3a3' : '#404040';
+  const gridStroke = dark ? '#262626' : '#e5e7eb';
+  const axisStroke = dark ? '#a3a3a3' : '#475569';
   const tooltipBg = dark ? '#000000' : '#ffffff';
-  const tooltipBorder = dark ? '#404040' : '#d4d4d4';
-  const tooltipText = dark ? '#f5f5f5' : '#171717';
+  const tooltipBorder = dark ? '#404040' : '#cbd5e1';
+  const tooltipText = dark ? '#f5f5f5' : '#0f172a';
   const lineStroke = dark ? '#fafafa' : '#171717';
 
   return (
     <div
-      className="h-60 rounded-xl border border-neutral-200 bg-white p-3 [&_.recharts-surface:focus]:outline-none [&_.recharts-surface:focus-visible]:outline-none dark:border-neutral-800 dark:bg-black md:h-80 md:p-4"
+      className="h-60 rounded-xl border border-neutral-200 bg-white p-3 text-slate-900 [&_.recharts-surface:focus]:outline-none [&_.recharts-surface:focus-visible]:outline-none dark:border-neutral-800 dark:bg-black dark:text-slate-100 md:h-80 md:p-4"
       style={{ WebkitTapHighlightColor: 'transparent' }}
     >
       <ResponsiveContainer width="100%" height="100%">

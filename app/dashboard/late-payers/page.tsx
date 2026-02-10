@@ -4,6 +4,7 @@ import { fetchLatePayerStats, fetchUserPlanAndUsage } from '@/app/lib/data';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import { lusitana } from '@/app/ui/fonts';
 import { toolbarButtonClasses } from '@/app/ui/button';
+import { RevealOnMount } from '@/app/ui/motion/reveal';
 
 export const metadata: Metadata = {
   title: 'Late payers',
@@ -23,19 +24,20 @@ export default async function Page() {
 
   return (
     <div className="space-y-4">
+      <RevealOnMount>
       <div>
-        <h1 className={`${lusitana.className} mb-2 text-xl text-slate-100 md:text-2xl`}>
+        <h1 className={`${lusitana.className} mb-2 text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}>
           Late payers
         </h1>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           Customers who pay invoices after the due date.
         </p>
       </div>
 
       {!canView ? (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-6 text-sm text-amber-100">
+        <div className="rounded-xl border border-amber-300 bg-amber-100 p-6 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
           <p className="font-semibold">Late payer analytics is a Solo+ feature.</p>
-          <p className="mt-2 text-amber-100/80">
+          <p className="mt-2 text-amber-800 dark:text-amber-100/80">
             Upgrade to see which customers consistently pay late and how many
             days they delay payments.
           </p>
@@ -47,23 +49,24 @@ export default async function Page() {
           </Link>
         </div>
       ) : (
+        <RevealOnMount delay={0.12}>
         <>
           <div className="md:hidden">
-            <div className="mb-4 rounded-xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
-              <p className="text-xs text-slate-400">
+            <div className="mb-4 rounded-xl border border-neutral-200 bg-white p-4 text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-slate-100 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 Late payers
               </p>
-              <p className="mt-1 text-lg font-semibold text-slate-50">
+              <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">
                 {totalLatePayers} late payers
               </p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
                 Clients with paid invoices that were settled after the due date.
               </p>
             </div>
           </div>
 
           {latePayers.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-400">
+            <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
               No late payers yet. Once some clients start paying late, they’ll show
               up here with their average delay.
             </p>
@@ -75,18 +78,18 @@ export default async function Page() {
                   <Link
                     key={payer.customer_id}
                     href={`/dashboard/customers/${payer.customer_id}`}
-                    className="block rounded-xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
+                    className="block rounded-xl border border-neutral-200 bg-white p-4 text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-slate-100 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
                   >
                     <div className="flex justify-between gap-4">
                       {/* Vasak pool – nimi + email */}
                       <div className="flex-1 space-y-1">
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
                           Customer
                         </p>
-                        <p className="truncate text-sm font-semibold text-slate-100">
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {payer.name}
                         </p>
-                        <p className="truncate text-xs text-slate-400">
+                        <p className="truncate text-xs text-slate-600 dark:text-slate-400">
                           {payer.email}
                         </p>
                       </div>
@@ -94,7 +97,7 @@ export default async function Page() {
                       {/* Parem pool – arv + viivitus */}
                       <div className="flex flex-col items-end gap-1">
                         <div className="text-right">
-                          <p className="text-xs text-slate-400">
+                          <p className="text-xs text-slate-600 dark:text-slate-400">
                             Paid invoices
                           </p>
                           <p className="text-sm text-emerald-800 dark:text-emerald-300">
@@ -102,7 +105,7 @@ export default async function Page() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs text-slate-400">
+                          <p className="text-xs text-slate-600 dark:text-slate-400">
                             Avg delay
                           </p>
                           <p className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300">
@@ -116,24 +119,24 @@ export default async function Page() {
               </div>
 
               {/* DESKTOP: jäta oma olemasolev tabel / grid siia */}
-              <div className="hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-[0_18px_35px_rgba(0,0,0,0.35)] md:block">
-                <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_140px_160px] gap-4 border-b border-slate-800 px-6 py-3 text-xs uppercase tracking-[0.12em] text-slate-500">
+              <div className="hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:block dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-[0_18px_35px_rgba(0,0,0,0.35)]">
+                <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_140px_160px] gap-4 border-b border-neutral-200 px-6 py-3 text-xs uppercase tracking-[0.12em] text-slate-500 dark:border-neutral-800">
                   <span>Customer</span>
                   <span>Email</span>
                   <span className="text-right">Paid invoices</span>
                   <span className="text-right">Avg delay</span>
                 </div>
-                <div className="divide-y divide-slate-800">
+                <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
                   {latePayers.map((payer) => (
                     <Link
                       key={payer.customer_id}
                       href={`/dashboard/customers/${payer.customer_id}`}
-                      className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_140px_160px] items-center gap-4 px-6 py-4 text-sm text-slate-200 transition hover:bg-neutral-100 dark:hover:bg-slate-900"
+                      className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.4fr)_140px_160px] items-center gap-4 px-6 py-4 text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-neutral-900"
                     >
-                      <span className="truncate font-semibold text-slate-100">
+                      <span className="truncate font-semibold text-slate-900 dark:text-slate-100">
                         {payer.name}
                       </span>
-                      <span className="truncate text-slate-400">{payer.email}</span>
+                      <span className="truncate text-slate-600 dark:text-slate-400">{payer.email}</span>
                       <span className="text-right text-emerald-800 dark:text-emerald-300">
                         {payer.paid_invoices}
                       </span>
@@ -149,7 +152,9 @@ export default async function Page() {
             </>
           )}
         </>
+        </RevealOnMount>
       )}
+      </RevealOnMount>
     </div>
   );
 }

@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 export default async function Page() {
   return (
     <main className="space-y-6">
-      <h1 className={`${lusitana.className} text-xl text-slate-100 md:text-2xl`}>
+      <h1 className={`${lusitana.className} text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}>
         Dashboard
       </h1>
 

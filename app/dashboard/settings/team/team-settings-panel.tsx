@@ -27,12 +27,12 @@ function formatDate(value: string) {
 
 function roleBadgeClass(role: WorkspaceRole | InvitableWorkspaceRole) {
   if (role === 'owner') {
-    return 'border border-violet-500/40 bg-violet-500/10 text-violet-200';
+    return 'border border-violet-300 bg-violet-100 text-violet-900 dark:border-violet-500/40 dark:bg-violet-500/10 dark:text-violet-200';
   }
   if (role === 'admin') {
-    return 'border border-sky-500/40 bg-sky-500/10 text-sky-200';
+    return 'border border-sky-300 bg-sky-100 text-sky-900 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200';
   }
-  return 'border border-slate-500/40 bg-slate-500/10 text-slate-200';
+  return 'border border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-500/40 dark:bg-slate-500/10 dark:text-slate-200';
 }
 
 export default function TeamSettingsPanel({

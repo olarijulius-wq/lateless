@@ -9,13 +9,11 @@ export default async function Layout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <div className="dark [color-scheme:dark]">
-      <div className="flex h-screen flex-col bg-black text-slate-100 md:flex-row md:overflow-hidden">
-        <div className="w-full flex-none border-b border-neutral-800 bg-black md:w-64 md:border-b-0 md:border-r md:border-neutral-800">
-          <SideNav />
-        </div>
-        <div className="grow bg-black p-6 md:overflow-y-auto md:p-12">{children}</div>
+    <div className="flex h-screen flex-col bg-white text-slate-900 md:flex-row md:overflow-hidden dark:bg-black dark:text-slate-100">
+      <div className="w-full flex-none border-b border-neutral-200 bg-white md:w-64 md:border-b-0 md:border-r dark:border-neutral-800 dark:bg-black">
+        <SideNav />
       </div>
+      <div className="grow bg-white p-6 md:overflow-y-auto md:p-12 dark:bg-black">{children}</div>
     </div>
   );
 }

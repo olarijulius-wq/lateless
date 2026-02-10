@@ -65,18 +65,18 @@ export default async function SettingsPage(props: {
     ? {
         label: 'Payouts enabled',
         className:
-          'border border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+          'border border-emerald-300 bg-emerald-200 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300',
       }
     : connectStatus.hasAccount
       ? {
           label: 'Not fully enabled',
           className:
-            'border border-amber-500/40 bg-amber-500/10 text-amber-200',
+            'border border-amber-300 bg-amber-200 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
         }
       : {
           label: 'No account',
           className:
-            'border border-slate-500/30 bg-slate-500/10 text-slate-300',
+            'border border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-300',
         };
 
   return (

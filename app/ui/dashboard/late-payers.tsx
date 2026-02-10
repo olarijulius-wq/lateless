@@ -22,7 +22,7 @@ export default async function LatePayers() {
           <>
             <Link
               href="/dashboard/late-payers"
-              className={`${lusitana.className} text-xl text-slate-100 hover:text-white md:text-2xl`}
+              className={`${lusitana.className} text-xl text-slate-900 hover:text-slate-700 dark:text-slate-100 dark:hover:text-white md:text-2xl`}
             >
               Late payers
             </Link>
@@ -35,7 +35,7 @@ export default async function LatePayers() {
           </>
         ) : (
           <>
-            <h2 className={`${lusitana.className} text-xl text-slate-100 md:text-2xl`}>
+            <h2 className={`${lusitana.className} text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}>
               Late payers
             </h2>
             <div className="flex flex-col items-end gap-1">
@@ -46,7 +46,7 @@ export default async function LatePayers() {
               >
                 View all late payers
               </span>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 Available on Solo, Pro, and Studio plans.
               </p>
             </div>
@@ -54,14 +54,14 @@ export default async function LatePayers() {
         )}
       </div>
 
-      <div className="flex grow flex-col rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+      <div className="flex grow flex-col rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
         {!canView ? (
-          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-6">
-            <p className="text-sm text-slate-100">
+          <div className="rounded-xl border border-neutral-200 bg-slate-50 p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <p className="text-sm text-slate-900 dark:text-slate-100">
               See which clients consistently pay late and how many days they
               delay payments.
             </p>
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
               Available on Solo, Pro, and Studio.
             </p>
             <Link
@@ -72,8 +72,8 @@ export default async function LatePayers() {
             </Link>
           </div>
         ) : isEmpty ? (
-          <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-6">
-            <p className="text-sm text-slate-200">
+          <div className="rounded-xl border border-neutral-200 bg-slate-50 p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <p className="text-sm text-slate-700 dark:text-slate-200">
               No late payer data yet. Late payments will appear here.
             </p>
           </div>
@@ -84,24 +84,24 @@ export default async function LatePayers() {
                 <Link
                   key={payer.customer_id}
                   href={`/dashboard/customers/${payer.customer_id}`}
-                  className="block rounded-xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
+                  className="block rounded-xl border border-neutral-200 bg-white p-4 text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-slate-100 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
                 >
                   <div className="flex justify-between gap-4">
                     <div className="flex-1 space-y-1">
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
                         Customer
                       </p>
-                      <p className="truncate text-sm font-semibold text-slate-100">
+                      <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                         {payer.name}
                       </p>
-                      <p className="truncate text-xs text-slate-400">
+                      <p className="truncate text-xs text-slate-600 dark:text-slate-400">
                         {payer.email}
                       </p>
                     </div>
 
                     <div className="flex flex-col items-end gap-1">
                       <div className="text-right">
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
                           Paid invoices
                         </p>
                         <p className="text-sm text-emerald-800 dark:text-emerald-300">
@@ -109,7 +109,7 @@ export default async function LatePayers() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-slate-400">
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
                           Avg delay
                         </p>
                         <p className="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-400/50 dark:bg-amber-500/10 dark:text-amber-300">
@@ -122,23 +122,23 @@ export default async function LatePayers() {
               ))}
             </div>
 
-            <div className="hidden rounded-xl border border-slate-800 bg-slate-950/60 md:block">
-              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-4 border-b border-slate-800 px-4 py-3 text-xs uppercase tracking-[0.12em] text-slate-500">
+            <div className="hidden rounded-xl border border-neutral-200 bg-slate-50 md:block dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-4 border-b border-neutral-200 px-4 py-3 text-xs uppercase tracking-[0.12em] text-slate-500 dark:border-neutral-800">
                 <span>Name</span>
                 <span>Email</span>
                 <span className="text-right">Stats</span>
               </div>
-              <div className="divide-y divide-slate-800">
+              <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
                 {latePayers.map((payer) => (
                   <Link
                     key={payer.customer_id}
                     href={`/dashboard/customers/${payer.customer_id}`}
-                    className="flex flex-col gap-2 px-4 py-3 text-sm text-slate-200 transition hover:bg-neutral-100 dark:hover:bg-slate-900 md:flex-row md:items-center md:justify-between"
+                    className="flex flex-col gap-2 px-4 py-3 text-sm text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-neutral-900 md:flex-row md:items-center md:justify-between"
                   >
-                    <span className="min-w-0 font-medium text-slate-100 md:w-[30%] md:truncate">
+                    <span className="min-w-0 font-medium text-slate-900 dark:text-slate-100 md:w-[30%] md:truncate">
                       {payer.name}
                     </span>
-                    <span className="min-w-0 text-slate-400 md:w-[40%] md:truncate">
+                    <span className="min-w-0 text-slate-600 dark:text-slate-400 md:w-[40%] md:truncate">
                       {payer.email}
                     </span>
                     <span className="text-xs md:w-[30%] md:text-right">
@@ -161,7 +161,7 @@ export default async function LatePayers() {
           <div className="mt-4 flex justify-end">
             <Link
               href="/dashboard/late-payers"
-              className="text-xs text-slate-400 hover:text-slate-200"
+              className="text-xs text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
             >
               Open late payers
             </Link>
