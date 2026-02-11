@@ -46,6 +46,13 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      authorization: {
+        params: {
+          prompt: 'select_account consent',
+          access_type: 'offline',
+          include_granted_scopes: 'true',
+        },
+      },
     }),
   );
 }
@@ -57,6 +64,7 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
       clientSecret: process.env.GITHUB_CLIENT_SECRET,
       authorization: {
         params: {
+          prompt: 'login',
           scope: 'read:user user:email',
         },
       },

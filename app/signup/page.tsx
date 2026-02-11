@@ -9,6 +9,13 @@ export const metadata: Metadata = {
 };
 
 export default function Page() {
+  const googleEnabled = Boolean(
+    process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
+  );
+  const githubEnabled = Boolean(
+    process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET,
+  );
+
   return (
     <AuthLayout
       title="Create a Lateless account"
@@ -23,7 +30,7 @@ export default function Page() {
       maxWidthClassName="max-w-lg"
     >
       <Suspense>
-        <SignupForm />
+        <SignupForm googleEnabled={googleEnabled} githubEnabled={githubEnabled} />
       </Suspense>
     </AuthLayout>
   );

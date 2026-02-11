@@ -1,0 +1,10 @@
+.authInput:-webkit-autofill,
+.authInput:-webkit-autofill:hover,
+.authInput:-webkit-autofill:focus,
+.authInput:-webkit-autofill:active {
+  -webkit-text-fill-color: #e5e7eb;
+  caret-color: #e5e7eb;
+  box-shadow: 0 0 0 1000px rgba(10, 10, 10, 0.92) inset;
+  -webkit-box-shadow: 0 0 0 1000px rgba(10, 10, 10, 0.92) inset;
+  transition: background-color 9999s ease-out 0s;
+}

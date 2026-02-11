@@ -14,6 +14,12 @@ import { initialLoginState } from '@/app/lib/login-state';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import SocialAuthButtons from '@/app/(auth)/_components/social-auth-buttons';
+import authInputStyles from '@/app/(auth)/_components/auth-inputs.module.css';
+
+type LoginFormProps = {
+  googleEnabled: boolean;
+  githubEnabled: boolean;
+};
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -29,7 +35,7 @@ function SubmitButton() {
   );
 }
 
-export default function LoginForm() {
+export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -134,7 +140,7 @@ export default function LoginForm() {
           autoComplete="one-time-code"
           maxLength={6}
           required
-          className="block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-3 text-center text-lg tracking-[0.24em] tabular-nums text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20"
+          className={`${authInputStyles.authInput} block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-3 text-center text-lg tracking-[0.24em] tabular-nums text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20`}
           placeholder="000000"
         />
 
@@ -169,7 +175,10 @@ export default function LoginForm() {
 
   return (
     <form action={formAction} className="space-y-5" onSubmit={handleSubmit}>
-      <SocialAuthButtons />
+      <SocialAuthButtons
+        googleEnabled={googleEnabled}
+        githubEnabled={githubEnabled}
+      />
       <div className="flex items-center gap-3">
         <span className="h-px flex-1 bg-white/10" />
         <span className="text-xs uppercase tracking-[0.16em] text-white/50">
@@ -205,7 +214,7 @@ export default function LoginForm() {
             placeholder="you@example.com"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="peer block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-[11px] pl-10 text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20"
+            className={`${authInputStyles.authInput} peer block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-[11px] pl-10 text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20`}
           />
           <AtSymbolIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/40 transition peer-focus:text-white/70" />
         </div>
@@ -228,7 +237,7 @@ export default function LoginForm() {
             placeholder="Enter your password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="peer block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-[11px] pl-10 text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20"
+            className={`${authInputStyles.authInput} peer block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-[11px] pl-10 text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20`}
           />
           <KeyIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/40 transition peer-focus:text-white/70" />
         </div>

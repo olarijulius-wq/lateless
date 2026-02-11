@@ -5,8 +5,14 @@ import { ArrowRightIcon } from '@heroicons/react/20/solid';
 import { Button } from '@/app/ui/button';
 import { registerUser, SignupState } from '@/app/lib/actions';
 import SocialAuthButtons from '@/app/(auth)/_components/social-auth-buttons';
+import authInputStyles from '@/app/(auth)/_components/auth-inputs.module.css';
 
-export default function SignupForm() {
+type SignupFormProps = {
+  googleEnabled: boolean;
+  githubEnabled: boolean;
+};
+
+export default function SignupForm({ googleEnabled, githubEnabled }: SignupFormProps) {
   const initialState: SignupState = { message: null, errors: {} };
   const [state, formAction] = useActionState(registerUser, initialState);
   const [email, setEmail] = useState('');
@@ -33,7 +39,10 @@ export default function SignupForm() {
 
   return (
     <form action={formAction} className="space-y-5" onSubmit={handleSubmit}>
-      <SocialAuthButtons />
+      <SocialAuthButtons
+        googleEnabled={googleEnabled}
+        githubEnabled={githubEnabled}
+      />
       <div className="flex items-center gap-3">
         <span className="h-px flex-1 bg-white/10" />
         <span className="text-xs uppercase tracking-[0.16em] text-white/50">
@@ -49,7 +58,7 @@ export default function SignupForm() {
         <input
           name="email"
           type="email"
-          className="block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] px-3 py-[11px] text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20"
+          className={`${authInputStyles.authInput} block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] px-3 py-[11px] text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20`}
           placeholder="you@example.com"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -64,7 +73,7 @@ export default function SignupForm() {
         <input
           name="password"
           type="password"
-          className="block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] px-3 py-[11px] text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20"
+          className={`${authInputStyles.authInput} block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] px-3 py-[11px] text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20`}
           placeholder="At least 6 characters"
           value={password}
           onChange={(event) => setPassword(event.target.value)}

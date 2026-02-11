@@ -1,10 +1,14 @@
 'use client';
 
 import clsx from 'clsx';
-import { getProviders, signIn } from 'next-auth/react';
-import { useEffect, useMemo, useState, type ReactElement } from 'react';
+import { signIn } from 'next-auth/react';
+import type { ReactElement } from 'react';
 import { useSearchParams } from 'next/navigation';
-type ProviderMap = Record<string, { id?: string }> | null;
+
+type SocialAuthButtonsProps = {
+  googleEnabled: boolean;
+  githubEnabled: boolean;
+};
 
 function GoogleIcon() {
   return (
@@ -24,73 +28,32 @@ function GitHubIcon() {
   );
 }
 
-export default function SocialAuthButtons() {
+export default function SocialAuthButtons({
+  googleEnabled,
+  githubEnabled,
+}: SocialAuthButtonsProps) {
   const searchParams = useSearchParams();
-  const [providers, setProviders] = useState<ProviderMap>(null);
-
-  useEffect(() => {
-    let active = true;
-    const loadProviders = async () => {
-      try {
-        // Guard the endpoint first to avoid noisy JSON parse errors in setups
-        // where providers route may return HTML.
-        const probe = await fetch('/api/auth/providers', {
-          method: 'GET',
-          headers: { Accept: 'application/json' },
-          cache: 'no-store',
-        });
-
-        if (!probe.ok) {
-          if (active) setProviders(null);
-          return;
-        }
-
-        const contentType = probe.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-          if (active) setProviders(null);
-          return;
-        }
-
-        const loaded = (await getProviders()) as ProviderMap;
-        if (active) {
-          setProviders(loaded);
-        }
-      } catch {
-        if (active) {
-          // Fail closed when the providers endpoint is unavailable.
-          setProviders(null);
-        }
-      }
-    };
-    loadProviders();
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
-
-  const items = useMemo(() => {
-    return [
-      {
-        id: 'google',
-        label: 'Google',
-        icon: <GoogleIcon />,
-        available: Boolean(providers?.google),
-      },
-      {
-        id: 'github',
-        label: 'GitHub',
-        icon: <GitHubIcon />,
-        available: Boolean(providers?.github),
-      },
-    ] as Array<{
-      id: string;
-      label: string;
-      icon: ReactElement;
-      available: boolean;
-    }>;
-  }, [providers]);
+  const items = [
+    {
+      id: 'google',
+      label: 'Google',
+      icon: <GoogleIcon />,
+      available: googleEnabled,
+    },
+    {
+      id: 'github',
+      label: 'GitHub',
+      icon: <GitHubIcon />,
+      available: githubEnabled,
+    },
+  ] as Array<{
+    id: string;
+    label: string;
+    icon: ReactElement;
+    available: boolean;
+  }>;
 
   return (
     <div className="space-y-4">

@@ -9,11 +9,13 @@ import {
 } from '@heroicons/react/24/outline';
 import {
   Button,
-  secondaryButtonClasses,
   primaryButtonClasses,
 } from '@/app/ui/button';
 import { useActionState, useState } from 'react';
 import { createInvoice, type CreateInvoiceState } from '@/app/lib/actions';
+
+const neutralSecondaryButtonClasses =
+  'inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition duration-200 ease-out hover:bg-neutral-50 hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:hover:bg-neutral-900 dark:focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50';
 
 export default function Form({
   customers,
@@ -30,17 +32,17 @@ export default function Form({
   const [dueDate, setDueDate] = useState('');
   return (
     <form action={formAction}>
-      <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:p-6 dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+      <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:p-6 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
         {/* Customer Name */}
         <div className="mb-4">
-          <label htmlFor="customer" className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-200">
+          <label htmlFor="customer" className="mb-2 block text-sm font-medium text-neutral-900 dark:text-neutral-100">
             Choose customer
           </label>
           <div className="relative">
             <select
               id="customer"
               name="customerId"
-              className="peer block w-full cursor-pointer rounded-xl border border-neutral-300 bg-white py-2 pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-600/30"
+              className="peer block w-full cursor-pointer rounded-xl border border-neutral-300 bg-white py-2 pl-10 text-sm text-neutral-900 outline-none placeholder:text-neutral-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-500/40"
               value={customerId}
               onChange={(event) => setCustomerId(event.target.value)}
               aria-describedby="customer-error"
@@ -54,7 +56,7 @@ export default function Form({
                 </option>
               ))}
             </select>
-            <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500 transition peer-focus:text-neutral-800 dark:peer-focus:text-neutral-200" />
+            <UserCircleIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-neutral-500 transition peer-focus:text-neutral-800 dark:peer-focus:text-neutral-300" />
           </div>
           <div id="customer-error" aria-live="polite" aria-atomic="true">
             {state?.ok === false &&
@@ -69,7 +71,7 @@ export default function Form({
 
         {/* Invoice Amount */}
         <div className="mb-4">
-          <label htmlFor="amount" className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-200">
+          <label htmlFor="amount" className="mb-2 block text-sm font-medium text-neutral-900 dark:text-neutral-100">
             Choose an amount
           </label>
           <div className="relative mt-2 rounded-md">
@@ -82,10 +84,10 @@ export default function Form({
                 placeholder="Enter amount in EUR"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}
-                className="peer block w-full rounded-xl border border-neutral-300 bg-white py-2 pl-10 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-600/30"
+                className="peer block w-full rounded-xl border border-neutral-300 bg-white py-2 pl-10 text-sm text-neutral-900 outline-none placeholder:text-neutral-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-500/40"
                 aria-describedby="amount-error"
               />
-              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-500 transition peer-focus:text-neutral-800 dark:peer-focus:text-neutral-200">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-neutral-500 transition peer-focus:text-neutral-800 dark:peer-focus:text-neutral-300">
                 €
               </span>
             </div>
@@ -103,10 +105,10 @@ export default function Form({
 
         {/* Invoice Status */}
         <fieldset>
-          <legend className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-200">
+          <legend className="mb-2 block text-sm font-medium text-neutral-900 dark:text-neutral-100">
             Set the invoice status
           </legend>
-          <div className="rounded-xl border border-neutral-300 bg-neutral-50 px-[14px] py-3 dark:border-neutral-800 dark:bg-slate-950/60">
+          <div className="rounded-xl border border-neutral-300 bg-neutral-50 px-[14px] py-3 dark:border-neutral-800 dark:bg-neutral-950">
             <div className="flex gap-4">
               <div className="flex items-center">
                 <input
@@ -116,7 +118,7 @@ export default function Form({
                   value="pending"
                   checked={status === 'pending'}
                   onChange={(event) => setStatus(event.target.value)}
-                  className="h-4 w-4 cursor-pointer border-neutral-400 bg-white text-black accent-black focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-700 dark:bg-slate-900 dark:text-slate-200 dark:accent-neutral-100 dark:focus:ring-neutral-600/30"
+                  className="h-4 w-4 cursor-pointer border-neutral-400 bg-white text-black accent-black focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:accent-neutral-100 dark:focus:ring-neutral-500/40"
                   aria-describedby="status-error"
                 />
                 <label
@@ -134,7 +136,7 @@ export default function Form({
                   value="paid"
                   checked={status === 'paid'}
                   onChange={(event) => setStatus(event.target.value)}
-                  className="h-4 w-4 cursor-pointer border-neutral-400 bg-white text-black accent-black focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-700 dark:bg-slate-900 dark:text-slate-200 dark:accent-neutral-100 dark:focus:ring-neutral-600/30"
+                  className="h-4 w-4 cursor-pointer border-neutral-400 bg-white text-black accent-black focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:accent-neutral-100 dark:focus:ring-neutral-500/40"
                 />
                 <label
                   htmlFor="paid"
@@ -156,7 +158,7 @@ export default function Form({
           </div>
         </fieldset>
         <div className="mt-4">
-          <label htmlFor="dueDate" className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-200">
+          <label htmlFor="dueDate" className="mb-2 block text-sm font-medium text-neutral-900 dark:text-neutral-100">
             Due date
           </label>
           <input
@@ -165,7 +167,7 @@ export default function Form({
             type="date"
             value={dueDate}
             onChange={(event) => setDueDate(event.target.value)}
-            className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-slate-950/60 dark:text-slate-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-600/30"
+            className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-500/40"
             aria-describedby="dueDate-error"
           />
           <div id="dueDate-error" aria-live="polite" aria-atomic="true">
@@ -198,7 +200,7 @@ export default function Form({
       <div className="mt-6 flex justify-end gap-4">
         <Link
           href="/dashboard/invoices"
-          className={secondaryButtonClasses}
+          className={neutralSecondaryButtonClasses}
         >
           Cancel
         </Link>

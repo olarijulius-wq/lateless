@@ -22,6 +22,12 @@ export default async function LoginPage(props: LoginPageProps) {
   const verifiedSuccess = searchParams?.verified === 'success';
   const verifiedAlready = searchParams?.verified === 'already';
   const resetSuccess = searchParams?.reset === 'success';
+  const googleEnabled = Boolean(
+    process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
+  );
+  const githubEnabled = Boolean(
+    process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET,
+  );
 
   return (
     <AuthLayout
@@ -60,7 +66,7 @@ export default async function LoginPage(props: LoginPageProps) {
           </div>
         )}
         <Suspense>
-          <LoginForm />
+          <LoginForm googleEnabled={googleEnabled} githubEnabled={githubEnabled} />
         </Suspense>
       </div>
     </AuthLayout>
