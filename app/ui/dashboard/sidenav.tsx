@@ -12,6 +12,10 @@ import { signOut } from '@/auth';
 import { auth } from '@/auth';
 import ThemeToggleMenuItem from '@/app/ui/dashboard/theme-toggle-menu-item';
 import MobileDrawer from '@/app/ui/dashboard/mobile-drawer';
+import {
+  NEUTRAL_FOCUS_RING_CLASSES,
+  NEUTRAL_INACTIVE_ITEM_CLASSES,
+} from '@/app/ui/dashboard/neutral-interaction';
 
 function getInitial(value: string) {
   const initial = value.trim().charAt(0).toUpperCase();
@@ -28,6 +32,7 @@ export default async function SideNav() {
     'use server';
     await signOut({ redirectTo: '/' });
   };
+  const accountMenuItemClasses = `flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 transition dark:text-neutral-300 ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`;
 
   return (
     <div className="flex h-full flex-col gap-2 px-3 py-4 md:px-2">
@@ -68,14 +73,14 @@ export default async function SideNav() {
               </p>
               <Link
                 href="/dashboard/profile"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
+                className={accountMenuItemClasses}
               >
                 <UserCircleIcon className="h-4 w-4" />
                 My profile
               </Link>
               <Link
                 href="/dashboard/settings"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
+                className={accountMenuItemClasses}
               >
                 <Cog6ToothIcon className="h-4 w-4" />
                 Settings
@@ -86,14 +91,14 @@ export default async function SideNav() {
               <ThemeToggleMenuItem />
               <Link
                 href="/"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
+                className={accountMenuItemClasses}
               >
                 <HomeIcon className="h-4 w-4" />
                 Homepage
               </Link>
               <Link
                 href="/onboarding"
-                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-900 dark:hover:text-neutral-100"
+                className={accountMenuItemClasses}
               >
                 <UserCircleIcon className="h-4 w-4" />
                 Onboarding

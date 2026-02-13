@@ -3,6 +3,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
+import {
+  NEUTRAL_ACTIVE_ITEM_CLASSES,
+  NEUTRAL_FOCUS_RING_CLASSES,
+  NEUTRAL_INACTIVE_ITEM_CLASSES,
+} from '@/app/ui/dashboard/neutral-interaction';
 
 const sections = [
   { name: 'Overview', href: '/dashboard/settings' },
@@ -13,6 +18,7 @@ const sections = [
   { name: 'SMTP', href: '/dashboard/settings/smtp' },
   { name: 'Unsubscribe', href: '/dashboard/settings/unsubscribe' },
   { name: 'Documents', href: '/dashboard/settings/documents' },
+  { name: 'Payouts', href: '/dashboard/settings/payouts' },
 ];
 
 export default function SettingsSectionsNav() {
@@ -27,10 +33,10 @@ export default function SettingsSectionsNav() {
             key={section.href}
             href={section.href}
             className={clsx(
-              'inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-medium transition',
+              `inline-flex items-center rounded-lg px-3 py-1.5 text-xs font-medium transition ${NEUTRAL_FOCUS_RING_CLASSES}`,
               active
-                ? 'border-slate-900 bg-black text-white ring-1 ring-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-50 dark:ring-slate-500'
-                : 'border-slate-900 bg-black text-white hover:bg-slate-900 dark:border-slate-800 dark:bg-black dark:text-slate-300 dark:hover:bg-slate-900',
+                ? NEUTRAL_ACTIVE_ITEM_CLASSES
+                : `border border-transparent ${NEUTRAL_INACTIVE_ITEM_CLASSES}`,
             )}
           >
             {section.name}

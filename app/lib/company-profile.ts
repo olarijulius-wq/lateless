@@ -1,4 +1,5 @@
 import postgres from 'postgres';
+import { normalizeVat } from './vat';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -6,6 +7,7 @@ export type WorkspaceCompanyProfile = {
   workspaceId: string;
   companyName: string;
   address: string;
+  vatNumber: string;
   vatOrRegNumber: string;
   companyEmail: string;
   invoiceFooter: string;
@@ -28,6 +30,7 @@ function emptyProfile(workspaceId: string): WorkspaceCompanyProfile {
     workspaceId,
     companyName: '',
     address: '',
+    vatNumber: '',
     vatOrRegNumber: '',
     companyEmail: '',
     invoiceFooter: '',
@@ -40,14 +43,16 @@ function toProfile(workspaceId: string, row?: CompanyProfileRow): WorkspaceCompa
     return emptyProfile(workspaceId);
   }
 
-  const vatOrRegNumber = [row.vat_number?.trim(), row.reg_code?.trim()]
-    .filter(Boolean)
-    .join(' / ');
+  const vatNumber = normalizeVat(row.vat_number ?? '');
+  const regCode = normalizeRegCode(row.reg_code);
+  const vatOrRegNumber =
+    regCode && regCode !== vatNumber ? `${vatNumber} / ${regCode}` : vatNumber;
 
   return {
     workspaceId,
     companyName: row.company_name ?? '',
     address: row.address_line1 ?? '',
+    vatNumber,
     vatOrRegNumber,
     companyEmail: row.billing_email ?? '',
     invoiceFooter: row.invoice_footer ?? '',
@@ -63,6 +68,20 @@ function optionalText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function optionalVat(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeVat(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeRegCode(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  const firstSegment = trimmed.split('/')[0] ?? '';
+  return firstSegment.replace(/\s+/g, ' ').trim();
 }
 
 function requireText(value: unknown, fieldName: string): string {
@@ -129,13 +148,13 @@ export async function upsertCompanyProfileForWorkspace(input: {
   workspaceId: string;
   companyName: unknown;
   address: unknown;
-  vatOrRegNumber: unknown;
+  vatNumber: unknown;
   companyEmail: unknown;
   invoiceFooter: unknown;
 }): Promise<WorkspaceCompanyProfile> {
   const companyName = requireText(input.companyName, 'companyName');
   const address = optionalText(input.address);
-  const vatOrRegNumber = optionalText(input.vatOrRegNumber);
+  const vatNumber = optionalVat(input.vatNumber);
   const companyEmail = ensureEmail(input.companyEmail, 'companyEmail');
   const invoiceFooter = optionalText(input.invoiceFooter);
   const ownerMeta = await fetchWorkspaceOwnerMeta(input.workspaceId);
@@ -157,8 +176,8 @@ export async function upsertCompanyProfileForWorkspace(input: {
       ${ownerMeta.ownerEmail},
       ${companyName},
       ${address},
-      ${vatOrRegNumber},
-      ${vatOrRegNumber},
+      null,
+      ${vatNumber},
       ${companyEmail},
       ${invoiceFooter},
       now()
@@ -168,7 +187,6 @@ export async function upsertCompanyProfileForWorkspace(input: {
       user_email = excluded.user_email,
       company_name = excluded.company_name,
       address_line1 = excluded.address_line1,
-      reg_code = excluded.reg_code,
       vat_number = excluded.vat_number,
       billing_email = excluded.billing_email,
       invoice_footer = excluded.invoice_footer,

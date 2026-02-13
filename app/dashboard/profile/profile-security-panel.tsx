@@ -3,6 +3,10 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import { primaryButtonClasses } from '@/app/ui/button';
+import {
+  NEUTRAL_FOCUS_RING_CLASSES,
+  NEUTRAL_INACTIVE_ITEM_CLASSES,
+} from '@/app/ui/dashboard/neutral-interaction';
 
 type ApiResponse = {
   ok?: boolean;
@@ -13,6 +17,8 @@ type EmailPasswordPanelProps = {
   email: string;
   connectedOnLabel: string;
 };
+
+const profileInputClasses = `block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 transition dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 ${NEUTRAL_FOCUS_RING_CLASSES}`;
 
 export function EmailPasswordPanel({
   email,
@@ -63,7 +69,7 @@ export function EmailPasswordPanel({
             aria-expanded={menuOpen}
             aria-haspopup="menu"
             onClick={() => setMenuOpen((current) => !current)}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-300 text-lg leading-none text-neutral-700 transition hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/60 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-900"
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-300 text-lg leading-none text-neutral-700 transition dark:border-neutral-700 dark:text-neutral-200 ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`}
           >
             &#8942;
           </button>
@@ -79,7 +85,7 @@ export function EmailPasswordPanel({
                   setShowChangePassword(true);
                   setMenuOpen(false);
                 }}
-                className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-800 transition hover:bg-neutral-100 dark:text-slate-200 dark:hover:bg-neutral-900"
+                className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition text-slate-800 dark:text-slate-200 ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`}
               >
                 Change password
               </button>
@@ -157,7 +163,7 @@ export function ChangePasswordForm() {
           required
           value={currentPassword}
           onChange={(event) => setCurrentPassword(event.target.value)}
-          className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900/20 focus:ring-2 focus:ring-neutral-900/20 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-500/25 dark:focus:ring-neutral-500/25"
+          className={profileInputClasses}
         />
       </div>
 
@@ -176,7 +182,7 @@ export function ChangePasswordForm() {
           required
           value={newPassword}
           onChange={(event) => setNewPassword(event.target.value)}
-          className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900/20 focus:ring-2 focus:ring-neutral-900/20 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-500/25 dark:focus:ring-neutral-500/25"
+          className={profileInputClasses}
         />
       </div>
 
@@ -195,7 +201,7 @@ export function ChangePasswordForm() {
           required
           value={confirmNewPassword}
           onChange={(event) => setConfirmNewPassword(event.target.value)}
-          className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900/20 focus:ring-2 focus:ring-neutral-900/20 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-500/25 dark:focus:ring-neutral-500/25"
+          className={profileInputClasses}
         />
       </div>
 
@@ -277,7 +283,7 @@ export function DeleteAccountForm() {
             required
             value={deleteConfirmText}
             onChange={(event) => setDeleteConfirmText(event.target.value)}
-            className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900/20 focus:ring-2 focus:ring-neutral-900/20 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-500/25 dark:focus:ring-neutral-500/25"
+            className={profileInputClasses}
             placeholder="DELETE"
           />
         </div>
@@ -296,7 +302,7 @@ export function DeleteAccountForm() {
             required
             value={deletePassword}
             onChange={(event) => setDeletePassword(event.target.value)}
-            className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition focus:border-neutral-900/20 focus:ring-2 focus:ring-neutral-900/20 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-500/25 dark:focus:ring-neutral-500/25"
+            className={profileInputClasses}
           />
         </div>
 

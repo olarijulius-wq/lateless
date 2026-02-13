@@ -3,6 +3,7 @@ import {
   fetchCompanyProfileForWorkspace,
   upsertCompanyProfileForWorkspace,
 } from '@/app/lib/company-profile';
+import { normalizeVat } from '@/app/lib/vat';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
     | {
         companyName?: unknown;
         address?: unknown;
+        vatNumber?: unknown;
         vatOrRegNumber?: unknown;
         companyEmail?: unknown;
         invoiceFooter?: unknown;
@@ -64,11 +66,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const incomingVat =
+      typeof body?.vatNumber === 'string'
+        ? body.vatNumber
+        : typeof body?.vatOrRegNumber === 'string'
+          ? body.vatOrRegNumber
+          : '';
+    const normalizedVatNumber = normalizeVat(incomingVat);
+
     const profile = await upsertCompanyProfileForWorkspace({
       workspaceId: context.workspaceId,
       companyName: body?.companyName,
       address: body?.address,
-      vatOrRegNumber: body?.vatOrRegNumber,
+      vatNumber: normalizedVatNumber,
       companyEmail: body?.companyEmail,
       invoiceFooter: body?.invoiceFooter,
     });

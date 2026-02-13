@@ -9,6 +9,7 @@ import {
   SETTINGS_TEXTAREA_CLASSES,
 } from '@/app/ui/form-control';
 import type { WorkspaceCompanyProfile } from '@/app/lib/company-profile';
+import { normalizeVat } from '@/app/lib/vat';
 
 type CompanyProfileSettingsPanelProps = {
   initialProfile: WorkspaceCompanyProfile;
@@ -25,6 +26,7 @@ export default function CompanyProfileSettingsPanel({
   const [profile, setProfile] = useState(initialProfile);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const canonicalVatPreview = normalizeVat(profile.vatNumber);
 
   function onSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,10 +34,17 @@ export default function CompanyProfileSettingsPanel({
 
     setMessage(null);
     startTransition(async () => {
+      const normalizedVatNumber = normalizeVat(profile.vatNumber);
       const response = await fetch('/api/settings/company-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profile),
+        body: JSON.stringify({
+          companyName: profile.companyName,
+          address: profile.address,
+          vatNumber: normalizedVatNumber,
+          companyEmail: profile.companyEmail,
+          invoiceFooter: profile.invoiceFooter,
+        }),
       });
 
       const payload = (await response.json().catch(() => null)) as
@@ -195,16 +204,21 @@ export default function CompanyProfileSettingsPanel({
             VAT / registration no.
           </label>
           <input
-            value={profile.vatOrRegNumber}
+            value={profile.vatNumber}
             onChange={(event) =>
               setProfile((current) => ({
                 ...current,
-                vatOrRegNumber: event.target.value,
+                vatNumber: event.target.value,
               }))
             }
             disabled={!canEdit || isPending}
             className={SETTINGS_INPUT_CLASSES}
           />
+          {canonicalVatPreview && (
+            <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+              Combined VAT/registration preview: {canonicalVatPreview}
+            </p>
+          )}
         </div>
 
         <div>

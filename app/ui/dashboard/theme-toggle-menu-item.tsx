@@ -4,6 +4,10 @@ import { useSyncExternalStore } from 'react';
 import { MoonIcon, SunIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '@/app/ui/theme/theme-provider';
 import clsx from 'clsx';
+import {
+  NEUTRAL_FOCUS_RING_CLASSES,
+  NEUTRAL_INACTIVE_ITEM_CLASSES,
+} from '@/app/ui/dashboard/neutral-interaction';
 
 type ThemeToggleMenuItemProps = {
   staticLabel?: string;
@@ -11,7 +15,7 @@ type ThemeToggleMenuItemProps = {
 };
 
 const baseClassName =
-  'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-900 dark:hover:text-neutral-100';
+  `flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-neutral-700 transition dark:text-neutral-300 ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`;
 
 export default function ThemeToggleMenuItem({
   staticLabel,

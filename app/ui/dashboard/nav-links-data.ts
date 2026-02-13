@@ -4,6 +4,7 @@ import {
   DocumentDuplicateIcon,
   Cog6ToothIcon,
   ClockIcon,
+  EnvelopeIcon,
   ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 
@@ -22,6 +23,7 @@ const BASE_DASHBOARD_LINKS: DashboardNavLink[] = [
   },
   { name: 'Customers', href: '/dashboard/customers', icon: UserGroupIcon },
   { name: 'Late payers', href: '/dashboard/late-payers', icon: ClockIcon },
+  { name: 'Reminders', href: '/dashboard/reminders', icon: EnvelopeIcon },
   { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
 ];
 

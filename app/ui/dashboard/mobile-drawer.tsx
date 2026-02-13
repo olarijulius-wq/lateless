@@ -14,6 +14,10 @@ import {
 import { getDashboardLinks } from '@/app/ui/dashboard/nav-links-data';
 import ThemeToggleMenuItem from '@/app/ui/dashboard/theme-toggle-menu-item';
 import { lusitana } from '@/app/ui/fonts';
+import {
+  NEUTRAL_FOCUS_RING_CLASSES,
+  NEUTRAL_INACTIVE_ITEM_CLASSES,
+} from '@/app/ui/dashboard/neutral-interaction';
 
 type MobileDrawerProps = {
   userEmail: string;
@@ -24,6 +28,7 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const mainLinks = getDashboardLinks(userEmail);
+  const accountMenuItemClasses = `flex items-center gap-2 rounded-lg px-2 py-2 text-base text-neutral-300 transition ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`;
 
   useEffect(() => {
     if (!open) return;
@@ -122,19 +127,19 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
               <Link
                 href="/dashboard/profile"
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-lg px-2 py-2 text-base text-neutral-300 transition hover:bg-neutral-950 hover:text-neutral-100"
+                className={accountMenuItemClasses}
               >
                 <UserCircleIcon className="h-5 w-5" />
                 My profile
               </Link>
               <ThemeToggleMenuItem
                 staticLabel="Toggle theme"
-                className="px-2 py-2 text-base text-neutral-300 hover:bg-neutral-950 hover:text-neutral-100"
+                className="px-2 py-2 text-base text-neutral-300"
               />
               <Link
                 href="/"
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-lg px-2 py-2 text-base text-neutral-300 transition hover:bg-neutral-950 hover:text-neutral-100"
+                className={accountMenuItemClasses}
               >
                 <ArrowLeftIcon className="h-5 w-5" />
                 Homepage
@@ -142,7 +147,7 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
               <Link
                 href="/onboarding"
                 onClick={() => setOpen(false)}
-                className="flex items-center gap-2 rounded-lg px-2 py-2 text-base text-neutral-300 transition hover:bg-neutral-950 hover:text-neutral-100"
+                className={accountMenuItemClasses}
               >
                 <UserCircleIcon className="h-5 w-5" />
                 Onboarding
@@ -153,7 +158,7 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
               >
                 <button
                   type="submit"
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-base text-neutral-300 transition hover:bg-neutral-950 hover:text-neutral-100"
+                  className={`w-full text-left ${accountMenuItemClasses}`}
                 >
                   <PowerIcon className="h-5 w-5" />
                   Log out
