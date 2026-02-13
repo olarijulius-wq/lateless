@@ -42,7 +42,7 @@ export async function POST(_: Request, props: RouteProps) {
           ok: false,
           code: TEAM_MIGRATION_REQUIRED_CODE,
           message:
-            'Team requires DB migration 007_add_workspaces_and_team.sql. Run migrations and retry.',
+            'Team requires DB migrations 007_add_workspaces_and_team.sql and 013_add_active_workspace_and_company_profile_workspace_scope.sql. Run migrations and retry.',
         },
         { status: 503 },
       );

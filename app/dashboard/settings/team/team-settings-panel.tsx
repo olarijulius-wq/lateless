@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button, secondaryButtonClasses } from '@/app/ui/button';
 import type {
   InvitableWorkspaceRole,
+  WorkspaceMembershipSummary,
   WorkspaceInvite,
   WorkspaceMember,
   WorkspaceRole,
@@ -15,6 +16,8 @@ type TeamSettingsPanelProps = {
   workspaceName: string;
   userRole: WorkspaceRole;
   currentUserId: string;
+  activeWorkspaceId: string;
+  workspaces: WorkspaceMembershipSummary[];
   members: WorkspaceMember[];
   invites: WorkspaceInvite[];
 };
@@ -40,6 +43,8 @@ export default function TeamSettingsPanel({
   workspaceName,
   userRole,
   currentUserId,
+  activeWorkspaceId,
+  workspaces,
   members,
   invites,
 }: TeamSettingsPanelProps) {
@@ -50,7 +55,7 @@ export default function TeamSettingsPanel({
     null,
   );
   const [isPending, startTransition] = useTransition();
-  const canManage = userRole === 'owner';
+  const canManage = userRole === 'owner' || userRole === 'admin';
 
   async function onInviteSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,6 +115,62 @@ export default function TeamSettingsPanel({
     });
   }
 
+  async function onChangeMemberRole(userId: string, nextRole: InvitableWorkspaceRole) {
+    setStatus(null);
+
+    startTransition(async () => {
+      const response = await fetch(`/api/settings/team/members/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: nextRole }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; message?: string }
+        | null;
+
+      if (!response.ok || !payload?.ok) {
+        setStatus({
+          ok: false,
+          message: payload?.message ?? 'Failed to update role.',
+        });
+        return;
+      }
+
+      setStatus({ ok: true, message: payload.message ?? 'Member role updated.' });
+      router.refresh();
+    });
+  }
+
+  async function onSwitchWorkspace(event: React.ChangeEvent<HTMLSelectElement>) {
+    const nextWorkspaceId = event.target.value;
+    setStatus(null);
+
+    startTransition(async () => {
+      const response = await fetch('/api/settings/team/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspaceId: nextWorkspaceId }),
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; message?: string }
+        | null;
+
+      if (!response.ok || !payload?.ok) {
+        setStatus({
+          ok: false,
+          message: payload?.message ?? 'Failed to switch team.',
+        });
+        return;
+      }
+
+      setStatus({
+        ok: true,
+        message: payload.message ?? 'Active team updated.',
+      });
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-6 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
       <div>
@@ -122,6 +183,20 @@ export default function TeamSettingsPanel({
         <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
           Your role: <span className="font-medium text-slate-800 dark:text-slate-200">{userRole}</span>
         </p>
+        <label className="mt-3 block text-sm text-slate-700 dark:text-slate-300">
+          Active team
+          <select
+            value={activeWorkspaceId}
+            onChange={onSwitchWorkspace}
+            className={`mt-2 ${SETTINGS_SELECT_CLASSES}`}
+          >
+            {workspaces.map((workspace) => (
+              <option key={workspace.workspaceId} value={workspace.workspaceId}>
+                {workspace.workspaceName} ({workspace.role})
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {canManage && (
@@ -170,7 +245,13 @@ export default function TeamSettingsPanel({
         <div className="space-y-2">
           {members.map((member) => {
             const canRemove =
-              canManage && member.userId !== currentUserId && member.role !== 'owner';
+              canManage &&
+              member.userId !== currentUserId &&
+              member.role !== 'owner';
+            const canChangeRole =
+              canManage &&
+              member.userId !== currentUserId &&
+              member.role !== 'owner';
 
             return (
               <div
@@ -187,11 +268,27 @@ export default function TeamSettingsPanel({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${roleBadgeClass(member.role)}`}
-                  >
-                    {member.role}
-                  </span>
+                  {canChangeRole ? (
+                    <select
+                      value={member.role}
+                      onChange={(event) =>
+                        onChangeMemberRole(
+                          member.userId,
+                          event.target.value as InvitableWorkspaceRole,
+                        )
+                      }
+                      className={`${SETTINGS_SELECT_CLASSES} h-8 rounded-lg py-1 text-xs`}
+                    >
+                      <option value="member">Member</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  ) : (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${roleBadgeClass(member.role)}`}
+                    >
+                      {member.role}
+                    </span>
+                  )}
 
                   {canRemove && (
                     <button

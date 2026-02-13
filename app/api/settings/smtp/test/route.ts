@@ -9,10 +9,22 @@ import {
   sendWorkspaceTestEmail,
   SMTP_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/smtp-settings';
+import {
+  isRecipientUnsubscribed,
+  isUnsubscribeMigrationRequiredError,
+} from '@/app/lib/unsubscribe';
 
 export const runtime = 'nodejs';
 
-export async function POST() {
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+export async function POST(request: Request) {
+  const body = (await request.json().catch(() => null)) as
+    | { toEmail?: unknown }
+    | null;
+
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
 
@@ -23,12 +35,42 @@ export async function POST() {
       );
     }
 
+    const toEmailRaw = typeof body?.toEmail === 'string' ? body.toEmail : '';
+    const toEmail = toEmailRaw.trim() ? normalizeEmail(toEmailRaw) : context.userEmail;
+    if (!/^\S+@\S+\.\S+$/.test(toEmail)) {
+      return NextResponse.json(
+        { ok: false, message: 'Please provide a valid email address.' },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const unsubscribed = await isRecipientUnsubscribed(context.workspaceId, toEmail);
+      if (unsubscribed) {
+        return NextResponse.json(
+          {
+            ok: false,
+            message:
+              'Recipient is unsubscribed for this workspace. Marketing test email blocked.',
+          },
+          { status: 409 },
+        );
+      }
+    } catch (unsubscribeError) {
+      if (!isUnsubscribeMigrationRequiredError(unsubscribeError)) {
+        throw unsubscribeError;
+      }
+    }
+
     await sendWorkspaceTestEmail({
       workspaceId: context.workspaceId,
-      toEmail: context.userEmail,
+      toEmail,
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      message: `Test email sent to ${toEmail}.`,
+    });
   } catch (error) {
     if (isTeamMigrationRequiredError(error)) {
       return NextResponse.json(
@@ -36,7 +78,7 @@ export async function POST() {
           ok: false,
           code: TEAM_MIGRATION_REQUIRED_CODE,
           message:
-            'Team requires DB migration 007_add_workspaces_and_team.sql. Run migrations and retry.',
+            'Team requires DB migrations 007_add_workspaces_and_team.sql and 013_add_active_workspace_and_company_profile_workspace_scope.sql. Run migrations and retry.',
         },
         { status: 503 },
       );

@@ -9,6 +9,7 @@ const sections = [
   { name: 'Usage', href: '/dashboard/settings/usage' },
   { name: 'Billing', href: '/dashboard/settings/billing' },
   { name: 'Team', href: '/dashboard/settings/team' },
+  { name: 'Company', href: '/dashboard/settings/company-profile' },
   { name: 'SMTP', href: '/dashboard/settings/smtp' },
   { name: 'Unsubscribe', href: '/dashboard/settings/unsubscribe' },
   { name: 'Documents', href: '/dashboard/settings/documents' },

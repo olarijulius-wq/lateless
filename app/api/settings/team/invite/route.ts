@@ -47,9 +47,9 @@ export async function POST(request: NextRequest) {
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
 
-    if (context.userRole !== 'owner') {
+    if (context.userRole !== 'owner' && context.userRole !== 'admin') {
       return NextResponse.json(
-        { ok: false, message: 'Only workspace owners can invite members.' },
+        { ok: false, message: 'Only workspace owners or admins can invite members.' },
         { status: 403 },
       );
     }
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
           ok: false,
           code: TEAM_MIGRATION_REQUIRED_CODE,
           message:
-            'Team requires DB migration 007_add_workspaces_and_team.sql. Run migrations and retry.',
+            'Team requires DB migrations 007_add_workspaces_and_team.sql and 013_add_active_workspace_and_company_profile_workspace_scope.sql. Run migrations and retry.',
         },
         { status: 503 },
       );

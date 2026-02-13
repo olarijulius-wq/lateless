@@ -28,6 +28,11 @@ const settingCards = [
     description: 'Invite teammates and manage roles.',
   },
   {
+    title: 'Company profile',
+    href: '/dashboard/settings/company-profile',
+    description: 'Manage team billing identity, logo, and invoice footer.',
+  },
+  {
     title: 'SMTP',
     href: '/dashboard/settings/smtp',
     description: 'Configure custom email provider integrations.',

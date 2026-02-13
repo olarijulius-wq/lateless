@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import TeamSettingsPanel from './team-settings-panel';
 import {
   ensureWorkspaceContextForCurrentUser,
+  fetchWorkspaceMembershipsForCurrentUser,
   fetchPendingWorkspaceInvites,
   fetchWorkspaceMembers,
   isTeamMigrationRequiredError,
@@ -17,6 +18,8 @@ export default async function TeamSettingsPage() {
         workspaceName: string;
         userRole: 'owner' | 'admin' | 'member';
         currentUserId: string;
+        activeWorkspaceId: string;
+        workspaces: Awaited<ReturnType<typeof fetchWorkspaceMembershipsForCurrentUser>>;
         members: Awaited<ReturnType<typeof fetchWorkspaceMembers>>;
         invites: Awaited<ReturnType<typeof fetchPendingWorkspaceInvites>>;
       }
@@ -25,17 +28,20 @@ export default async function TeamSettingsPage() {
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
-    const canViewInvites = context.userRole === 'owner';
-    const [members, invites] = await Promise.all([
+    const canViewInvites = context.userRole === 'owner' || context.userRole === 'admin';
+    const [members, invites, workspaces] = await Promise.all([
       fetchWorkspaceMembers(context.workspaceId),
       canViewInvites
         ? fetchPendingWorkspaceInvites(context.workspaceId)
         : Promise.resolve([]),
+      fetchWorkspaceMembershipsForCurrentUser(),
     ]);
     teamData = {
       workspaceName: context.workspaceName,
       userRole: context.userRole,
       currentUserId: context.userId,
+      activeWorkspaceId: context.workspaceId,
+      workspaces,
       members,
       invites,
     };
@@ -54,7 +60,9 @@ export default async function TeamSettingsPage() {
           Team requires a database migration
         </h2>
         <p className="mt-2 text-sm text-amber-800 dark:text-amber-100">
-          Run migration <code>007_add_workspaces_and_team.sql</code> and retry.
+          Run migrations <code>007_add_workspaces_and_team.sql</code> and{' '}
+          <code>013_add_active_workspace_and_company_profile_workspace_scope.sql</code>{' '}
+          and retry.
         </p>
       </div>
     );
@@ -69,6 +77,8 @@ export default async function TeamSettingsPage() {
       workspaceName={teamData.workspaceName}
       userRole={teamData.userRole}
       currentUserId={teamData.currentUserId}
+      activeWorkspaceId={teamData.activeWorkspaceId}
+      workspaces={teamData.workspaces}
       members={teamData.members}
       invites={teamData.invites}
     />

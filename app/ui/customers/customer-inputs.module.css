@@ -1,0 +1,16 @@
+.neutralInput:-webkit-autofill,
+.neutralInput:-webkit-autofill:hover,
+.neutralInput:-webkit-autofill:focus,
+.neutralInput:-webkit-autofill:active {
+  -webkit-text-fill-color: #0f172a;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+html.dark .neutralInput:-webkit-autofill,
+html.dark .neutralInput:-webkit-autofill:hover,
+html.dark .neutralInput:-webkit-autofill:focus,
+html.dark .neutralInput:-webkit-autofill:active {
+  -webkit-text-fill-color: #f1f5f9;
+  box-shadow: 0 0 0 1000px #000000 inset;
+}

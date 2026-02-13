@@ -1,129 +1,113 @@
-import { NextResponse } from 'next/server';
-import { auth } from '@/auth';
-import { fetchCompanyProfile, fetchInvoiceById } from '@/app/lib/data';
-import { formatDateToLocal } from '@/app/lib/utils';
-
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-function escapePdfText(text: string) {
-  return text.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
-}
+import { NextResponse } from 'next/server';
+import type PDFDocumentType from 'pdfkit';
+import { auth } from '@/auth';
+import { fetchInvoiceById } from '@/app/lib/data';
+import { formatDateToLocal } from '@/app/lib/utils';
+import { fetchCompanyProfileForWorkspace } from '@/app/lib/company-profile';
+import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+
+const PDFDocument = require('pdfkit/js/pdfkit.standalone') as typeof PDFDocumentType;
 
 function formatAmountForPdf(amountCents: number) {
   const value = amountCents / 100;
-  return `Amount: ${value.toFixed(2)} EUR`;
+  return `${value.toFixed(2)} EUR`;
 }
 
-function buildPdf(invoice: {
-  id: string;
-  customer_name: string;
-  customer_email: string;
-  status: string;
-  date: string;
-  amount: number;
-  invoice_number: string | null;
-},
-companyProfile: {
-  company_name: string;
-  reg_code: string | null;
-  vat_number: string | null;
-  address_line1: string | null;
-  address_line2: string | null;
-  city: string | null;
-  country: string | null;
-  phone: string | null;
-  billing_email: string | null;
-  logo_url: string | null;
-} | null) {
-  const lines: { size: number; x: number; y: number; text: string }[] = [];
-  const companyName = companyProfile?.company_name || 'Lateless';
-  const invoiceLabel = invoice.invoice_number ?? invoice.id.slice(0, 8);
+function dataUrlToBuffer(dataUrl: string) {
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex === -1) return null;
 
-  let y = 790;
-  lines.push({ size: 20, x: 50, y, text: companyName });
-  y -= 24;
-  lines.push({ size: 14, x: 50, y, text: `Invoice ${invoiceLabel}` });
-  y -= 20;
+  const base64 = dataUrl.slice(commaIndex + 1);
+  if (!base64) return null;
 
-  const companyLines: string[] = [];
-  if (companyProfile?.address_line1) companyLines.push(companyProfile.address_line1);
-  if (companyProfile?.address_line2) companyLines.push(companyProfile.address_line2);
-  const cityCountry = [companyProfile?.city, companyProfile?.country]
-    .filter(Boolean)
-    .join(', ');
-  if (cityCountry) companyLines.push(cityCountry);
-  const regVat = [
-    companyProfile?.reg_code ? `Reg: ${companyProfile.reg_code}` : null,
-    companyProfile?.vat_number ? `VAT: ${companyProfile.vat_number}` : null,
-  ]
-    .filter(Boolean)
-    .join(', ');
-  if (regVat) companyLines.push(regVat);
-  const contactLine = [
-    companyProfile?.phone ? `Phone: ${companyProfile.phone}` : null,
-    companyProfile?.billing_email ? `Email: ${companyProfile.billing_email}` : null,
-  ]
-    .filter(Boolean)
-    .join(', ');
-  if (contactLine) companyLines.push(contactLine);
-  if (companyProfile?.logo_url) companyLines.push(`Logo: ${companyProfile.logo_url}`);
+  try {
+    return Buffer.from(base64, 'base64');
+  } catch {
+    return null;
+  }
+}
 
-  companyLines.forEach((text) => {
-    lines.push({ size: 11, x: 50, y, text });
-    y -= 14;
+async function buildInvoicePdf(input: {
+  invoice: {
+    id: string;
+    customer_name: string;
+    customer_email: string;
+    status: string;
+    date: string;
+    amount: number;
+    invoice_number: string | null;
+  };
+  company: {
+    companyName: string;
+    vatOrRegNumber: string;
+    address: string;
+    companyEmail: string;
+    invoiceFooter: string;
+    logoDataUrl: string | null;
+  };
+}) {
+  return new Promise<Buffer>((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks: Buffer[] = [];
+
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const logoX = 50;
+    const logoY = 45;
+    const logoFit: [number, number] = [160, 80];
+
+    if (input.company.logoDataUrl) {
+      const logoBuffer = dataUrlToBuffer(input.company.logoDataUrl);
+
+      if (logoBuffer) {
+        const sig = logoBuffer.subarray(0, 8).toString('hex');
+        console.log('[pdf-logo-sig]', sig, 'bytes', logoBuffer.length);
+        try {
+          const logoArrayBuffer = logoBuffer.buffer.slice(
+            logoBuffer.byteOffset,
+            logoBuffer.byteOffset + logoBuffer.byteLength,
+          );
+          doc.image(logoArrayBuffer, logoX, logoY, { fit: logoFit });
+        } catch (err) {
+          console.error('[pdf-logo-error]', err);
+        }
+      }
+    }
+
+    const invoiceLabel = input.invoice.invoice_number ?? input.invoice.id.slice(0, 8);
+    doc.fontSize(22).text(input.company.companyName || 'Lateless', 50, 120);
+    doc.fontSize(14).text(`Invoice ${invoiceLabel}`, 50, 150);
+
+    doc.moveDown(2);
+    doc.fontSize(12).text('From');
+    if (input.company.address) doc.text(input.company.address);
+    if (input.company.vatOrRegNumber) doc.text(`VAT/Reg: ${input.company.vatOrRegNumber}`);
+    if (input.company.companyEmail) doc.text(`Email: ${input.company.companyEmail}`);
+
+    doc.moveDown();
+    doc.fontSize(12).text('To');
+    doc.text(input.invoice.customer_name);
+    doc.text(input.invoice.customer_email);
+
+    doc.moveDown();
+    doc.fontSize(12).text(`Date: ${formatDateToLocal(input.invoice.date)}`);
+    doc.text(`Status: ${input.invoice.status}`);
+    doc.text(`Amount: ${formatAmountForPdf(input.invoice.amount)}`);
+
+    const footer = input.company.invoiceFooter || 'Generated by Lateless';
+    doc.fontSize(10).fillColor('#444444').text(footer, 50, 760, { width: 500 });
+
+    doc.end();
   });
-
-  y -= 8;
-  lines.push({ size: 11, x: 50, y, text: 'Customer' });
-  y -= 15;
-  lines.push({ size: 11, x: 50, y, text: invoice.customer_name });
-  y -= 15;
-  lines.push({ size: 11, x: 50, y, text: invoice.customer_email });
-  y -= 20;
-  lines.push({ size: 11, x: 50, y, text: `Status: ${invoice.status}` });
-  y -= 15;
-  lines.push({ size: 11, x: 50, y, text: `Date: ${formatDateToLocal(invoice.date)}` });
-  y -= 15;
-  lines.push({ size: 11, x: 50, y, text: formatAmountForPdf(invoice.amount) });
-  lines.push({ size: 10, x: 50, y: 80, text: 'Generated by Lateless' });
-
-  const content = lines
-    .map(
-      ({ size, x, y, text }) =>
-        `BT\n/F1 ${size} Tf\n${x} ${y} Td\n(${escapePdfText(text)}) Tj\nET`,
-    )
-    .join('\n');
-
-  const objects = [
-    `1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`,
-    `2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n`,
-    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n`,
-    `4 0 obj\n<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream\nendobj\n`,
-    `5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n`,
-  ];
-
-  const header = '%PDF-1.4\n';
-  let offset = Buffer.byteLength(header);
-  const xrefOffsets = objects.map((obj) => {
-    const objOffset = offset;
-    offset += Buffer.byteLength(obj);
-    return objOffset;
-  });
-
-  const xrefEntries = [
-    '0000000000 65535 f ',
-    ...xrefOffsets.map((off) => off.toString().padStart(10, '0') + ' 00000 n '),
-  ];
-
-  const xref = `xref\n0 ${xrefEntries.length}\n${xrefEntries.join('\n')}\n`;
-  const trailer = `trailer\n<< /Size ${xrefEntries.length} /Root 1 0 R >>\nstartxref\n${offset}\n%%EOF`;
-
-  const pdf = header + objects.join('') + xref + trailer;
-  return Buffer.from(pdf);
 }
 
 export async function GET(
-  req: Request,
+  _: Request,
   props: { params: Promise<{ id: string }> },
 ) {
   const session = await auth();
@@ -132,21 +116,28 @@ export async function GET(
   }
 
   const params = await props.params;
+  const context = await ensureWorkspaceContextForCurrentUser();
+
   const [invoice, companyProfile] = await Promise.all([
     fetchInvoiceById(params.id),
-    fetchCompanyProfile(),
+    fetchCompanyProfileForWorkspace(context.workspaceId),
   ]);
+
   if (!invoice) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const pdfBuffer = buildPdf(invoice, companyProfile);
+  const pdfBuffer = await buildInvoicePdf({
+    invoice,
+    company: companyProfile,
+  });
   const filenameId = invoice.invoice_number ?? invoice.id;
 
   return new NextResponse(pdfBuffer, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="invoice-${filenameId}.pdf"`,
+      'Cache-Control': 'no-store, max-age=0',
     },
   });
 }

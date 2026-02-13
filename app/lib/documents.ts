@@ -1,5 +1,10 @@
 import crypto from 'crypto';
 import postgres from 'postgres';
+import {
+  clearCompanyProfileLogo,
+  fetchCompanyProfileForWorkspace,
+  setCompanyProfileLogo,
+} from './company-profile';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -97,7 +102,13 @@ export async function fetchWorkspaceDocumentSettings(
     limit 1
   `;
 
-  return toDocumentSettings(row);
+  const settings = toDocumentSettings(row);
+  const companyProfile = await fetchCompanyProfileForWorkspace(workspaceId);
+
+  return {
+    ...settings,
+    logoDataUrl: companyProfile.logoDataUrl,
+  };
 }
 
 function validateInvoicePrefix(value: unknown) {
@@ -243,6 +254,8 @@ export async function setWorkspaceLogo(
     throw new Error('logoSize');
   }
 
+  const objectKey = `logo:${workspaceId}:${Date.now()}:${crypto.randomUUID()}`;
+
   await sql.begin(async (tx) => {
     await tx.unsafe(
       `
@@ -252,8 +265,6 @@ export async function setWorkspaceLogo(
       `,
       [workspaceId],
     );
-
-    const objectKey = `logo:${workspaceId}:${Date.now()}:${crypto.randomUUID()}`;
 
     await tx.unsafe(
       `
@@ -269,54 +280,24 @@ export async function setWorkspaceLogo(
       `,
       [workspaceId, objectKey, filename, contentType, sizeBytes],
     );
+  });
 
-    await tx.unsafe(
-      `
-      insert into public.workspace_document_settings (
-        workspace_id,
-        logo_object_key,
-        updated_at
-      )
-      values ($1, $2, now())
-      on conflict (workspace_id)
-      do update set
-        logo_object_key = excluded.logo_object_key,
-        updated_at = now()
-      `,
-      [workspaceId, dataUrl],
-    );
+  await setCompanyProfileLogo({
+    workspaceId,
+    logoDataUrl: dataUrl,
   });
 }
 
 export async function clearWorkspaceLogo(workspaceId: string): Promise<void> {
   await assertDocumentsSchemaReady();
 
-  await sql.begin(async (tx) => {
-    await tx.unsafe(
-      `
-      delete from public.workspace_files
-      where workspace_id = $1
-        and kind = 'logo'
-      `,
-      [workspaceId],
-    );
+  await sql`
+    delete from public.workspace_files
+    where workspace_id = ${workspaceId}
+      and kind = 'logo'
+  `;
 
-    await tx.unsafe(
-      `
-      insert into public.workspace_document_settings (
-        workspace_id,
-        logo_object_key,
-        updated_at
-      )
-      values ($1, null, now())
-      on conflict (workspace_id)
-      do update set
-        logo_object_key = null,
-        updated_at = now()
-      `,
-      [workspaceId],
-    );
-  });
+  await clearCompanyProfileLogo(workspaceId);
 }
 
 export function formatInvoiceNumber(settings: WorkspaceDocumentSettings): string {

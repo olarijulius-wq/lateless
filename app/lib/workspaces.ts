@@ -34,6 +34,12 @@ export type WorkspaceContext = {
   userRole: WorkspaceRole;
 };
 
+export type WorkspaceMembershipSummary = {
+  workspaceId: string;
+  workspaceName: string;
+  role: WorkspaceRole;
+};
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -68,14 +74,27 @@ export async function assertWorkspaceSchemaReady(): Promise<void> {
         ws: string | null;
         wm: string | null;
         wi: string | null;
+        has_active_workspace_id: boolean;
       }[]>`
         select
           to_regclass('public.workspaces') as ws,
           to_regclass('public.workspace_members') as wm,
-          to_regclass('public.workspace_invites') as wi
+          to_regclass('public.workspace_invites') as wi,
+          exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'users'
+              and column_name = 'active_workspace_id'
+          ) as has_active_workspace_id
       `;
 
-      if (!result?.ws || !result?.wm || !result?.wi) {
+      if (
+        !result?.ws ||
+        !result?.wm ||
+        !result?.wi ||
+        !result?.has_active_workspace_id
+      ) {
         throw buildTeamMigrationRequiredError();
       }
     })();
@@ -154,26 +173,52 @@ export async function ensureWorkspaceContextForCurrentUser(): Promise<WorkspaceC
   await assertWorkspaceSchemaReady();
   const user = await requireCurrentUser();
 
-  const [membership] = await sql<{
+  const [userRow] = await sql<{ active_workspace_id: string | null }[]>`
+    select active_workspace_id
+    from public.users
+    where id = ${user.id}
+    limit 1
+  `;
+
+  const memberships = await sql<{
     workspace_id: string;
     workspace_name: string;
     role: WorkspaceRole;
     owner_user_id: string;
+    created_at: Date;
   }[]>`
     select
       w.id as workspace_id,
       w.name as workspace_name,
       wm.role,
-      w.owner_user_id
+      w.owner_user_id,
+      w.created_at
     from public.workspace_members wm
     join public.workspaces w on w.id = wm.workspace_id
     where wm.user_id = ${user.id}
-    order by case when w.owner_user_id = ${user.id} then 0 else 1 end, w.created_at asc
-    limit 1
+    order by w.created_at asc
   `;
 
-  if (!membership) {
+  let resolvedMembership = memberships.find(
+    (membership) => membership.workspace_id === userRow?.active_workspace_id,
+  );
+
+  if (!resolvedMembership && memberships.length > 0) {
+    resolvedMembership = memberships[0];
+    await sql`
+      update public.users
+      set active_workspace_id = ${resolvedMembership.workspace_id}
+      where id = ${user.id}
+    `;
+  }
+
+  if (!resolvedMembership) {
     const owned = await ensureOwnedWorkspace(user);
+    await sql`
+      update public.users
+      set active_workspace_id = ${owned.id}
+      where id = ${user.id}
+    `;
     return {
       workspaceId: owned.id,
       workspaceName: owned.name,
@@ -183,25 +228,88 @@ export async function ensureWorkspaceContextForCurrentUser(): Promise<WorkspaceC
     };
   }
 
-  if (membership.owner_user_id === user.id && membership.role !== 'owner') {
+  if (
+    resolvedMembership.owner_user_id === user.id &&
+    resolvedMembership.role !== 'owner'
+  ) {
     await sql`
       update public.workspace_members
       set role = 'owner'
-      where workspace_id = ${membership.workspace_id}
+      where workspace_id = ${resolvedMembership.workspace_id}
         and user_id = ${user.id}
     `;
   }
 
   return {
-    workspaceId: membership.workspace_id,
-    workspaceName: membership.workspace_name,
+    workspaceId: resolvedMembership.workspace_id,
+    workspaceName: resolvedMembership.workspace_name,
     userId: user.id,
     userEmail: user.email,
     userRole:
-      membership.owner_user_id === user.id
+      resolvedMembership.owner_user_id === user.id
         ? 'owner'
-        : membership.role,
+        : resolvedMembership.role,
   };
+}
+
+export async function fetchWorkspaceMembershipsForCurrentUser(): Promise<
+  WorkspaceMembershipSummary[]
+> {
+  await assertWorkspaceSchemaReady();
+  const user = await requireCurrentUser();
+
+  const rows = await sql<{
+    workspace_id: string;
+    workspace_name: string;
+    role: WorkspaceRole;
+    owner_user_id: string;
+    created_at: Date;
+  }[]>`
+    select
+      w.id as workspace_id,
+      w.name as workspace_name,
+      wm.role,
+      w.owner_user_id,
+      w.created_at
+    from public.workspace_members wm
+    join public.workspaces w on w.id = wm.workspace_id
+    where wm.user_id = ${user.id}
+    order by w.created_at asc
+  `;
+
+  return rows.map((row) => ({
+    workspaceId: row.workspace_id,
+    workspaceName: row.workspace_name,
+    role: row.owner_user_id === user.id ? 'owner' : row.role,
+  }));
+}
+
+export async function setActiveWorkspaceForCurrentUser(workspaceId: string) {
+  await assertWorkspaceSchemaReady();
+  const user = await requireCurrentUser();
+  const targetWorkspaceId = workspaceId.trim();
+
+  if (!targetWorkspaceId) {
+    throw new Error('workspaceId');
+  }
+
+  const [membership] = await sql<{ workspace_id: string }[]>`
+    select workspace_id
+    from public.workspace_members
+    where workspace_id = ${targetWorkspaceId}
+      and user_id = ${user.id}
+    limit 1
+  `;
+
+  if (!membership) {
+    throw new Error('forbidden');
+  }
+
+  await sql`
+    update public.users
+    set active_workspace_id = ${targetWorkspaceId}
+    where id = ${user.id}
+  `;
 }
 
 export async function fetchWorkspaceMembers(
@@ -335,6 +443,24 @@ export async function removeWorkspaceMember(input: {
   return result.length > 0;
 }
 
+export async function updateWorkspaceMemberRole(input: {
+  workspaceId: string;
+  targetUserId: string;
+  role: InvitableWorkspaceRole;
+}) {
+  await assertWorkspaceSchemaReady();
+  const result = await sql`
+    update public.workspace_members
+    set role = ${input.role}
+    where workspace_id = ${input.workspaceId}
+      and user_id = ${input.targetUserId}
+      and role <> 'owner'
+    returning workspace_id
+  `;
+
+  return result.length > 0;
+}
+
 export async function fetchInviteByToken(token: string) {
   await assertWorkspaceSchemaReady();
   const [invite] = await sql<{
@@ -458,6 +584,12 @@ export async function acceptInviteForCurrentUser(token: string) {
     set accepted_at = now()
     where id = ${invite.id}
       and accepted_at is null
+  `;
+
+  await sql`
+    update public.users
+    set active_workspace_id = ${invite.workspace_id}
+    where id = ${user.id}
   `;
 
   return {

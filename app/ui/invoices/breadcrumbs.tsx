@@ -26,7 +26,17 @@ export default function Breadcrumbs({
                 : 'text-neutral-500 dark:text-neutral-400',
             )}
           >
-            <Link href={breadcrumb.href}>{breadcrumb.label}</Link>
+            <Link
+              href={breadcrumb.href}
+              className={clsx(
+                'transition-colors',
+                breadcrumb.active
+                  ? 'text-neutral-900 hover:text-neutral-900 dark:text-neutral-100 dark:hover:text-neutral-100'
+                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200',
+              )}
+            >
+              {breadcrumb.label}
+            </Link>
             {index < breadcrumbs.length - 1 ? (
               <span className="mx-3 inline-block">/</span>
             ) : null}

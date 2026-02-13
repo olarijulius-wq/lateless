@@ -69,6 +69,7 @@ export default function SmtpSettingsPanel({
   const [smtpPasswordPresent, setSmtpPasswordPresent] = useState(
     baseSettings.smtpPasswordPresent,
   );
+  const [testEmail, setTestEmail] = useState('');
 
   const canEdit = data?.canEdit ?? false;
 
@@ -155,6 +156,8 @@ export default function SmtpSettingsPanel({
     startTransition(async () => {
       const res = await fetch('/api/settings/smtp/test', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toEmail: testEmail }),
       });
       const body = (await res.json().catch(() => null)) as
         | { ok?: boolean; message?: string }
@@ -170,7 +173,7 @@ export default function SmtpSettingsPanel({
 
       setMessage({
         ok: true,
-        text: 'Test email sent to your account email address.',
+        text: body.message ?? 'Test email sent.',
       });
     });
   }
@@ -353,15 +356,26 @@ export default function SmtpSettingsPanel({
         <Button type="submit" disabled={!canEdit || isPending}>
           {isPending ? 'Saving...' : 'Save settings'}
         </Button>
+        <input
+          type="email"
+          value={testEmail}
+          onChange={(event) => setTestEmail(event.target.value)}
+          disabled={!canEdit || isPending}
+          className={`${SETTINGS_INPUT_CLASSES} max-w-xs`}
+          placeholder="optional-recipient@company.com"
+        />
         <button
           type="button"
           onClick={handleSendTest}
           disabled={!canEdit || isPending}
           className={`${secondaryButtonClasses} ${!canEdit || isPending ? 'opacity-60 cursor-not-allowed' : ''}`}
         >
-          Send test email
+          Send marketing test email
         </button>
       </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Test email is treated as marketing and is blocked for unsubscribed recipients.
+      </p>
     </form>
   );
 }

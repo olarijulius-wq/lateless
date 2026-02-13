@@ -6,79 +6,52 @@ import { useRouter } from 'next/navigation';
 import { Button, secondaryButtonClasses } from '@/app/ui/button';
 import {
   SETTINGS_INPUT_CLASSES,
-  SETTINGS_SELECT_CLASSES,
   SETTINGS_TEXTAREA_CLASSES,
 } from '@/app/ui/form-control';
+import type { WorkspaceCompanyProfile } from '@/app/lib/company-profile';
 
-type UserRole = 'owner' | 'admin' | 'member';
-
-type DocumentSettings = {
-  invoicePrefix: string;
-  nextInvoiceNumber: number;
-  numberPadding: number;
-  footerNote: string;
-  logoDataUrl: string | null;
+type CompanyProfileSettingsPanelProps = {
+  initialProfile: WorkspaceCompanyProfile;
+  canEdit: boolean;
+  userRole: 'owner' | 'admin' | 'member';
 };
 
-const defaultSettings: DocumentSettings = {
-  invoicePrefix: 'INV',
-  nextInvoiceNumber: 1,
-  numberPadding: 4,
-  footerNote: '',
-  logoDataUrl: null,
-};
-
-type DocumentsSettingsPanelProps = {
-  initialSettings?: DocumentSettings;
-  userRole?: UserRole;
-  canEdit?: boolean;
-  migrationWarning?: string | null;
-};
-
-export default function DocumentsSettingsPanel({
-  initialSettings,
-  userRole = 'member',
-  canEdit = false,
-  migrationWarning = null,
-}: DocumentsSettingsPanelProps) {
+export default function CompanyProfileSettingsPanel({
+  initialProfile,
+  canEdit,
+  userRole,
+}: CompanyProfileSettingsPanelProps) {
   const router = useRouter();
-  const [settings, setSettings] = useState<DocumentSettings>(
-    initialSettings ?? defaultSettings,
-  );
+  const [profile, setProfile] = useState(initialProfile);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  async function onSave(event: React.FormEvent<HTMLFormElement>) {
+  function onSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canEdit) return;
 
     setMessage(null);
     startTransition(async () => {
-      const response = await fetch('/api/settings/documents', {
+      const response = await fetch('/api/settings/company-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          invoicePrefix: settings.invoicePrefix,
-          nextInvoiceNumber: settings.nextInvoiceNumber,
-          numberPadding: settings.numberPadding,
-          footerNote: settings.footerNote,
-        }),
+        body: JSON.stringify(profile),
       });
 
       const payload = (await response.json().catch(() => null)) as
-        | { ok?: boolean; message?: string; settings?: DocumentSettings }
+        | { ok?: boolean; message?: string; profile?: WorkspaceCompanyProfile }
         | null;
 
-      if (!response.ok || !payload?.ok || !payload.settings) {
+      if (!response.ok || !payload?.ok || !payload.profile) {
         setMessage({
           ok: false,
-          text: payload?.message ?? 'Failed to save settings.',
+          text: payload?.message ?? 'Failed to save company profile.',
         });
         return;
       }
 
-      setSettings(payload.settings);
-      setMessage({ ok: true, text: 'Document settings saved.' });
+      setProfile(payload.profile);
+      setMessage({ ok: true, text: 'Company profile saved.' });
       router.refresh();
     });
   }
@@ -105,7 +78,6 @@ export default function DocumentsSettingsPanel({
         return;
       }
 
-      setMessage(null);
       startTransition(async () => {
         const response = await fetch('/api/settings/documents/logo', {
           method: 'POST',
@@ -117,7 +89,6 @@ export default function DocumentsSettingsPanel({
             sizeBytes: file.size,
           }),
         });
-
         const payload = (await response.json().catch(() => null)) as
           | { ok?: boolean; message?: string }
           | null;
@@ -131,7 +102,7 @@ export default function DocumentsSettingsPanel({
         }
 
         setMessage({ ok: true, text: 'Logo uploaded.' });
-        setSettings((previous) => ({ ...previous, logoDataUrl: dataUrl }));
+        setProfile((current) => ({ ...current, logoDataUrl: dataUrl }));
         router.refresh();
       });
     };
@@ -141,12 +112,10 @@ export default function DocumentsSettingsPanel({
   function onRemoveLogo() {
     if (!canEdit) return;
 
-    setMessage(null);
     startTransition(async () => {
       const response = await fetch('/api/settings/documents/logo', {
         method: 'DELETE',
       });
-
       const payload = (await response.json().catch(() => null)) as
         | { ok?: boolean; message?: string }
         | null;
@@ -160,40 +129,9 @@ export default function DocumentsSettingsPanel({
       }
 
       setMessage({ ok: true, text: 'Logo removed.' });
-      setSettings((previous) => ({ ...previous, logoDataUrl: null }));
+      setProfile((current) => ({ ...current, logoDataUrl: null }));
       router.refresh();
     });
-  }
-
-  function onDownloadSamplePdf() {
-    window.location.href = '/api/settings/documents/sample-pdf';
-  }
-
-  if (migrationWarning) {
-    return (
-      <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-amber-500/40 dark:bg-amber-500/10 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
-        <h2 className="text-lg font-semibold text-amber-900 dark:text-amber-200">
-          Documents requires database migration
-        </h2>
-        <p className="mt-2 text-sm text-amber-800 dark:text-amber-100">{migrationWarning}</p>
-        <p className="mt-2 text-sm text-amber-800 dark:text-amber-100">
-          Required file: <code>010_add_documents_settings.sql</code>
-        </p>
-      </div>
-    );
-  }
-
-  if (!initialSettings) {
-    return (
-      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          Documents
-        </h2>
-        <p className="mt-2 text-sm text-red-700 dark:text-red-300">
-          Failed to load document settings.
-        </p>
-      </div>
-    );
   }
 
   return (
@@ -203,32 +141,65 @@ export default function DocumentsSettingsPanel({
     >
       <div>
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          Documents
+          Company Profile
         </h2>
         <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-          Document templates and storage preferences.
-        </p>
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Logo is shared with Company Profile and used by invoice PDFs.
+          Team-scoped company data used by invoice PDFs and sample PDF.
         </p>
         {!canEdit && (
           <p className="mt-2 text-sm text-amber-700 dark:text-amber-200">
-            Only owners can change document settings.
+            Only owners or admins can edit company profile settings.
           </p>
         )}
       </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="md:col-span-2">
           <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-            Invoice prefix
+            Company name
           </label>
           <input
-            value={settings.invoicePrefix}
+            value={profile.companyName}
             onChange={(event) =>
-              setSettings((prev) => ({
-                ...prev,
-                invoicePrefix: event.target.value.toUpperCase(),
+              setProfile((current) => ({
+                ...current,
+                companyName: event.target.value,
+              }))
+            }
+            disabled={!canEdit || isPending}
+            className={SETTINGS_INPUT_CLASSES}
+            required
+          />
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
+            Company address
+          </label>
+          <textarea
+            value={profile.address}
+            onChange={(event) =>
+              setProfile((current) => ({
+                ...current,
+                address: event.target.value,
+              }))
+            }
+            rows={3}
+            disabled={!canEdit || isPending}
+            className={SETTINGS_TEXTAREA_CLASSES}
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
+            VAT / registration no.
+          </label>
+          <input
+            value={profile.vatOrRegNumber}
+            onChange={(event) =>
+              setProfile((current) => ({
+                ...current,
+                vatOrRegNumber: event.target.value,
               }))
             }
             disabled={!canEdit || isPending}
@@ -238,71 +209,48 @@ export default function DocumentsSettingsPanel({
 
         <div>
           <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-            Next invoice number
+            Company contact email
           </label>
           <input
-            type="number"
-            min={1}
-            value={settings.nextInvoiceNumber}
+            type="email"
+            value={profile.companyEmail}
             onChange={(event) =>
-              setSettings((prev) => ({
-                ...prev,
-                nextInvoiceNumber: Number(event.target.value) || 1,
+              setProfile((current) => ({
+                ...current,
+                companyEmail: event.target.value,
               }))
             }
             disabled={!canEdit || isPending}
             className={SETTINGS_INPUT_CLASSES}
           />
         </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-            Number padding
-          </label>
-          <select
-            value={settings.numberPadding}
-            onChange={(event) =>
-              setSettings((prev) => ({
-                ...prev,
-                numberPadding: Number(event.target.value),
-              }))
-            }
-            disabled={!canEdit || isPending}
-            className={SETTINGS_SELECT_CLASSES}
-          >
-            {[2, 3, 4, 5, 6, 7, 8].map((padding) => (
-              <option key={padding} value={padding}>
-                {padding}
-              </option>
-            ))}
-          </select>
-        </div>
-      </section>
+      </div>
 
       <section>
         <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-          Footer note
+          Invoice footer / notes
         </label>
         <textarea
-          value={settings.footerNote}
+          value={profile.invoiceFooter}
           onChange={(event) =>
-            setSettings((prev) => ({ ...prev, footerNote: event.target.value }))
+            setProfile((current) => ({
+              ...current,
+              invoiceFooter: event.target.value,
+            }))
           }
           rows={4}
           maxLength={500}
           disabled={!canEdit || isPending}
           className={SETTINGS_TEXTAREA_CLASSES}
-          placeholder="Optional note shown at the bottom of invoices."
         />
       </section>
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Logo</h3>
-
-        {settings.logoDataUrl ? (
+        {profile.logoDataUrl ? (
           <Image
-            src={settings.logoDataUrl}
-            alt="Workspace logo"
+            src={profile.logoDataUrl}
+            alt="Company logo"
             width={160}
             height={64}
             unoptimized
@@ -313,7 +261,9 @@ export default function DocumentsSettingsPanel({
         )}
 
         <div className="flex flex-wrap gap-3">
-          <label className={`${secondaryButtonClasses} cursor-pointer ${!canEdit || isPending ? 'pointer-events-none opacity-60' : ''}`}>
+          <label
+            className={`${secondaryButtonClasses} cursor-pointer ${!canEdit || isPending ? 'pointer-events-none opacity-60' : ''}`}
+          >
             Upload logo
             <input
               type="file"
@@ -323,32 +273,15 @@ export default function DocumentsSettingsPanel({
               onChange={onLogoUpload}
             />
           </label>
-
           <button
             type="button"
             onClick={onRemoveLogo}
-            disabled={!canEdit || isPending || !settings.logoDataUrl}
-            className={`${secondaryButtonClasses} ${!canEdit || isPending || !settings.logoDataUrl ? 'cursor-not-allowed opacity-60' : ''}`}
+            disabled={!canEdit || isPending || !profile.logoDataUrl}
+            className={`${secondaryButtonClasses} ${!canEdit || isPending || !profile.logoDataUrl ? 'cursor-not-allowed opacity-60' : ''}`}
           >
             Remove logo
           </button>
         </div>
-
-        <p className="text-xs text-slate-500 dark:text-slate-400">PNG/JPG up to 250KB.</p>
-      </section>
-
-      <section className="flex flex-wrap gap-3">
-        <Button type="submit" disabled={!canEdit || isPending}>
-          {isPending ? 'Saving...' : 'Save settings'}
-        </Button>
-
-        <button
-          type="button"
-          onClick={onDownloadSamplePdf}
-          className={secondaryButtonClasses}
-        >
-          Download sample PDF
-        </button>
       </section>
 
       {message && (
@@ -360,7 +293,12 @@ export default function DocumentsSettingsPanel({
         </p>
       )}
 
-      <p className="text-xs text-slate-500 dark:text-slate-400">Current role: {userRole}</p>
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={!canEdit || isPending}>
+          {isPending ? 'Saving...' : 'Save company profile'}
+        </Button>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Current role: {userRole}</p>
+      </div>
     </form>
   );
 }
