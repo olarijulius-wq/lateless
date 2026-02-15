@@ -23,10 +23,14 @@ export async function POST(
   props: { params: Promise<{ token: string }> },
 ) {
   const params = await props.params;
-  const payload = verifyPayToken(params.token);
+  const verification = verifyPayToken(params.token);
 
-  if (!payload) {
-    return NextResponse.json({ error: 'Invalid payment link' }, { status: 400 });
+  if (!verification.ok) {
+    const error =
+      verification.reason === 'expired'
+        ? 'Payment link expired'
+        : 'Invalid payment link';
+    return NextResponse.json({ error, code: verification.reason }, { status: 401 });
   }
 
   const [invoice] = await sql<{
@@ -47,7 +51,7 @@ export async function POST(
     FROM invoices
     JOIN customers
       ON customers.id = invoices.customer_id
-    WHERE invoices.id = ${payload.invoiceId}
+    WHERE invoices.id = ${verification.payload.invoiceId}
     LIMIT 1
   `;
 
