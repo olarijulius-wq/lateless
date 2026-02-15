@@ -1,6 +1,11 @@
 import postgres from 'postgres';
 import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
+import {
+  decryptString,
+  encryptString,
+  isEncryptionKeyConfigured,
+} from '@/app/lib/crypto';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -27,6 +32,7 @@ type WorkspaceEmailSettingsRow = {
   smtp_secure: boolean | null;
   smtp_username: string | null;
   smtp_password: string | null;
+  smtp_password_enc: string | null;
   from_name: string | null;
   from_email: string | null;
   reply_to: string | null;
@@ -88,21 +94,111 @@ function toPublicSettings(row?: WorkspaceEmailSettingsRow): WorkspaceEmailSettin
     smtpPort: row.smtp_port,
     smtpSecure: Boolean(row.smtp_secure),
     smtpUsername: row.smtp_username ?? '',
-    smtpPasswordPresent: Boolean(row.smtp_password),
+    smtpPasswordPresent: Boolean(row.smtp_password_enc || row.smtp_password),
     fromName: row.from_name ?? '',
     fromEmail: row.from_email ?? '',
     replyTo: row.reply_to ?? '',
   };
 }
 
+function ensureSmtpEncryptionKeyAvailableForWrite() {
+  if (isEncryptionKeyConfigured()) {
+    return;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'SMTP encryption is not configured in production. Set SMTP_ENCRYPTION_KEY_BASE64 to save SMTP settings.',
+    );
+  }
+
+  throw new Error(
+    'SMTP encryption key is missing. Set SMTP_ENCRYPTION_KEY_BASE64 to save SMTP settings.',
+  );
+}
+
+async function persistEncryptedSmtpPassword(
+  workspaceId: string,
+  plaintextPassword: string,
+): Promise<string> {
+  const encrypted = encryptString(plaintextPassword);
+
+  await sql`
+    update public.workspace_email_settings
+    set
+      smtp_password_enc = ${encrypted},
+      smtp_password = null,
+      updated_at = now()
+    where workspace_id = ${workspaceId}
+  `;
+
+  return encrypted;
+}
+
+async function getSmtpPasswordFromRow(
+  workspaceId: string,
+  row?: WorkspaceEmailSettingsRow,
+): Promise<string | null> {
+  if (!row) return null;
+
+  if (row.smtp_password_enc) {
+    try {
+      return decryptString(row.smtp_password_enc);
+    } catch (error) {
+      console.error('SMTP password decryption failed:', error);
+      throw new Error(
+        'Failed to decrypt SMTP password. Check SMTP_ENCRYPTION_KEY_BASE64 and saved credentials.',
+      );
+    }
+  }
+
+  if (!row.smtp_password) {
+    return null;
+  }
+
+  try {
+    await persistEncryptedSmtpPassword(workspaceId, row.smtp_password);
+  } catch (error) {
+    console.error('SMTP legacy password migration failed:', error);
+    throw error;
+  }
+  return row.smtp_password;
+}
+
+async function maybeMigrateLegacySmtpPassword(
+  workspaceId: string,
+  row?: WorkspaceEmailSettingsRow,
+) {
+  if (!row?.smtp_password || row.smtp_password_enc || !isEncryptionKeyConfigured()) {
+    return;
+  }
+
+  try {
+    await persistEncryptedSmtpPassword(workspaceId, row.smtp_password);
+  } catch (error) {
+    console.error('SMTP legacy password migration failed during settings load:', error);
+  }
+}
+
 export async function assertWorkspaceEmailSettingsSchemaReady(): Promise<void> {
   if (!workspaceEmailSchemaReadyPromise) {
     workspaceEmailSchemaReadyPromise = (async () => {
-      const [result] = await sql<{ ws: string | null }[]>`
-        select to_regclass('public.workspace_email_settings') as ws
+      const [result] = await sql<{
+        ws: string | null;
+        smtp_password_enc_exists: boolean;
+      }[]>`
+        select
+          to_regclass('public.workspace_email_settings') as ws,
+          exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'workspace_email_settings'
+              and column_name = 'smtp_password_enc'
+          ) as smtp_password_enc_exists
       `;
 
-      if (!result?.ws) {
+      if (!result?.ws || !result.smtp_password_enc_exists) {
         throw buildSmtpMigrationRequiredError();
       }
     })();
@@ -124,6 +220,7 @@ export async function fetchWorkspaceEmailSettings(
       smtp_secure,
       smtp_username,
       smtp_password,
+      smtp_password_enc,
       from_name,
       from_email,
       reply_to
@@ -131,6 +228,8 @@ export async function fetchWorkspaceEmailSettings(
     where workspace_id = ${workspaceId}
     limit 1
   `;
+
+  await maybeMigrateLegacySmtpPassword(workspaceId, row);
 
   return toPublicSettings(row);
 }
@@ -146,6 +245,7 @@ async function fetchWorkspaceEmailSettingsWithSecret(workspaceId: string) {
       smtp_secure,
       smtp_username,
       smtp_password,
+      smtp_password_enc,
       from_name,
       from_email,
       reply_to
@@ -185,6 +285,7 @@ export async function upsertWorkspaceEmailSettings(
         smtp_secure,
         smtp_username,
         smtp_password,
+        smtp_password_enc,
         from_name,
         from_email,
         reply_to,
@@ -193,6 +294,7 @@ export async function upsertWorkspaceEmailSettings(
       values (
         ${workspaceId},
         'resend',
+        null,
         null,
         null,
         null,
@@ -211,6 +313,7 @@ export async function upsertWorkspaceEmailSettings(
         smtp_secure = null,
         smtp_username = null,
         smtp_password = null,
+        smtp_password_enc = null,
         from_name = null,
         from_email = null,
         reply_to = null,
@@ -241,11 +344,15 @@ export async function upsertWorkspaceEmailSettings(
   const smtpPasswordInput = optionalText(
     (payload as { smtpPassword?: unknown }).smtpPassword,
   );
-  const smtpPassword = smtpPasswordInput ?? existing?.smtp_password ?? null;
+  const smtpPassword =
+    smtpPasswordInput ?? (await getSmtpPasswordFromRow(workspaceId, existing));
 
   if (!smtpPassword) {
     throw new Error('smtpPassword');
   }
+
+  ensureSmtpEncryptionKeyAvailableForWrite();
+  const encryptedSmtpPassword = encryptString(smtpPassword);
 
   const fromEmail = ensureValidEmail(
     requiredText((payload as { fromEmail?: unknown }).fromEmail, 'fromEmail'),
@@ -265,6 +372,7 @@ export async function upsertWorkspaceEmailSettings(
       smtp_secure,
       smtp_username,
       smtp_password,
+      smtp_password_enc,
       from_name,
       from_email,
       reply_to,
@@ -277,7 +385,8 @@ export async function upsertWorkspaceEmailSettings(
       ${smtpPortNumber},
       ${smtpSecure},
       ${smtpUsername},
-      ${smtpPassword},
+      null,
+      ${encryptedSmtpPassword},
       ${fromName},
       ${fromEmail},
       ${replyTo},
@@ -290,7 +399,8 @@ export async function upsertWorkspaceEmailSettings(
       smtp_port = excluded.smtp_port,
       smtp_secure = excluded.smtp_secure,
       smtp_username = excluded.smtp_username,
-      smtp_password = excluded.smtp_password,
+      smtp_password = null,
+      smtp_password_enc = excluded.smtp_password_enc,
       from_name = excluded.from_name,
       from_email = excluded.from_email,
       reply_to = excluded.reply_to,
@@ -339,6 +449,7 @@ async function sendWithResend(input: {
 
 async function sendWithSmtp(
   settings: WorkspaceEmailSettingsRow,
+  smtpPassword: string,
   to: string,
   subject: string,
   bodyHtml: string,
@@ -347,7 +458,6 @@ async function sendWithSmtp(
   const smtpHost = settings.smtp_host;
   const smtpPort = settings.smtp_port;
   const smtpUsername = settings.smtp_username;
-  const smtpPassword = settings.smtp_password;
 
   if (!smtpHost || !smtpPort || !smtpUsername || !smtpPassword) {
     throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
@@ -407,11 +517,15 @@ export async function sendWorkspaceTestEmail(input: {
   if (
     !settings.smtp_host ||
     !settings.smtp_port ||
-    !settings.smtp_username ||
-    !settings.smtp_password
+    !settings.smtp_username
   ) {
     throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
   }
 
-  await sendWithSmtp(settings, input.toEmail, subject, bodyHtml, bodyText);
+  const smtpPassword = await getSmtpPasswordFromRow(input.workspaceId, settings);
+  if (!smtpPassword) {
+    throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
+  }
+
+  await sendWithSmtp(settings, smtpPassword, input.toEmail, subject, bodyHtml, bodyText);
 }

@@ -43,7 +43,7 @@ export async function GET() {
           ok: false,
           code: SMTP_MIGRATION_REQUIRED_CODE,
           message:
-            'SMTP requires DB migration 008_add_workspace_email_settings.sql. Run migrations and retry.',
+            'SMTP requires DB migrations 008_add_workspace_email_settings.sql and 021_add_workspace_smtp_password_encryption.sql. Run migrations and retry.',
         },
         { status: 503 },
       );
@@ -103,13 +103,26 @@ export async function POST(request: NextRequest) {
           ok: false,
           code: SMTP_MIGRATION_REQUIRED_CODE,
           message:
-            'SMTP requires DB migration 008_add_workspace_email_settings.sql. Run migrations and retry.',
+            'SMTP requires DB migrations 008_add_workspace_email_settings.sql and 021_add_workspace_smtp_password_encryption.sql. Run migrations and retry.',
         },
         { status: 503 },
       );
     }
 
     if (error instanceof Error) {
+      if (
+        error.message.includes('SMTP encryption')
+        || error.message.includes('SMTP_ENCRYPTION_KEY_BASE64')
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            message: error.message,
+          },
+          { status: 500 },
+        );
+      }
+
       const validationFields = new Set([
         'provider',
         'smtpHost',

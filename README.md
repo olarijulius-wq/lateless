@@ -62,6 +62,7 @@ psql "$POSTGRES_URL" -f migrations/003_add_stripe_connect_to_users.sql
 - `STRIPE_PRICE_STUDIO`
 - `RESEND_API_KEY`
 - `REMINDER_FROM_EMAIL`
+- `SMTP_ENCRYPTION_KEY_BASE64` (base64-encoded 32-byte key for SMTP password encryption)
 - `REMINDER_CRON_TOKEN`
 - `PAY_LINK_SECRET`
 - `NEXT_PUBLIC_APP_URL`

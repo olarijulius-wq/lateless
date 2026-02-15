@@ -90,7 +90,7 @@ export async function POST(request: Request) {
           ok: false,
           code: SMTP_MIGRATION_REQUIRED_CODE,
           message:
-            'SMTP requires DB migration 008_add_workspace_email_settings.sql. Run migrations and retry.',
+            'SMTP requires DB migrations 008_add_workspace_email_settings.sql and 021_add_workspace_smtp_password_encryption.sql. Run migrations and retry.',
         },
         { status: 503 },
       );

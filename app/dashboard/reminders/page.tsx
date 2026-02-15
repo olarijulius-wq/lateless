@@ -317,7 +317,7 @@ export default async function RemindersPage() {
     } catch (error) {
       if (isSmtpMigrationRequiredError(error)) {
         smtpMigrationWarning =
-          'Email provider settings unavailable. Run migration 008_add_workspace_email_settings.sql.';
+          'Email provider settings unavailable. Run migrations 008_add_workspace_email_settings.sql and 021_add_workspace_smtp_password_encryption.sql.';
       } else {
         throw error;
       }

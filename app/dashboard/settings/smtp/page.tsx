@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 const migrationMessage =
-  'SMTP requires DB migration 008_add_workspace_email_settings.sql. Run migrations and retry.';
+  'SMTP requires DB migrations 008_add_workspace_email_settings.sql and 021_add_workspace_smtp_password_encryption.sql. Run migrations and retry.';
 
 export default async function SmtpSettingsPage() {
   let panelProps:
