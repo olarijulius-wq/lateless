@@ -12,6 +12,7 @@ import { signOut } from '@/auth';
 import { auth } from '@/auth';
 import ThemeToggleMenuItem from '@/app/ui/dashboard/theme-toggle-menu-item';
 import MobileDrawer from '@/app/ui/dashboard/mobile-drawer';
+import FitTextEmail from '@/app/ui/dashboard/fit-text-email';
 import {
   NEUTRAL_FOCUS_RING_CLASSES,
   NEUTRAL_INACTIVE_ITEM_CLASSES,
@@ -55,9 +56,10 @@ export default async function SideNav() {
                 {avatarInitial}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                  {identityLabel}
-                </p>
+                <FitTextEmail
+                  email={identityLabel}
+                  className="font-medium text-neutral-900 dark:text-neutral-100"
+                />
               </div>
               <ChevronUpIcon className="h-4 w-4 text-neutral-500 transition group-open:rotate-180 dark:text-neutral-400" />
             </summary>
