@@ -22,6 +22,15 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function isUndefinedColumnError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === '42703'
+  );
+}
+
 export async function requireUserEmail() {
   const session = await auth();
   const email = session?.user?.email;
@@ -430,6 +439,16 @@ export async function fetchInvoiceById(id: string) {
         invoices.id,
         invoices.customer_id,
         invoices.amount,
+        invoices.currency,
+        invoices.processing_uplift_amount,
+        invoices.payable_amount,
+        invoices.platform_fee_amount,
+        invoices.stripe_processing_fee_amount,
+        invoices.stripe_processing_fee_currency,
+        invoices.stripe_balance_transaction_id,
+        invoices.stripe_net_amount,
+        invoices.merchant_net_amount,
+        invoices.net_received_amount,
         invoices.status,
         invoices.date,
         invoices.due_date,
@@ -447,6 +466,38 @@ export async function fetchInvoiceById(id: string) {
 
     return data[0];
   } catch (error) {
+    if (isUndefinedColumnError(error)) {
+      const fallback = await sql<InvoiceDetail[]>`
+        SELECT
+          invoices.id,
+          invoices.customer_id,
+          invoices.amount,
+          invoices.currency,
+          null::integer AS processing_uplift_amount,
+          null::integer AS payable_amount,
+          null::integer AS platform_fee_amount,
+          null::integer AS stripe_processing_fee_amount,
+          null::text AS stripe_processing_fee_currency,
+          null::text AS stripe_balance_transaction_id,
+          null::integer AS stripe_net_amount,
+          null::integer AS merchant_net_amount,
+          null::integer AS net_received_amount,
+          invoices.status,
+          invoices.date,
+          invoices.due_date,
+          invoices.invoice_number,
+          customers.name AS customer_name,
+          customers.email AS customer_email
+        FROM invoices
+        JOIN customers
+          ON customers.id = invoices.customer_id
+          AND lower(customers.user_email) = ${userEmail}
+        WHERE invoices.id = ${id}
+          AND lower(invoices.user_email) = ${userEmail}
+        LIMIT 1
+      `;
+      return fallback[0];
+    }
     console.error('Database Error:', error);
     throw new Error('Failed to fetch invoice.');
   }

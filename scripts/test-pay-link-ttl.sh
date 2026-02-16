@@ -16,22 +16,34 @@ if (result.ok) {
 }
 NODE
 
-echo "[pay-link] test: production requires PAY_LINK_TTL_SECONDS"
-if NODE_ENV=production PAY_LINK_SECRET=test-secret PAY_LINK_TTL_SECONDS= node --experimental-strip-types <<'NODE'
-import './app/lib/pay-link.ts';
-NODE
-then
-  echo "expected production import to fail when PAY_LINK_TTL_SECONDS is missing"
-  exit 1
-fi
+echo "[pay-link] test: production defaults to 90 days when PAY_LINK_TTL_SECONDS is missing"
+NODE_ENV=production PAY_LINK_SECRET=test-secret PAY_LINK_TTL_SECONDS= node --experimental-strip-types <<'NODE'
+import assert from 'node:assert/strict';
+import { generatePayToken, verifyPayToken } from './app/lib/pay-link.ts';
 
-echo "[pay-link] test: production rejects invalid PAY_LINK_TTL_SECONDS"
-if NODE_ENV=production PAY_LINK_SECRET=test-secret PAY_LINK_TTL_SECONDS=invalid node --experimental-strip-types <<'NODE'
-import './app/lib/pay-link.ts';
+const token = generatePayToken('inv_prod_missing_ttl');
+const result = verifyPayToken(token);
+assert.equal(result.ok, true);
+if (result.ok) {
+  assert.equal(typeof result.payload.iat, 'number');
+  assert.equal(typeof result.payload.exp, 'number');
+  const ttl = (result.payload.exp ?? 0) - (result.payload.iat ?? 0);
+  assert.equal(ttl, 90 * 24 * 60 * 60);
+}
 NODE
-then
-  echo "expected production import to fail when PAY_LINK_TTL_SECONDS is invalid"
-  exit 1
-fi
+
+echo "[pay-link] test: production falls back to 90 days on invalid PAY_LINK_TTL_SECONDS"
+NODE_ENV=production PAY_LINK_SECRET=test-secret PAY_LINK_TTL_SECONDS=invalid node --experimental-strip-types <<'NODE'
+import assert from 'node:assert/strict';
+import { generatePayToken, verifyPayToken } from './app/lib/pay-link.ts';
+
+const token = generatePayToken('inv_prod_invalid_ttl');
+const result = verifyPayToken(token);
+assert.equal(result.ok, true);
+if (result.ok) {
+  const ttl = (result.payload.exp ?? 0) - (result.payload.iat ?? 0);
+  assert.equal(ttl, 90 * 24 * 60 * 60);
+}
+NODE
 
 echo "[pay-link] all checks passed"

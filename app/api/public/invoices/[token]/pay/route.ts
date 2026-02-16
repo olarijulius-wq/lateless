@@ -5,6 +5,10 @@ import { canPayInvoiceStatus } from '@/app/lib/invoice-status';
 import { verifyPayToken } from '@/app/lib/pay-link';
 import { fetchStripeConnectStatusForUser } from '@/app/lib/data';
 import {
+  PRICING_FEES_MIGRATION_REQUIRED_CODE,
+  isPricingFeesMigrationRequiredError,
+} from '@/app/lib/pricing-fees';
+import {
   checkConnectedAccountAccess,
   CONNECT_MODE_MISMATCH_MESSAGE,
   getConnectChargeCapabilityStatus,
@@ -84,56 +88,64 @@ export async function POST(
     const ownerEmail = normalizeEmail(invoice.user_email);
     const connectStatus = await fetchStripeConnectStatusForUser(ownerEmail);
     const connectedAccountId = connectStatus.accountId;
-
-    if (connectedAccountId) {
-      const accessCheck = await checkConnectedAccountAccess(connectedAccountId);
-      if (!accessCheck.ok && accessCheck.isModeMismatch) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[public invoice checkout blocked] Stripe Connect mode mismatch', {
-            connectedAccountId,
-            mode: isTest ? 'test' : 'live',
-          });
-        }
-        return NextResponse.json(
-          {
-            ok: false,
-            code: 'CONNECT_MODE_MISMATCH',
-            message: CONNECT_MODE_MISMATCH_MESSAGE,
-            actionUrl: payoutsSetupUrl,
-          },
-          { status: 409 },
-        );
-      }
-      if (!accessCheck.ok) {
-        throw new Error(accessCheck.message);
-      }
-
-      const capabilityStatus = await getConnectChargeCapabilityStatus(
-        connectedAccountId,
+    if (!connectedAccountId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'CONNECT_REQUIRED',
+          message: "Payments aren't enabled for this merchant yet.",
+        },
+        { status: 409 },
       );
-      if (!capabilityStatus.ok) {
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[public invoice checkout blocked] Stripe Connect not ready', {
-            connectedAccountId,
-            card_payments: capabilityStatus.cardPayments,
-            charges_enabled: capabilityStatus.chargesEnabled,
-            details_submitted: capabilityStatus.detailsSubmitted,
-          });
-        }
-        return NextResponse.json(
-          {
-            ok: false,
-            code: 'CONNECT_CARD_PAYMENTS_REQUIRED',
-            message:
-              'Card payments are not enabled on your connected Stripe account. Complete Stripe onboarding to enable card payments.',
-            actionUrl: payoutsSetupUrl,
-          },
-          { status: 409 },
-        );
-      }
     }
 
-    const checkoutSession = await createInvoiceCheckoutSession(
+    const accessCheck = await checkConnectedAccountAccess(connectedAccountId);
+    if (!accessCheck.ok && accessCheck.isModeMismatch) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[public invoice checkout blocked] Stripe Connect mode mismatch', {
+          connectedAccountId,
+          mode: isTest ? 'test' : 'live',
+        });
+      }
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'CONNECT_MODE_MISMATCH',
+          message: CONNECT_MODE_MISMATCH_MESSAGE,
+          actionUrl: payoutsSetupUrl,
+        },
+        { status: 409 },
+      );
+    }
+    if (!accessCheck.ok) {
+      throw new Error(accessCheck.message);
+    }
+
+    const capabilityStatus = await getConnectChargeCapabilityStatus(
+      connectedAccountId,
+    );
+    if (!capabilityStatus.ok) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[public invoice checkout blocked] Stripe Connect not ready', {
+          connectedAccountId,
+          card_payments: capabilityStatus.cardPayments,
+          charges_enabled: capabilityStatus.chargesEnabled,
+          details_submitted: capabilityStatus.detailsSubmitted,
+        });
+      }
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'CONNECT_CARD_PAYMENTS_REQUIRED',
+          message:
+            'Card payments are not enabled on your connected Stripe account. Complete Stripe onboarding to enable card payments.',
+          actionUrl: payoutsSetupUrl,
+        },
+        { status: 409 },
+      );
+    }
+
+    const { checkoutSession, feeBreakdown } = await createInvoiceCheckoutSession(
       {
         id: invoice.id,
         amount: invoice.amount,
@@ -157,6 +169,9 @@ export async function POST(
     const updated = await sql<{ id: string }[]>`
       UPDATE invoices
       SET
+        processing_uplift_amount = ${feeBreakdown.processingUpliftAmount},
+        payable_amount = ${feeBreakdown.payableAmount},
+        platform_fee_amount = ${feeBreakdown.platformFeeAmount},
         stripe_checkout_session_id = ${checkoutSession.id},
         stripe_payment_intent_id = coalesce(${paymentIntentId}, stripe_payment_intent_id)
       WHERE id = ${invoice.id}
@@ -167,6 +182,7 @@ export async function POST(
         invoiceId: invoice.id,
         checkoutSessionId: checkoutSession.id,
         paymentIntentId,
+        feeBreakdown,
         rows: updated.length,
       });
     }
@@ -180,6 +196,17 @@ export async function POST(
 
     return NextResponse.json({ url: checkoutSession.url });
   } catch (error: any) {
+    if (isPricingFeesMigrationRequiredError(error)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: PRICING_FEES_MIGRATION_REQUIRED_CODE,
+          message:
+            'Pricing and fees require DB migration 022_add_pricing_fee_fields.sql. Run migrations and retry.',
+        },
+        { status: 503 },
+      );
+    }
     if (isStripePermissionOrNoAccessError(error)) {
       return NextResponse.json(
         {

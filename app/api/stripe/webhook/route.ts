@@ -165,6 +165,34 @@ async function retrieveChargeWithAccountContext(
   }
 }
 
+async function retrieveChargeWithBalanceTransactionWithAccountContext(
+  chargeId: string,
+  eventAccount?: string,
+): Promise<Stripe.Charge | null> {
+  try {
+    return await stripe.charges.retrieve(
+      chargeId,
+      { expand: ["balance_transaction"] },
+      eventAccount ? { stripeAccount: eventAccount } : undefined,
+    );
+  } catch (err: any) {
+    if (isStripeResourceMissing404(err)) {
+      debugLog(
+        "[stripe webhook] charge retrieve with balance_transaction resource_missing (ignored)",
+        {
+          chargeId,
+          eventAccount: eventAccount ?? null,
+          code: err?.code,
+          statusCode: err?.statusCode,
+          message: err?.message,
+        },
+      );
+      return null;
+    }
+    throw err;
+  }
+}
+
 async function findInvoiceStatusById(invoiceId: string): Promise<string | null> {
   const rows = await sql<{ status: string }[]>`
     select status
@@ -198,6 +226,7 @@ type InvoiceValidationRow = {
   id: string;
   status: string;
   amount: number;
+  payable_amount: number | null;
   currency: string | null;
   workspace_id: string | null;
   owner_email: string | null;
@@ -217,12 +246,13 @@ function normalizeCurrency(value: string | null | undefined): string | null {
 type InvoiceMoneyValidationRow = {
   id: string;
   amount: number;
+  payable_amount: number | null;
   currency: string | null;
   owner_stripe_connect_account_id: string | null;
 };
 
 type InvoiceForValidation = {
-  amount: number;
+  expectedChargeAmount: number;
   currency: string | null;
   ownerStripeConnectAccountId: string | null;
 };
@@ -239,6 +269,7 @@ async function loadInvoiceForValidation(
     select
       i.id,
       i.amount,
+      i.payable_amount,
       i.currency,
       coalesce(
         w_active_owner.stripe_connect_account_id,
@@ -262,7 +293,10 @@ async function loadInvoiceForValidation(
   const invoice = rows[0];
   if (!invoice) return null;
   return {
-    amount: invoice.amount,
+    expectedChargeAmount:
+      typeof invoice.payable_amount === "number"
+        ? invoice.payable_amount
+        : invoice.amount,
     currency: invoice.currency,
     ownerStripeConnectAccountId: invoice.owner_stripe_connect_account_id,
   };
@@ -297,7 +331,7 @@ function validateInvoiceMutation({
   if (typeof stripeMoney.amount !== "number" || !Number.isInteger(stripeMoney.amount)) {
     return { ok: false, reason: "stripe amount missing or not an integer" };
   }
-  if (invoice.amount !== stripeMoney.amount) {
+  if (invoice.expectedChargeAmount !== stripeMoney.amount) {
     return { ok: false, reason: "amount mismatch" };
   }
 
@@ -383,6 +417,7 @@ async function validateInvoiceMutationByInvoiceId({
       i.id,
       i.status,
       i.amount,
+      i.payable_amount,
       i.currency,
       coalesce(w_active.id, w_owner.id, u.active_workspace_id) as workspace_id,
       u.email as owner_email,
@@ -439,7 +474,12 @@ async function validateInvoiceMutationByInvoiceId({
     return { ok: false, reason, invoice };
   }
 
-  if (invoice.amount !== amount) {
+  const expectedAmount =
+    typeof invoice.payable_amount === "number"
+      ? invoice.payable_amount
+      : invoice.amount;
+
+  if (expectedAmount !== amount) {
     const reason = "amount mismatch";
     debugLog("[stripe webhook] invoice validation warning", {
       reason,
@@ -449,7 +489,7 @@ async function validateInvoiceMutationByInvoiceId({
       checkoutSessionId: checkoutSessionId ?? null,
       chargeId: chargeId ?? null,
       disputeId: disputeId ?? null,
-      invoiceAmount: invoice.amount,
+      invoiceAmount: expectedAmount,
       stripeAmount: amount,
     });
     return { ok: false, reason, invoice };
@@ -671,6 +711,112 @@ async function markInvoicePaid({
   }
 
   return rowCount;
+}
+
+async function updateInvoiceActualFeeDetailsFromCharge({
+  invoiceId,
+  charge,
+  eventId,
+  eventType,
+  eventAccount,
+}: {
+  invoiceId: string;
+  charge: Stripe.Charge;
+  eventId: string;
+  eventType: string;
+  eventAccount?: string | null;
+}): Promise<void> {
+  const normalizedEventAccount = eventAccount ?? undefined;
+  const chargeWithBalanceTransaction =
+    typeof charge.balance_transaction === "object" && charge.balance_transaction
+      ? charge
+      : await retrieveChargeWithBalanceTransactionWithAccountContext(
+          charge.id,
+          normalizedEventAccount,
+        );
+
+  const balanceTransaction = chargeWithBalanceTransaction?.balance_transaction;
+  if (
+    !chargeWithBalanceTransaction ||
+    !balanceTransaction ||
+    typeof balanceTransaction === "string"
+  ) {
+    debugLog("[stripe webhook] actual fee update skipped (no balance transaction)", {
+      eventType,
+      eventId,
+      eventAccount: eventAccount ?? null,
+      invoiceId,
+      chargeId: charge.id,
+    });
+    return;
+  }
+
+  if (
+    typeof chargeWithBalanceTransaction.amount !== "number" ||
+    typeof balanceTransaction.fee !== "number" ||
+    typeof balanceTransaction.net !== "number"
+  ) {
+    debugLog("[stripe webhook] actual fee update skipped (missing gross, fee, or net)", {
+      eventType,
+      eventId,
+      eventAccount: eventAccount ?? null,
+      invoiceId,
+      chargeId: charge.id,
+      gross: chargeWithBalanceTransaction.amount ?? null,
+      fee: balanceTransaction.fee ?? null,
+      stripeNet: balanceTransaction.net ?? null,
+    });
+    return;
+  }
+
+  const gross = chargeWithBalanceTransaction.amount;
+  const processingFee = balanceTransaction.fee;
+  const stripeNetAmount = balanceTransaction.net;
+  const applicationFee =
+    typeof chargeWithBalanceTransaction.application_fee_amount === "number"
+      ? chargeWithBalanceTransaction.application_fee_amount
+      : 0;
+  const merchantNetAmount = stripeNetAmount - applicationFee;
+  const processingFeeCurrency =
+    normalizeCurrency(balanceTransaction.currency) ??
+    normalizeCurrency(chargeWithBalanceTransaction.currency) ??
+    null;
+  const balanceTransactionId = balanceTransaction.id ?? null;
+
+  const updated = await sql`
+    update invoices
+    set
+      stripe_processing_fee_amount = ${processingFee},
+      stripe_processing_fee_currency = ${processingFeeCurrency},
+      stripe_balance_transaction_id = ${balanceTransactionId},
+      stripe_net_amount = ${stripeNetAmount},
+      merchant_net_amount = ${merchantNetAmount},
+      net_received_amount = ${merchantNetAmount}
+    where id = ${invoiceId}
+    returning
+      id,
+      stripe_processing_fee_amount,
+      stripe_processing_fee_currency,
+      stripe_balance_transaction_id,
+      stripe_net_amount,
+      merchant_net_amount,
+      net_received_amount
+  `;
+
+  debugLog("[stripe webhook] invoice actual fee update", {
+    eventType,
+    eventId,
+    eventAccount: eventAccount ?? null,
+    invoiceId,
+    chargeId: charge.id,
+    gross,
+    processingFee,
+    stripeNetAmount,
+    applicationFee,
+    merchantNetAmount,
+    rows: updated.length,
+    invoice: updated[0] ?? null,
+  });
 }
 
 async function processEvent(event: Stripe.Event): Promise<void> {
@@ -1105,6 +1251,13 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       eventId: event.id,
       eventAccount: event.account ?? null,
       eventType: event.type,
+    });
+    await updateInvoiceActualFeeDetailsFromCharge({
+      invoiceId,
+      charge,
+      eventId: event.id,
+      eventType: event.type,
+      eventAccount: event.account ?? null,
     });
   }
 

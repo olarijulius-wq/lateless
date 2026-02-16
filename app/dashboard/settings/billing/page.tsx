@@ -96,7 +96,7 @@ export default async function BillingSettingsPage(props: {
     {
       id: 'studio',
       title: 'Studio',
-      price: '99€/month',
+      price: '199€/month',
       highlight: 'Unlimited invoices',
       description: 'For agencies managing multiple retainers.',
     },

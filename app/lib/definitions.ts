@@ -94,6 +94,16 @@ export type InvoiceDetail = {
   customer_name: string;
   customer_email: string;
   amount: number;
+  currency: string;
+  processing_uplift_amount: number | null;
+  payable_amount: number | null;
+  platform_fee_amount: number | null;
+  stripe_processing_fee_amount: number | null;
+  stripe_processing_fee_currency: string | null;
+  stripe_balance_transaction_id: string | null;
+  stripe_net_amount: number | null;
+  merchant_net_amount: number | null;
+  net_received_amount: number | null;
   invoice_number: string | null;
   status: InvoiceStatus;
   date: string;

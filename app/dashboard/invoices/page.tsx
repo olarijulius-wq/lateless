@@ -6,6 +6,7 @@ import { CreateInvoice } from '@/app/ui/invoices/buttons';
 import {
   fetchFilteredInvoices,
   fetchInvoicesPages,
+  fetchStripeConnectAccountId,
   fetchUserPlanAndUsage,
 } from '@/app/lib/data';
 import ExportInvoicesButton from './export-button';
@@ -28,10 +29,11 @@ export default async function Page(props: {
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) || 1;
 
-  const [invoices, totalPages, plan] = await Promise.all([
+  const [invoices, totalPages, plan, stripeConnectAccountId] = await Promise.all([
     fetchFilteredInvoices(query, currentPage),
     fetchInvoicesPages(query),
     fetchUserPlanAndUsage(),
+    fetchStripeConnectAccountId(),
   ]);
 
   const { plan: planId, invoiceCount, maxPerMonth } = plan;
@@ -101,7 +103,10 @@ export default async function Page(props: {
 
       <RevealOnMount delay={0.12}>
         <div>
-          <Table invoices={invoices} />
+          <Table
+            invoices={invoices}
+            hasStripeConnect={!!stripeConnectAccountId}
+          />
           <div className="mt-6 flex w-full justify-center">
             <Pagination totalPages={totalPages} />
           </div>

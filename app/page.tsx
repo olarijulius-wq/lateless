@@ -19,8 +19,12 @@ function formatLimit(maxPerMonth: number) {
     : 'Unlimited invoices / month';
 }
 
-function formatPlatformFee(fee: number | null) {
-  return `Lateless platform fee: ${fee ?? 0}% per paid invoice`;
+function formatPlatformFee(
+  fixedCents: number,
+  percent: number,
+  capCents: number,
+) {
+  return `Platform fee: €${(fixedCents / 100).toFixed(2)} + ${percent.toFixed(1)}% (cap €${(capCents / 100).toFixed(2)}) per paid invoice`;
 }
 
 function extractEmail(value: string | undefined) {
@@ -222,7 +226,13 @@ export default function Page() {
 
                   <ul className="mt-5 space-y-2 text-sm text-neutral-300">
                     <li>{formatLimit(plan.maxPerMonth)}</li>
-                    <li>{formatPlatformFee(plan.platformFeePercent)}</li>
+                    <li>
+                      {formatPlatformFee(
+                        plan.platformFeeFixedCents,
+                        plan.platformFeePercent,
+                        plan.platformFeeCapCents,
+                      )}
+                    </li>
                   </ul>
 
                   <Link

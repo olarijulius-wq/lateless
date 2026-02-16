@@ -10,8 +10,10 @@ import { canPayInvoiceStatus } from '@/app/lib/invoice-status';
 
 export default function InvoicesTable({
   invoices,
+  hasStripeConnect,
 }: {
   invoices: InvoicesTableType[];
+  hasStripeConnect: boolean;
 }) {
   return (
     <div className="mt-6 flow-root">
@@ -67,12 +69,20 @@ export default function InvoicesTable({
                     </p>
                   </div>
                   <div className="flex shrink-0 justify-end gap-2">
-                    {canPayInvoiceStatus(invoice.status) && (
-                      <PayInvoiceButton
-                        invoiceId={invoice.id}
-                        className="rounded-md px-2 py-1 text-xs"
-                      />
-                    )}
+                    {canPayInvoiceStatus(invoice.status) &&
+                      (hasStripeConnect ? (
+                        <PayInvoiceButton
+                          invoiceId={invoice.id}
+                          className="rounded-md px-2 py-1 text-xs"
+                        />
+                      ) : (
+                        <Link
+                          href="/dashboard/settings/payouts"
+                          className="inline-flex items-center justify-center rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                        >
+                          Connect Stripe
+                        </Link>
+                      ))}
                     <UpdateInvoice id={invoice.id} />
                     <DeleteInvoice id={invoice.id} />
                   </div>
@@ -153,12 +163,20 @@ export default function InvoicesTable({
                   </td>
                   <td className="whitespace-nowrap px-4 py-5 text-center">
                     <div className="flex justify-center gap-3">
-                      {canPayInvoiceStatus(invoice.status) && (
-                        <PayInvoiceButton
-                          invoiceId={invoice.id}
-                          className="rounded-md px-2 py-1 text-xs"
-                        />
-                      )}
+                      {canPayInvoiceStatus(invoice.status) &&
+                        (hasStripeConnect ? (
+                          <PayInvoiceButton
+                            invoiceId={invoice.id}
+                            className="rounded-md px-2 py-1 text-xs"
+                          />
+                        ) : (
+                          <Link
+                            href="/dashboard/settings/payouts"
+                            className="inline-flex items-center justify-center rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                          >
+                            Connect Stripe
+                          </Link>
+                        ))}
                       <UpdateInvoice id={invoice.id} />
                       <DeleteInvoice id={invoice.id} />
                     </div>

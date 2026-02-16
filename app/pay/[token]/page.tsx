@@ -36,6 +36,8 @@ export default async function Page(props: PageProps) {
   const [invoice] = await sql<{
     id: string;
     amount: number;
+    processing_uplift_amount: number | null;
+    payable_amount: number | null;
     status: string;
     paid_at: Date | null;
     date: string;
@@ -46,10 +48,13 @@ export default async function Page(props: PageProps) {
     notes: string | null;
     customer_name: string;
     customer_email: string;
+    owner_connect_account_id: string | null;
   }[]>`
     SELECT
       invoices.id,
       invoices.amount,
+      invoices.processing_uplift_amount,
+      invoices.payable_amount,
       invoices.status,
       invoices.paid_at,
       invoices.date,
@@ -59,9 +64,11 @@ export default async function Page(props: PageProps) {
       invoices.description,
       invoices.notes,
       customers.name AS customer_name,
-      customers.email AS customer_email
+      customers.email AS customer_email,
+      users.stripe_connect_account_id AS owner_connect_account_id
     FROM invoices
     JOIN customers ON customers.id = invoices.customer_id
+    LEFT JOIN users ON lower(users.email) = lower(invoices.user_email)
     WHERE invoices.id = ${verification.payload.invoiceId}
     LIMIT 1
   `;
@@ -72,7 +79,15 @@ export default async function Page(props: PageProps) {
 
   const displayNumber =
     invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`;
-  const amountLabel = formatCurrency(invoice.amount, invoice.currency);
+  const payableAmount =
+    typeof invoice.payable_amount === 'number'
+      ? invoice.payable_amount
+      : invoice.amount;
+  const processingUpliftAmount =
+    typeof invoice.processing_uplift_amount === 'number'
+      ? invoice.processing_uplift_amount
+      : 0;
+  const amountLabel = formatCurrency(payableAmount, invoice.currency);
   const isPaid = searchParams?.paid === '1';
   const isCanceled = searchParams?.canceled === '1';
   let hasPendingRefundRequest = false;
@@ -99,7 +114,8 @@ export default async function Page(props: PageProps) {
 
   const canRequestRefund = invoice.status === 'paid' && isRefundWindowOpen(invoice.paid_at);
   const isRefundWindowClosed = invoice.status === 'paid' && !canRequestRefund;
-  const canPay = canPayInvoiceStatus(invoice.status);
+  const hasConnect = !!invoice.owner_connect_account_id?.trim();
+  const canPay = canPayInvoiceStatus(invoice.status) && hasConnect;
 
   return (
     <main className="min-h-screen bg-white px-6 py-12 text-neutral-900 dark:bg-black dark:text-zinc-100">
@@ -132,6 +148,11 @@ export default async function Page(props: PageProps) {
               <p className="text-3xl font-semibold text-neutral-900 dark:text-zinc-100">
                 {amountLabel}
               </p>
+              {processingUpliftAmount > 0 ? (
+                <p className="mt-1 text-xs text-neutral-500 dark:text-zinc-400">
+                  Payment processing included: {formatCurrency(processingUpliftAmount, invoice.currency)}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -173,12 +194,21 @@ export default async function Page(props: PageProps) {
             <p className="text-xs text-neutral-500 dark:text-zinc-400">
               Secure payment powered by Stripe.
             </p>
-            {!canPay ? (
+            {!hasConnect ? (
+              <span className="text-sm font-medium text-neutral-600 dark:text-zinc-300">
+                Payments aren&apos;t enabled for this merchant yet.
+              </span>
+            ) : !canPay ? (
               <InvoiceStatus status={invoice.status} />
             ) : (
               <PublicPayButton token={params.token} />
             )}
           </div>
+          {processingUpliftAmount > 0 ? (
+            <p className="mt-3 text-xs text-neutral-500 dark:text-zinc-400">
+              Payment processing is included in the total shown above.
+            </p>
+          ) : null}
 
           {invoice.status === 'paid' && (
             <div className="mt-4 border-t border-neutral-200 pt-4 dark:border-zinc-800">

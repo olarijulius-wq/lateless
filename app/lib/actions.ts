@@ -349,8 +349,30 @@ export async function createInvoice(
 
   try {
     const created = await sql<{ id: string }[]>`
-      INSERT INTO invoices (customer_id, amount, status, date, due_date, user_email, invoice_number)
-      VALUES (${customerId}, ${amountInCents}, ${status}, ${date}, ${dueDate ?? null}, ${userEmail}, ${invoiceNumber})
+      INSERT INTO invoices (
+        customer_id,
+        amount,
+        processing_uplift_amount,
+        payable_amount,
+        platform_fee_amount,
+        status,
+        date,
+        due_date,
+        user_email,
+        invoice_number
+      )
+      VALUES (
+        ${customerId},
+        ${amountInCents},
+        0,
+        ${amountInCents},
+        0,
+        ${status},
+        ${date},
+        ${dueDate ?? null},
+        ${userEmail},
+        ${invoiceNumber}
+      )
       RETURNING id
     `;
 
@@ -406,7 +428,14 @@ export async function updateInvoice(
   try {
     const updated = await sql`
       UPDATE invoices
-      SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}, due_date = ${dueDate ?? null}
+      SET
+        customer_id = ${customerId},
+        amount = ${amountInCents},
+        processing_uplift_amount = 0,
+        payable_amount = ${amountInCents},
+        platform_fee_amount = 0,
+        status = ${status},
+        due_date = ${dueDate ?? null}
       WHERE id = ${id} AND lower(user_email) = ${userEmail}
       RETURNING id
     `;
@@ -526,8 +555,28 @@ export async function duplicateInvoice(
 
   try {
     const created = await sql<{ id: string }[]>`
-      INSERT INTO invoices (customer_id, amount, status, date, user_email, invoice_number)
-      VALUES (${invoice.customer_id}, ${invoice.amount}, 'pending', ${date}, ${userEmail}, ${invoiceNumber})
+      INSERT INTO invoices (
+        customer_id,
+        amount,
+        processing_uplift_amount,
+        payable_amount,
+        platform_fee_amount,
+        status,
+        date,
+        user_email,
+        invoice_number
+      )
+      VALUES (
+        ${invoice.customer_id},
+        ${invoice.amount},
+        0,
+        ${invoice.amount},
+        0,
+        'pending',
+        ${date},
+        ${userEmail},
+        ${invoiceNumber}
+      )
       RETURNING id
     `;
 

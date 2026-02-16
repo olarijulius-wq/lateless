@@ -1,7 +1,10 @@
 import { stripe } from '@/app/lib/stripe';
-import { PLAN_CONFIG, resolveEffectivePlan } from '@/app/lib/config';
 import { fetchStripeConnectStatusForUser } from '@/app/lib/data';
-import postgres from 'postgres';
+import {
+  computeInvoiceFeeBreakdownForUser,
+  type InvoiceFeeBreakdown,
+} from '@/app/lib/pricing-fees';
+import type Stripe from 'stripe';
 
 export type InvoiceCheckoutInput = {
   id: string;
@@ -16,43 +19,24 @@ export type InvoiceCheckoutOptions = {
   cancelUrl?: string;
 };
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
-
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
 async function getInvoiceOwnerStripeConfig(
   userEmail: string,
-  totalCents: number,
+  baseAmountCents: number,
 ) {
   const normalizedEmail = normalizeEmail(userEmail);
-
-  const [user] = await sql<{
-    plan: string | null;
-    subscription_status: string | null;
-  }[]>`
-    SELECT
-      plan,
-      subscription_status
-    FROM users
-    WHERE lower(email) = ${normalizedEmail}
-    LIMIT 1
-  `;
-
-  const plan = resolveEffectivePlan(
-    user?.plan ?? null,
-    user?.subscription_status ?? null,
+  const feeBreakdown = await computeInvoiceFeeBreakdownForUser(
+    normalizedEmail,
+    baseAmountCents,
   );
-  const platformFeePercent = PLAN_CONFIG[plan].platformFeePercent ?? 0;
-  const applicationFeeAmount =
-    platformFeePercent > 0
-      ? Math.max(0, Math.round((totalCents * platformFeePercent) / 100))
-      : 0;
   const connectStatus = await fetchStripeConnectStatusForUser(normalizedEmail);
 
   return {
-    applicationFeeAmount,
+    feeBreakdown,
+    applicationFeeAmount: feeBreakdown.platformFeeAmount,
     connectAccountId: connectStatus.hasAccount ? connectStatus.accountId : null,
   };
 }
@@ -61,7 +45,10 @@ export async function createInvoiceCheckoutSession(
   invoice: InvoiceCheckoutInput,
   baseUrl: string,
   options?: InvoiceCheckoutOptions,
-) {
+): Promise<{
+  checkoutSession: Stripe.Checkout.Session;
+  feeBreakdown: InvoiceFeeBreakdown;
+}> {
   const invoiceLabel =
     invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`;
   const successUrl =
@@ -74,6 +61,9 @@ export async function createInvoiceCheckoutSession(
     invoice.user_email,
     invoice.amount,
   );
+  if (!ownerStripeConfig.connectAccountId) {
+    throw new Error('CONNECT_REQUIRED');
+  }
   const paymentIntentData: {
     metadata: Record<string, string>;
     application_fee_amount?: number;
@@ -85,16 +75,14 @@ export async function createInvoiceCheckoutSession(
     },
   };
 
-  if (ownerStripeConfig.connectAccountId) {
-    // Direct charge: Checkout session is created on the connected account,
-    // so Stripe processing fees are paid by the connected account.
-    if (ownerStripeConfig.applicationFeeAmount > 0) {
-      paymentIntentData.application_fee_amount =
-        ownerStripeConfig.applicationFeeAmount;
-    }
+  // Direct charge: Checkout session is created on the connected account,
+  // so Stripe processing fees are paid by the connected account.
+  if (ownerStripeConfig.applicationFeeAmount > 0) {
+    paymentIntentData.application_fee_amount =
+      ownerStripeConfig.applicationFeeAmount;
   }
 
-  return stripe.checkout.sessions.create(
+  const checkoutSession = await stripe.checkout.sessions.create(
     {
       mode: 'payment',
       expand: ['payment_intent'],
@@ -103,7 +91,7 @@ export async function createInvoiceCheckoutSession(
           quantity: 1,
           price_data: {
             currency: 'eur',
-            unit_amount: invoice.amount,
+            unit_amount: ownerStripeConfig.feeBreakdown.payableAmount,
             product_data: {
               name: `Invoice ${invoiceLabel}`,
             },
@@ -120,8 +108,11 @@ export async function createInvoiceCheckoutSession(
       success_url: successUrl,
       cancel_url: cancelUrl,
     },
-    ownerStripeConfig.connectAccountId
-      ? { stripeAccount: ownerStripeConfig.connectAccountId }
-      : undefined,
+    { stripeAccount: ownerStripeConfig.connectAccountId },
   );
+
+  return {
+    checkoutSession,
+    feeBreakdown: ownerStripeConfig.feeBreakdown,
+  };
 }

@@ -54,17 +54,11 @@ function signPayload(encoded: string) {
 function getPayLinkTtlSeconds() {
   const raw = process.env.PAY_LINK_TTL_SECONDS;
   if (!raw) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('Missing PAY_LINK_TTL_SECONDS in production');
-    }
     return DEV_DEFAULT_PAY_LINK_TTL_SECONDS;
   }
 
   const ttlSeconds = Number(raw);
   if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('Invalid PAY_LINK_TTL_SECONDS in production');
-    }
     return DEV_DEFAULT_PAY_LINK_TTL_SECONDS;
   }
 

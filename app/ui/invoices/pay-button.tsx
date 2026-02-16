@@ -42,12 +42,13 @@ export default function PayInvoiceButton({
 
       if (!response.ok) {
         if (
-          data.code === 'CONNECT_CARD_PAYMENTS_REQUIRED' &&
+          (data.code === 'CONNECT_CARD_PAYMENTS_REQUIRED' ||
+            data.code === 'CONNECT_REQUIRED') &&
           data.actionUrl
         ) {
           setErrorMessage(
             data.message ??
-              'Card payments are not enabled on your connected Stripe account.',
+              "Payments aren't enabled for this merchant yet.",
           );
           setActionUrl(data.actionUrl);
           setIsLoading(false);
