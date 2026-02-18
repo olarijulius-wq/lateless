@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import postgres from 'postgres';
 import { sendInvoiceReminderEmail } from '@/app/lib/email';
 import { generatePayLink } from '@/app/lib/pay-link';
+import { sendWithThrottle } from '@/app/lib/throttled-batch-sender';
 import {
   fetchUnsubscribeSettings,
   isRecipientUnsubscribed,
@@ -25,6 +26,9 @@ import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 export const runtime = 'nodejs';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+const DEFAULT_EMAIL_THROTTLE_MS = 6000;
+const DEFAULT_EMAIL_BATCH_SIZE = 25;
+const DEFAULT_EMAIL_MAX_RUN_MS = 480000;
 
 type ReminderCandidate = {
   id: string;
@@ -47,6 +51,7 @@ type DecisionReason =
   | 'paused_customer'
   | 'unsubscribed'
   | 'missing_email'
+  | 'duplicate_in_run'
   | 'not_eligible';
 
 type CandidateDecision = {
@@ -168,6 +173,11 @@ function safeErrorMessage(error: unknown) {
   return 'Unknown error';
 }
 
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
 function getWorkspaceAccumulator(
   workspaceStats: Map<string, WorkspaceAccumulator>,
   workspaceId: string | null,
@@ -277,7 +287,10 @@ async function parseRunOptions(req: Request) {
   return { dryRun, triggeredBy };
 }
 
-async function fetchReminderCandidates(includeReminderPauseJoin: boolean) {
+async function fetchReminderCandidates(
+  includeReminderPauseJoin: boolean,
+  selectionLimit: number,
+) {
   if (includeReminderPauseJoin) {
     return sql<ReminderCandidate[]>`
       SELECT
@@ -329,6 +342,8 @@ async function fetchReminderCandidates(includeReminderPauseJoin: boolean) {
             AND invoices.last_reminder_sent_at <= now() - interval '14 days'
           )
         )
+      ORDER BY invoices.due_date ASC, invoices.id ASC
+      LIMIT ${selectionLimit}
     `;
   }
 
@@ -377,6 +392,8 @@ async function fetchReminderCandidates(includeReminderPauseJoin: boolean) {
           AND invoices.last_reminder_sent_at <= now() - interval '14 days'
         )
       )
+    ORDER BY invoices.due_date ASC, invoices.id ASC
+    LIMIT ${selectionLimit}
   `;
 }
 
@@ -391,6 +408,10 @@ async function runReminderJob(req: Request) {
   const ranAtIso = new Date(startedAt).toISOString();
   const { dryRun, triggeredBy } = await parseRunOptions(req);
   const baseUrl = getBaseUrl();
+  const batchSize = parsePositiveInt(process.env.EMAIL_BATCH_SIZE, DEFAULT_EMAIL_BATCH_SIZE);
+  const delayMs = parsePositiveInt(process.env.EMAIL_THROTTLE_MS, DEFAULT_EMAIL_THROTTLE_MS);
+  const maxRunMs = parsePositiveInt(process.env.EMAIL_MAX_RUN_MS, DEFAULT_EMAIL_MAX_RUN_MS);
+  const selectionLimit = Math.max(batchSize * 10, batchSize + 1);
 
   let includeReminderPauseJoin = false;
   try {
@@ -402,17 +423,33 @@ async function runReminderJob(req: Request) {
     }
   }
 
-  const reminders = await fetchReminderCandidates(includeReminderPauseJoin);
+  const reminders = await fetchReminderCandidates(includeReminderPauseJoin, selectionLimit);
+  const hasMoreFromSelection = reminders.length >= selectionLimit;
   const updatedInvoiceIds: string[] = [];
   const workspaceStats = new Map<string, WorkspaceAccumulator>();
   const decisions: CandidateDecision[] = [];
   const errors: RunErrorItem[] = [];
+  const eligibleReminders: ReminderCandidate[] = [];
+  const seenInvoiceIds = new Set<string>();
 
   if (reminders.length === 0) {
     console.log('No reminders to send (either none overdue or owners not verified).');
   }
 
   for (const reminder of reminders) {
+    if (seenInvoiceIds.has(reminder.id)) {
+      const workspaceAccumulator = getWorkspaceAccumulator(workspaceStats, reminder.workspace_id);
+      decisions.push({
+        invoiceId: reminder.id,
+        workspaceId: reminder.workspace_id,
+        willSend: false,
+        reason: 'duplicate_in_run',
+      });
+      incrementSkip(workspaceAccumulator, 'duplicate_in_run');
+      continue;
+    }
+    seenInvoiceIds.add(reminder.id);
+
     const workspaceAccumulator = getWorkspaceAccumulator(workspaceStats, reminder.workspace_id);
     const customerEmail = reminder.customer_email?.trim() ?? '';
 
@@ -460,9 +497,6 @@ async function runReminderJob(req: Request) {
       continue;
     }
 
-    let includeUnsubscribeLink = false;
-    let unsubscribeUrl: string | null = null;
-
     if (reminder.workspace_id) {
       try {
         const unsubscribeSettings = await fetchUnsubscribeSettings(reminder.workspace_id);
@@ -482,15 +516,6 @@ async function runReminderJob(req: Request) {
             incrementSkip(workspaceAccumulator, 'unsubscribed');
             continue;
           }
-
-          if (!dryRun) {
-            const unsubscribePath = await issueUnsubscribeToken(
-              reminder.workspace_id,
-              customerEmail,
-            );
-            unsubscribeUrl = `${baseUrl}${unsubscribePath}`;
-            includeUnsubscribeLink = true;
-          }
         }
       } catch (unsubscribeError) {
         if (!isUnsubscribeMigrationRequiredError(unsubscribeError)) {
@@ -505,85 +530,114 @@ async function runReminderJob(req: Request) {
       willSend: true,
       reason: 'eligible',
     });
-
-    if (dryRun) {
-      if (workspaceAccumulator) {
-        workspaceAccumulator.sentCount += 1;
-      }
-      continue;
-    }
-
-    try {
-      const payLink = generatePayLink(baseUrl, reminder.id);
-      const amountLabel = formatAmount(reminder.amount);
-      const dueDateLabel = formatDate(reminder.due_date);
-      const reminderNumber = reminder.reminder_level + 1;
-      const subject = `Invoice reminder #${reminderNumber}: ${amountLabel} due`;
-
-      const bodyText = [
-        `Hi ${reminder.customer_name},`,
-        '',
-        `This is a reminder that your invoice is overdue.`,
-        `Amount: ${amountLabel}`,
-        `Due date: ${dueDateLabel}`,
-        `Pay here: ${payLink}`,
-        ...(includeUnsubscribeLink && unsubscribeUrl
-          ? ['', `Unsubscribe from reminder emails: ${unsubscribeUrl}`]
-          : []),
-        '',
-        'Thank you,',
-        'Lateless',
-      ].join('\n');
-
-      const bodyHtml = `
-        <p>Hi ${reminder.customer_name},</p>
-        <p>This is a reminder that your invoice is overdue.</p>
-        <ul>
-          <li><strong>Amount:</strong> ${amountLabel}</li>
-          <li><strong>Due date:</strong> ${dueDateLabel}</li>
-        </ul>
-        <p><a href="${payLink}">Pay this invoice now</a></p>
-        ${
-          includeUnsubscribeLink && unsubscribeUrl
-            ? `<p style="margin-top:12px;"><a href="${unsubscribeUrl}">Unsubscribe from reminder emails</a></p>`
-            : ''
-        }
-        <p>Thank you,<br />Lateless</p>
-      `;
-
-      await sendInvoiceReminderEmail({
-        to: customerEmail,
-        subject,
-        bodyHtml,
-        bodyText,
-      });
-
-      await sql`
-        update invoices
-        set reminder_level = reminder_level + 1,
-            last_reminder_sent_at = now()
-        where id = ${reminder.id}
-          and reminder_level = ${reminder.reminder_level}
-      `;
-
-      updatedInvoiceIds.push(reminder.id);
-      if (workspaceAccumulator) {
-        workspaceAccumulator.sentCount += 1;
-      }
-    } catch (error) {
-      console.error('Reminder send failed:', reminder.id, error);
-      const errorItem = {
-        invoiceId: reminder.id,
-        message: safeErrorMessage(error),
-      } satisfies RunErrorItem;
-      errors.push(errorItem);
-
-      if (workspaceAccumulator) {
-        workspaceAccumulator.errorCount += 1;
-        workspaceAccumulator.errors.push(errorItem);
-      }
-    }
+    eligibleReminders.push(reminder);
   }
+
+  const run = await sendWithThrottle(eligibleReminders, {
+    delayMs: dryRun ? 0 : delayMs,
+    maxItems: batchSize,
+    maxRunMs,
+    onItem: async (reminder) => {
+      const workspaceAccumulator = getWorkspaceAccumulator(workspaceStats, reminder.workspace_id);
+      const customerEmail = reminder.customer_email?.trim() ?? '';
+
+      if (dryRun) {
+        if (workspaceAccumulator) {
+          workspaceAccumulator.sentCount += 1;
+        }
+        return;
+      }
+
+      let includeUnsubscribeLink = false;
+      let unsubscribeUrl: string | null = null;
+      if (reminder.workspace_id) {
+        try {
+          const unsubscribeSettings = await fetchUnsubscribeSettings(reminder.workspace_id);
+          if (unsubscribeSettings.enabled) {
+            const unsubscribePath = await issueUnsubscribeToken(reminder.workspace_id, customerEmail);
+            unsubscribeUrl = `${baseUrl}${unsubscribePath}`;
+            includeUnsubscribeLink = true;
+          }
+        } catch (unsubscribeError) {
+          if (!isUnsubscribeMigrationRequiredError(unsubscribeError)) {
+            console.error('Unsubscribe token generation failed:', reminder.id, unsubscribeError);
+          }
+        }
+      }
+
+      try {
+        const payLink = generatePayLink(baseUrl, reminder.id);
+        const amountLabel = formatAmount(reminder.amount);
+        const dueDateLabel = formatDate(reminder.due_date);
+        const reminderNumber = reminder.reminder_level + 1;
+        const subject = `Invoice reminder #${reminderNumber}: ${amountLabel} due`;
+
+        const bodyText = [
+          `Hi ${reminder.customer_name},`,
+          '',
+          `This is a reminder that your invoice is overdue.`,
+          `Amount: ${amountLabel}`,
+          `Due date: ${dueDateLabel}`,
+          `Pay here: ${payLink}`,
+          ...(includeUnsubscribeLink && unsubscribeUrl
+            ? ['', `Unsubscribe from reminder emails: ${unsubscribeUrl}`]
+            : []),
+          '',
+          'Thank you,',
+          'Lateless',
+        ].join('\n');
+
+        const bodyHtml = `
+          <p>Hi ${reminder.customer_name},</p>
+          <p>This is a reminder that your invoice is overdue.</p>
+          <ul>
+            <li><strong>Amount:</strong> ${amountLabel}</li>
+            <li><strong>Due date:</strong> ${dueDateLabel}</li>
+          </ul>
+          <p><a href="${payLink}">Pay this invoice now</a></p>
+          ${
+            includeUnsubscribeLink && unsubscribeUrl
+              ? `<p style="margin-top:12px;"><a href="${unsubscribeUrl}">Unsubscribe from reminder emails</a></p>`
+              : ''
+          }
+          <p>Thank you,<br />Lateless</p>
+        `;
+
+        await sendInvoiceReminderEmail({
+          to: customerEmail,
+          subject,
+          bodyHtml,
+          bodyText,
+        });
+
+        await sql`
+          update invoices
+          set reminder_level = reminder_level + 1,
+              last_reminder_sent_at = now()
+          where id = ${reminder.id}
+            and reminder_level = ${reminder.reminder_level}
+        `;
+
+        updatedInvoiceIds.push(reminder.id);
+        if (workspaceAccumulator) {
+          workspaceAccumulator.sentCount += 1;
+        }
+      } catch (error) {
+        console.error('Reminder send failed:', reminder.id, error);
+        const errorItem = {
+          invoiceId: reminder.id,
+          message: safeErrorMessage(error),
+        } satisfies RunErrorItem;
+        errors.push(errorItem);
+
+        if (workspaceAccumulator) {
+          workspaceAccumulator.errorCount += 1;
+          workspaceAccumulator.errors.push(errorItem);
+        }
+        throw error;
+      }
+    },
+  });
 
   const durationMs = Date.now() - startedAt;
 
@@ -618,9 +672,7 @@ async function runReminderJob(req: Request) {
     }
   }
 
-  const sentCount = dryRun
-    ? decisions.filter((decision) => decision.willSend).length
-    : updatedInvoiceIds.length;
+  const sentCount = dryRun ? run.attempted : updatedInvoiceIds.length;
   const skippedCount = decisions.filter((decision) => !decision.willSend).length;
   const skippedBreakdown = decisions.reduce<Required<ReminderRunSkippedBreakdown>>((acc, decision) => {
     if (decision.willSend) {
@@ -652,17 +704,29 @@ async function runReminderJob(req: Request) {
   }, { ...emptyBreakdown });
 
   console.log(
-    `[reminders] ranAt=${ranAtIso} dryRun=${dryRun} sent=${sentCount} skipped=${skippedCount} errors=${errors.length}`,
+    `[reminders] ranAt=${ranAtIso} dryRun=${dryRun} attempted=${run.attempted} sent=${sentCount} skipped=${skippedCount} errors=${errors.length} hasMore=${run.hasMore || hasMoreFromSelection}`,
   );
+
+  const hasMore = run.hasMore || hasMoreFromSelection;
 
   return NextResponse.json({
     ranAt: ranAtIso,
+    attempted: run.attempted,
+    sent: sentCount,
+    failed: run.failed,
+    skipped: skippedCount,
+    hasMore,
     updatedCount: sentCount,
     updatedInvoiceIds,
     dryRun,
     triggeredBy,
     durationMs,
     summary: {
+      attempted: run.attempted,
+      sent: sentCount,
+      failed: run.failed,
+      skipped: skippedCount,
+      hasMore,
       sentCount,
       skippedCount,
       errorCount: errors.length,
