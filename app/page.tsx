@@ -1,15 +1,23 @@
 import Link from 'next/link';
-import { PLAN_CONFIG, PLAN_IDS } from '@/app/lib/config';
+import {
+  BILLING_INTERVALS,
+  getAnnualPriceDisplay,
+  getAnnualSavingsLabel,
+  type BillingInterval,
+  PLAN_CONFIG,
+  PLAN_IDS,
+} from '@/app/lib/config';
 import { lusitana } from '@/app/ui/fonts';
 import { RevealOnMount, RevealOnScroll } from '@/app/ui/motion/reveal';
 import TopNav from '@/app/ui/marketing/top-nav';
 import HeroVisual from '@/app/ui/marketing/hero-visual';
+import { BUTTON_INTERACTIVE, CARD_INTERACTIVE } from '@/app/ui/theme/tokens';
 
 const primaryCtaClasses =
-  'inline-flex items-center justify-center rounded-full border border-white bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-neutral-200';
+  `inline-flex items-center justify-center rounded-full border border-white bg-white px-5 py-2.5 text-sm font-medium text-black hover:bg-neutral-200 ${BUTTON_INTERACTIVE}`;
 
 const secondaryCtaClasses =
-  'inline-flex items-center justify-center rounded-full border border-neutral-700 px-5 py-2.5 text-sm font-medium text-neutral-200 transition hover:border-neutral-500 hover:text-white';
+  `inline-flex items-center justify-center rounded-full border border-neutral-700 px-5 py-2.5 text-sm font-medium text-neutral-200 hover:border-neutral-500 hover:text-white ${BUTTON_INTERACTIVE}`;
 
 const planOrder = PLAN_IDS;
 
@@ -74,7 +82,20 @@ const workflowSteps = [
   },
 ];
 
-export default function Page() {
+type HomePageProps = {
+  searchParams?: Promise<{
+    interval?: string;
+  }>;
+};
+
+export default async function Page(props: HomePageProps) {
+  const searchParams = await props.searchParams;
+  const requestedInterval = searchParams?.interval?.trim().toLowerCase();
+  const interval: BillingInterval = BILLING_INTERVALS.includes(
+    requestedInterval as BillingInterval,
+  )
+    ? (requestedInterval as BillingInterval)
+    : 'monthly';
   const contactEmail =
     extractEmail(process.env.REMINDER_FROM_EMAIL) ?? 'hello@lateless.org';
 
@@ -110,6 +131,10 @@ export default function Page() {
               View pricing
             </a>
           </div>
+
+          <p className="text-sm text-neutral-400">
+            Stripe payments. Optional 2FA. Clear fee breakdown.
+          </p>
 
           <p className="text-sm text-neutral-500">
             Built for developers and small agencies who live in Stripe and
@@ -201,16 +226,44 @@ export default function Page() {
             </p>
           </RevealOnScroll>
 
+          <div className="mb-8 inline-flex items-center rounded-full border border-neutral-700 p-1">
+            <Link
+              href="/?interval=monthly#pricing"
+              className={`rounded-full px-3 py-1.5 text-sm transition ${
+                interval === 'monthly'
+                  ? 'bg-white text-black'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              Monthly
+            </Link>
+            <Link
+              href="/?interval=annual#pricing"
+              className={`rounded-full px-3 py-1.5 text-sm transition ${
+                interval === 'annual'
+                  ? 'bg-white text-black'
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              Annual
+            </Link>
+          </div>
+
           <div className="grid gap-5 lg:grid-cols-4">
             {planOrder.map((planId, index) => {
               const plan = PLAN_CONFIG[planId];
               const isPopular = planId === 'solo';
+              const isAnnual = interval === 'annual' && planId !== 'free';
+              const displayPrice = isAnnual
+                ? getAnnualPriceDisplay(planId)
+                : plan.priceMonthlyEuro;
+              const callbackUrl = `/dashboard/settings/billing?plan=${plan.id}&interval=${interval}`;
 
               return (
                 <RevealOnScroll
                   key={plan.id}
                   delay={index * 0.04}
-                  className="group relative flex h-full flex-col rounded-2xl border border-neutral-800 bg-neutral-900/75 p-6 shadow-[0_14px_28px_rgba(0,0,0,0.35)] transition hover:-translate-y-0.5 hover:border-neutral-700 hover:shadow-[0_24px_42px_rgba(0,0,0,0.45)]"
+                  className={`group relative flex h-full flex-col rounded-2xl border border-neutral-800 bg-neutral-900/75 p-6 shadow-[0_14px_28px_rgba(0,0,0,0.35)] ${CARD_INTERACTIVE} dark:hover:border-neutral-700 dark:hover:shadow-[0_24px_42px_rgba(0,0,0,0.45)]`}
                 >
                   {isPopular ? (
                     <span className="absolute right-4 top-4 rounded-full border border-neutral-600 bg-neutral-800 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-200">
@@ -220,9 +273,16 @@ export default function Page() {
 
                   <p className="text-sm font-medium text-neutral-300">{plan.name}</p>
                   <p className="mt-3 text-3xl font-semibold text-white">
-                    €{plan.priceMonthlyEuro}
-                    <span className="text-sm font-normal text-neutral-400"> / month</span>
+                    €{displayPrice}
+                    <span className="text-sm font-normal text-neutral-400">
+                      {isAnnual ? ' / year' : ' / month'}
+                    </span>
                   </p>
+                  {isAnnual ? (
+                    <p className="mt-1 text-xs font-medium uppercase tracking-[0.12em] text-emerald-300">
+                      {getAnnualSavingsLabel(planId)}
+                    </p>
+                  ) : null}
 
                   <ul className="mt-5 space-y-2 text-sm text-neutral-300">
                     <li>{formatLimit(plan.maxPerMonth)}</li>
@@ -236,7 +296,7 @@ export default function Page() {
                   </ul>
 
                   <Link
-                    href={`/login?plan=${plan.id}`}
+                    href={`/login?plan=${plan.id}&interval=${interval}&callbackUrl=${encodeURIComponent(callbackUrl)}`}
                     className={`${primaryCtaClasses} mt-6 w-full`}
                   >
                     Start with {plan.name}
@@ -290,12 +350,9 @@ await sendReminderEmail({ payLink });`}
             <a href="#pricing" className="transition hover:text-white">
               Pricing
             </a>
-            <a href="#security" className="transition hover:text-white">
+            <Link href="/security" className="transition hover:text-white">
               Security
-            </a>
-            <a href="#" className="transition hover:text-white">
-              Status
-            </a>
+            </Link>
             <a href={`mailto:${contactEmail}`} className="transition hover:text-white">
               Contact
             </a>

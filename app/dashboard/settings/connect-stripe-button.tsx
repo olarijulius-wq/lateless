@@ -6,11 +6,13 @@ import { Button } from '@/app/ui/button';
 type ConnectStripeButtonProps = {
   label?: string;
   path?: string;
+  className?: string;
 };
 
 export default function ConnectStripeButton({
   label = 'Connect Stripe',
   path = '/api/stripe/connect/onboard',
+  className = 'w-full',
 }: ConnectStripeButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export default function ConnectStripeButton({
         type="button"
         onClick={startOnboarding}
         aria-disabled={loading}
-        className="w-full"
+        className={className}
       >
         {loading ? 'Redirecting to Stripe...' : label}
       </Button>

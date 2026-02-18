@@ -6,6 +6,9 @@ import {
   requireUserEmail,
 } from '@/app/lib/data';
 import { primaryButtonClasses } from '@/app/ui/button';
+import { RevealOnScroll } from '@/app/ui/motion/reveal';
+import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
+import { CARD_INTERACTIVE, LIGHT_SURFACE } from '@/app/ui/theme/tokens';
 
 export const metadata: Metadata = {
   title: 'Settings',
@@ -55,17 +58,26 @@ const settingCards = [
 ];
 
 export default async function SettingsPage(props: {
-  searchParams?: Promise<{ success?: string; canceled?: string; plan?: string }>;
+  searchParams?: Promise<{
+    success?: string;
+    canceled?: string;
+    plan?: string;
+    interval?: string;
+  }>;
 }) {
   const searchParams = await props.searchParams;
   const hasBillingParams =
-    searchParams?.success || searchParams?.canceled || searchParams?.plan;
+    searchParams?.success ||
+    searchParams?.canceled ||
+    searchParams?.plan ||
+    searchParams?.interval;
 
   if (hasBillingParams) {
     const params = new URLSearchParams();
     if (searchParams?.success) params.set('success', searchParams.success);
     if (searchParams?.canceled) params.set('canceled', searchParams.canceled);
     if (searchParams?.plan) params.set('plan', searchParams.plan);
+    if (searchParams?.interval) params.set('interval', searchParams.interval);
     redirect(`/dashboard/settings/billing?${params.toString()}`);
   }
 
@@ -91,7 +103,7 @@ export default async function SettingsPage(props: {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+      <div className={`rounded-2xl border p-5 ${LIGHT_SURFACE} dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>
         <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
           Payouts
         </h2>
@@ -118,19 +130,20 @@ export default async function SettingsPage(props: {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-      {settingCards.map((card) => (
-        <Link
-          key={card.href}
-          href={card.href}
-          className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] transition hover:bg-white dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)] dark:hover:bg-black"
-        >
-          <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-            {card.title}
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {card.description}
-          </p>
-        </Link>
+      {settingCards.map((card, index) => (
+        <RevealOnScroll key={card.href} delay={index * 0.04}>
+          <Link
+            href={card.href}
+            className={`group block rounded-2xl border p-5 ${LIGHT_SURFACE} ${CARD_INTERACTIVE} dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)] dark:hover:border-neutral-700 dark:hover:shadow-[0_26px_44px_rgba(0,0,0,0.55)] dark:focus-visible:border-neutral-700 dark:focus-visible:shadow-[0_26px_44px_rgba(0,0,0,0.55)] ${NEUTRAL_FOCUS_RING_CLASSES}`}
+          >
+            <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              {card.title}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              {card.description}
+            </p>
+          </Link>
+        </RevealOnScroll>
       ))}
       </div>
     </div>

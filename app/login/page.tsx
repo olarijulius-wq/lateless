@@ -14,6 +14,9 @@ type LoginPageProps = {
     verified?: string;
     reset?: string;
     error?: string;
+    plan?: string;
+    interval?: string;
+    callbackUrl?: string;
   }>;
 };
 
@@ -24,6 +27,14 @@ export default async function LoginPage(props: LoginPageProps) {
   const verifiedAlready = searchParams?.verified === 'already';
   const resetSuccess = searchParams?.reset === 'success';
   const oauthAccountNotLinked = searchParams?.error === 'OAuthAccountNotLinked';
+  const callbackUrl =
+    searchParams?.callbackUrl ??
+    (searchParams?.plan
+      ? `/dashboard/settings/billing?plan=${searchParams.plan}${searchParams?.interval ? `&interval=${searchParams.interval}` : ''}`
+      : null);
+  const signupHref = callbackUrl
+    ? `/signup?callbackUrl=${encodeURIComponent(callbackUrl)}`
+    : '/signup';
   const googleEnabled = Boolean(
     process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
   );
@@ -37,7 +48,7 @@ export default async function LoginPage(props: LoginPageProps) {
       subtitle={
         <>
           Don&apos;t have an account?{' '}
-          <Link href="/signup" className="text-white hover:text-white/90">
+          <Link href={signupHref} className="text-white hover:text-white/90">
             Sign up.
           </Link>
         </>

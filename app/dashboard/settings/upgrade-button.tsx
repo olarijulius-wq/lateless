@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { type PlanId } from '@/app/lib/config';
+import { type BillingInterval, type PlanId } from '@/app/lib/config';
 import { primaryButtonClasses } from '@/app/ui/button';
 
 type UpgradeButtonProps = {
   plan: Exclude<PlanId, 'free'>;
   label: string;
+  interval?: BillingInterval;
   className?: string;
   disabled?: boolean;
 };
@@ -14,6 +15,7 @@ type UpgradeButtonProps = {
 export default function UpgradeButton({
   plan,
   label,
+  interval = 'monthly',
   className,
   disabled,
 }: UpgradeButtonProps) {
@@ -25,9 +27,12 @@ export default function UpgradeButton({
     }
     setLoading(true);
     try {
-      const res = await fetch(`/api/stripe/checkout?plan=${plan}`, {
+      const res = await fetch(
+        `/api/stripe/checkout?plan=${plan}&interval=${interval}`,
+        {
         method: 'POST',
-      });
+        },
+      );
       const data = await res.json();
 
       if (!res.ok) throw new Error(data?.error || 'Checkout failed');

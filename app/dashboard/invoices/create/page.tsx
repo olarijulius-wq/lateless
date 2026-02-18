@@ -1,7 +1,8 @@
 import Form from '@/app/ui/invoices/create-form';
 import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
-import { fetchCustomers } from '@/app/lib/data';
+import { fetchCustomers, fetchUserInvoiceUsageProgress } from '@/app/lib/data';
 import { Metadata } from 'next';
+import UpgradeNudge from '@/app/ui/upgrade-nudge';
 
 export const metadata: Metadata = {
   title: 'Create',
@@ -9,11 +10,16 @@ export const metadata: Metadata = {
  
  
 export default async function Page(props: {
-  searchParams?: Promise<{ customerId?: string }>;
+  searchParams?: Promise<{ customerId?: string; interval?: string }>;
 }) {
   const searchParams = await props.searchParams;
-  const customers = await fetchCustomers();
+  const [customers, usage] = await Promise.all([
+    fetchCustomers(),
+    fetchUserInvoiceUsageProgress(),
+  ]);
   const initialCustomerId = searchParams?.customerId ?? null;
+  const interval = searchParams?.interval;
+  const isBlocked = usage.maxPerMonth !== null && usage.percentUsed >= 1;
  
   return (
     <main>
@@ -27,7 +33,18 @@ export default async function Page(props: {
           },
         ]}
       />
-      <Form customers={customers} initialCustomerId={initialCustomerId} />
+      <div className="mb-4">
+        <UpgradeNudge
+          planId={usage.planId}
+          usedThisMonth={usage.usedThisMonth}
+          cap={usage.maxPerMonth}
+          percentUsed={usage.percentUsed}
+          interval={interval}
+        />
+      </div>
+      {!isBlocked && (
+        <Form customers={customers} initialCustomerId={initialCustomerId} />
+      )}
     </main>
   );
 }

@@ -11,9 +11,14 @@ import authInputStyles from '@/app/(auth)/_components/auth-inputs.module.css';
 type SignupFormProps = {
   googleEnabled: boolean;
   githubEnabled: boolean;
+  callbackUrl?: string | null;
 };
 
-export default function SignupForm({ googleEnabled, githubEnabled }: SignupFormProps) {
+export default function SignupForm({
+  googleEnabled,
+  githubEnabled,
+  callbackUrl,
+}: SignupFormProps) {
   const initialState: SignupState = { message: null, errors: {} };
   const [state, formAction] = useActionState(registerUser, initialState);
   const [email, setEmail] = useState('');
@@ -53,6 +58,7 @@ export default function SignupForm({ googleEnabled, githubEnabled }: SignupFormP
       </div>
 
       <input type="hidden" name="name" value="Lateless User" />
+      <input type="hidden" name="callbackUrl" value={callbackUrl ?? ''} />
 
       <div>
         <label className="mb-2 block text-sm font-medium text-white/80">Email</label>

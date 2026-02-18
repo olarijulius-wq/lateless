@@ -54,9 +54,9 @@ export default async function LatePayers() {
         )}
       </div>
 
-      <div className="flex grow flex-col rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+      <div className="flex grow flex-col rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-zinc-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
         {!canView ? (
-          <div className="rounded-xl border border-neutral-200 bg-slate-50 p-6 dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="rounded-xl border border-neutral-200 bg-slate-50 p-6 dark:border-zinc-800 dark:bg-black">
             <p className="text-sm text-slate-900 dark:text-slate-100">
               See which clients consistently pay late and how many days they
               delay payments.
@@ -72,7 +72,7 @@ export default async function LatePayers() {
             </Link>
           </div>
         ) : isEmpty ? (
-          <div className="rounded-xl border border-neutral-200 bg-slate-50 p-6 dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="rounded-xl border border-neutral-200 bg-slate-50 p-6 dark:border-zinc-800 dark:bg-black">
             <p className="text-sm text-slate-700 dark:text-slate-200">
               No late payer data yet. Late payments will appear here.
             </p>
@@ -84,7 +84,7 @@ export default async function LatePayers() {
                 <Link
                   key={payer.customer_id}
                   href={`/dashboard/customers/${payer.customer_id}`}
-                  className="block rounded-xl border border-neutral-200 bg-white p-4 text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-neutral-950 dark:text-slate-100 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
+                  className="block rounded-xl border border-neutral-200 bg-white p-4 text-slate-900 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-zinc-800 dark:bg-black dark:text-slate-100 dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
                 >
                   <div className="flex justify-between gap-4">
                     <div className="flex-1 space-y-1">
@@ -122,13 +122,13 @@ export default async function LatePayers() {
               ))}
             </div>
 
-            <div className="hidden rounded-xl border border-neutral-200 bg-slate-50 md:block dark:border-neutral-800 dark:bg-neutral-900">
-              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-4 border-b border-neutral-200 px-4 py-3 text-xs uppercase tracking-[0.12em] text-slate-500 dark:border-neutral-800">
+            <div className="hidden rounded-xl border border-neutral-200 bg-slate-50 md:block dark:border-zinc-800 dark:bg-black">
+              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-4 border-b border-neutral-200 px-4 py-3 text-xs uppercase tracking-[0.12em] text-slate-500 dark:border-zinc-800">
                 <span>Name</span>
                 <span>Email</span>
                 <span className="text-right">Stats</span>
               </div>
-              <div className="divide-y divide-neutral-200 dark:divide-neutral-800">
+              <div className="divide-y divide-neutral-200 dark:divide-zinc-800">
                 {latePayers.map((payer) => (
                   <Link
                     key={payer.customer_id}

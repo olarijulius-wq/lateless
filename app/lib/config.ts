@@ -1,6 +1,11 @@
 export const PLAN_IDS = ['free', 'solo', 'pro', 'studio'] as const;
 
 export type PlanId = (typeof PLAN_IDS)[number];
+export const BILLING_INTERVALS = ['monthly', 'annual'] as const;
+export type BillingInterval = (typeof BILLING_INTERVALS)[number];
+export const SOLO_ANNUAL_MONTHS = 11;
+export const PRO_ANNUAL_MONTHS = 10;
+export const STUDIO_ANNUAL_MONTHS = 10;
 
 export type PlanConfig = {
   id: PlanId;
@@ -76,6 +81,24 @@ export const STRIPE_PRICE_ID_BY_PLAN: Record<
   studio: process.env.STRIPE_PRICE_STUDIO,
 };
 
+export const STRIPE_PRICE_ID_BY_PLAN_AND_INTERVAL: Record<
+  Exclude<PlanId, 'free'>,
+  Record<BillingInterval, string | undefined>
+> = {
+  solo: {
+    monthly: process.env.STRIPE_PRICE_SOLO,
+    annual: process.env.STRIPE_PRICE_SOLO_ANNUAL,
+  },
+  pro: {
+    monthly: process.env.STRIPE_PRICE_PRO,
+    annual: process.env.STRIPE_PRICE_PRO_ANNUAL,
+  },
+  studio: {
+    monthly: process.env.STRIPE_PRICE_STUDIO,
+    annual: process.env.STRIPE_PRICE_STUDIO_ANNUAL,
+  },
+};
+
 export function normalizePlan(plan: string | null | undefined): PlanId {
   if (!plan) return 'free';
   return PLAN_IDS.includes(plan as PlanId) ? (plan as PlanId) : 'free';
@@ -100,10 +123,26 @@ export function planFromStripePriceId(
   if (!priceId) return null;
 
   const match = (
-    Object.entries(STRIPE_PRICE_ID_BY_PLAN) as Array<
-      [Exclude<PlanId, 'free'>, string | undefined]
+    Object.entries(STRIPE_PRICE_ID_BY_PLAN_AND_INTERVAL) as Array<
+      [Exclude<PlanId, 'free'>, Record<BillingInterval, string | undefined>]
     >
-  ).find(([, id]) => id && id === priceId);
+  ).find(([, byInterval]) =>
+    Object.values(byInterval).some((id) => id && id === priceId),
+  );
 
   return match ? match[0] : null;
+}
+
+export function getAnnualPriceDisplay(planId: PlanId): number {
+  const monthlyPrice = PLAN_CONFIG[planId].priceMonthlyEuro;
+  if (planId === 'solo') return monthlyPrice * SOLO_ANNUAL_MONTHS;
+  if (planId === 'pro') return monthlyPrice * PRO_ANNUAL_MONTHS;
+  if (planId === 'studio') return monthlyPrice * STUDIO_ANNUAL_MONTHS;
+  return monthlyPrice;
+}
+
+export function getAnnualSavingsLabel(planId: PlanId): string {
+  if (planId === 'solo') return 'Save 1 month';
+  if (planId === 'pro' || planId === 'studio') return 'Save 2 months';
+  return '';
 }

@@ -3,7 +3,11 @@
 import { useState } from 'react';
 import { Button } from '@/app/ui/button';
 
-export default function ManageBillingButton() {
+export default function ManageBillingButton({
+  label = 'Manage billing / Cancel',
+}: {
+  label?: string;
+}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,9 +33,9 @@ export default function ManageBillingButton() {
         type="button"
         onClick={openPortal}
         aria-disabled={loading}
-        className="w-full"
+        className="w-full rounded-full"
       >
-        {loading ? 'Opening Billing Portal…' : 'Manage billing / Cancel'}
+        {loading ? 'Opening Billing Portal…' : label}
       </Button>
 
       {error && <p className="mt-3 text-sm text-red-500">{error}</p>}

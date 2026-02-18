@@ -4,12 +4,9 @@ import Image from 'next/image';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, secondaryButtonClasses } from '@/app/ui/button';
-import {
-  SETTINGS_INPUT_CLASSES,
-  SETTINGS_TEXTAREA_CLASSES,
-} from '@/app/ui/form-control';
 import type { WorkspaceCompanyProfile } from '@/app/lib/company-profile';
 import { normalizeVat } from '@/app/lib/vat';
+import { LIGHT_SURFACE } from '@/app/ui/theme/tokens';
 
 type CompanyProfileSettingsPanelProps = {
   initialProfile: WorkspaceCompanyProfile;
@@ -22,6 +19,10 @@ export default function CompanyProfileSettingsPanel({
   canEdit,
   userRole,
 }: CompanyProfileSettingsPanelProps) {
+  const inputClasses =
+    'h-11 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-500 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus-visible:ring-neutral-200/60 dark:focus-visible:ring-offset-black';
+  const textareaClasses =
+    'w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 placeholder:text-neutral-500 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus-visible:ring-neutral-200/60 dark:focus-visible:ring-offset-black';
   const router = useRouter();
   const [profile, setProfile] = useState(initialProfile);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -146,121 +147,141 @@ export default function CompanyProfileSettingsPanel({
   return (
     <form
       onSubmit={onSave}
-      className="space-y-6 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
+      className="mx-auto w-full max-w-5xl space-y-5"
     >
-      <div>
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          Company Profile
-        </h2>
-        <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-          Team-scoped company data used by invoice PDFs and sample PDF.
+      <header className={`rounded-2xl border p-6 ${LIGHT_SURFACE} dark:border-neutral-800 dark:bg-neutral-950/80 dark:shadow-[0_16px_34px_rgba(0,0,0,0.42)]`}>
+        <p className="text-xs uppercase tracking-[0.14em] text-slate-500 dark:text-neutral-400">
+          Settings
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold text-slate-900 dark:text-white">Company Profile</h2>
+        <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+          Team-scoped company details used in invoice documents.
         </p>
         {!canEdit && (
           <p className="mt-2 text-sm text-amber-700 dark:text-amber-200">
             Only owners or admins can edit company profile settings.
           </p>
         )}
-      </div>
+      </header>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-            Company name
-          </label>
-          <input
-            value={profile.companyName}
-            onChange={(event) =>
-              setProfile((current) => ({
-                ...current,
-                companyName: event.target.value,
-              }))
-            }
-            disabled={!canEdit || isPending}
-            className={SETTINGS_INPUT_CLASSES}
-            required
-          />
-        </div>
-
-        <div className="md:col-span-2">
-          <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-            Company address
-          </label>
-          <textarea
-            value={profile.address}
-            onChange={(event) =>
-              setProfile((current) => ({
-                ...current,
-                address: event.target.value,
-              }))
-            }
-            rows={3}
-            disabled={!canEdit || isPending}
-            className={SETTINGS_TEXTAREA_CLASSES}
-          />
-        </div>
-
+      <section className={`space-y-5 rounded-2xl border p-6 ${LIGHT_SURFACE} dark:border-neutral-800 dark:bg-neutral-950/80 dark:shadow-[0_16px_34px_rgba(0,0,0,0.42)]`}>
         <div>
-          <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-            VAT / registration no.
-          </label>
-          <input
-            value={profile.vatNumber}
-            onChange={(event) =>
-              setProfile((current) => ({
-                ...current,
-                vatNumber: event.target.value,
-              }))
-            }
-            disabled={!canEdit || isPending}
-            className={SETTINGS_INPUT_CLASSES}
-          />
-          {canonicalVatPreview && (
-            <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-              Combined VAT/registration preview: {canonicalVatPreview}
-            </p>
-          )}
+          <p className="text-xs uppercase tracking-[0.14em] text-slate-500 dark:text-neutral-400">
+            Company
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">Business details</h3>
         </div>
 
-        <div>
-          <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-            Company contact email
-          </label>
-          <input
-            type="email"
-            value={profile.companyEmail}
-            onChange={(event) =>
-              setProfile((current) => ({
-                ...current,
-                companyEmail: event.target.value,
-              }))
-            }
-            disabled={!canEdit || isPending}
-            className={SETTINGS_INPUT_CLASSES}
-          />
-        </div>
-      </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="mb-2 block text-sm font-medium text-slate-800 dark:text-neutral-200">
+              Company name
+            </label>
+            <input
+              value={profile.companyName}
+              onChange={(event) =>
+                setProfile((current) => ({
+                  ...current,
+                  companyName: event.target.value,
+                }))
+              }
+              disabled={!canEdit || isPending}
+              className={inputClasses}
+              placeholder="Lateless Studio"
+              required
+            />
+          </div>
 
-      <section>
-        <label className="mb-2 block text-sm font-medium text-slate-900 dark:text-slate-100">
-          Invoice footer / notes
-        </label>
-        <textarea
-          value={profile.invoiceFooter}
-          onChange={(event) =>
-            setProfile((current) => ({
-              ...current,
-              invoiceFooter: event.target.value,
-            }))
-          }
-          rows={4}
-          maxLength={500}
-          disabled={!canEdit || isPending}
-          className={SETTINGS_TEXTAREA_CLASSES}
-        />
+          <div className="md:col-span-2">
+            <label className="mb-2 block text-sm font-medium text-slate-800 dark:text-neutral-200">
+              Company address
+            </label>
+            <textarea
+              value={profile.address}
+              onChange={(event) =>
+                setProfile((current) => ({
+                  ...current,
+                  address: event.target.value,
+                }))
+              }
+              rows={3}
+              disabled={!canEdit || isPending}
+              className={textareaClasses}
+              placeholder="Street, City, ZIP"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-800 dark:text-neutral-200">
+              VAT / registration no.
+            </label>
+            <input
+              value={profile.vatNumber}
+              onChange={(event) =>
+                setProfile((current) => ({
+                  ...current,
+                  vatNumber: event.target.value,
+                }))
+              }
+              disabled={!canEdit || isPending}
+              className={inputClasses}
+              placeholder="EE123456789"
+            />
+            {canonicalVatPreview && (
+              <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+                Combined VAT/registration preview: {canonicalVatPreview}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-800 dark:text-neutral-200">
+              Company contact email
+            </label>
+            <input
+              type="email"
+              value={profile.companyEmail}
+              onChange={(event) =>
+                setProfile((current) => ({
+                  ...current,
+                  companyEmail: event.target.value,
+                }))
+              }
+              disabled={!canEdit || isPending}
+              className={inputClasses}
+              placeholder="email@example.com"
+            />
+          </div>
+        </div>
       </section>
 
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Logo</h3>
+      <section className={`space-y-4 rounded-2xl border p-6 ${LIGHT_SURFACE} dark:border-neutral-800 dark:bg-neutral-950/80 dark:shadow-[0_16px_34px_rgba(0,0,0,0.42)]`}>
+        <div>
+          <p className="text-xs uppercase tracking-[0.14em] text-slate-500 dark:text-neutral-400">
+            Branding
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">Footer and logo</h3>
+        </div>
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-800 dark:text-neutral-200">
+            Invoice footer / notes
+          </label>
+          <textarea
+            value={profile.invoiceFooter}
+            onChange={(event) =>
+              setProfile((current) => ({
+                ...current,
+                invoiceFooter: event.target.value,
+              }))
+            }
+            rows={4}
+            maxLength={500}
+            disabled={!canEdit || isPending}
+            className={textareaClasses}
+            placeholder="Thanks for your business."
+          />
+        </div>
+
         {profile.logoDataUrl ? (
           <Image
             src={profile.logoDataUrl}
@@ -268,10 +289,10 @@ export default function CompanyProfileSettingsPanel({
             width={160}
             height={64}
             unoptimized
-            className="h-16 w-auto rounded-lg border border-neutral-200 bg-white p-1 dark:border-neutral-800 dark:bg-slate-950"
+            className="h-16 w-auto rounded-lg border border-neutral-300 bg-white p-1 dark:border-neutral-700 dark:bg-neutral-900"
           />
         ) : (
-          <p className="text-sm text-slate-600 dark:text-slate-400">No logo uploaded.</p>
+          <p className="text-sm text-slate-500 dark:text-neutral-400">No logo uploaded.</p>
         )}
 
         <div className="flex flex-wrap gap-3">
@@ -311,7 +332,7 @@ export default function CompanyProfileSettingsPanel({
         <Button type="submit" disabled={!canEdit || isPending}>
           {isPending ? 'Saving...' : 'Save company profile'}
         </Button>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Current role: {userRole}</p>
+        <p className="text-xs text-slate-500 dark:text-neutral-500">Current role: {userRole}</p>
       </div>
     </form>
   );

@@ -5,9 +5,10 @@ import {
 } from '@/app/lib/data';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import ConnectStripeButton from '../connect-stripe-button';
-import { primaryButtonClasses } from '@/app/ui/button';
 import ResyncConnectStatusButton from './resync-connect-status-button';
 import { checkConnectedAccountAccess } from '@/app/lib/stripe-connect';
+import PricingPanel from '@/app/ui/pricing/panel';
+import { primaryButtonClasses } from '@/app/ui/button';
 
 export const metadata: Metadata = {
   title: 'Payouts',
@@ -36,96 +37,120 @@ export default async function PayoutsPage() {
   const statusPill =
     status.isReadyForTransfers
       ? {
-          label: 'Payouts active',
+          label: 'Ready',
           className:
-            'border border-emerald-300 bg-emerald-200 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300',
+            'border border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
         }
       : status.hasAccount
         ? {
-            label: 'Connected, not fully enabled',
+            label: 'Setup incomplete',
             className:
-              'border border-amber-300 bg-amber-200 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200',
+              'border border-amber-500/35 bg-amber-500/10 text-amber-200',
           }
         : {
-            label: 'No connected account',
+            label: 'Not connected',
             className:
-              'border border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-300',
+              'border border-neutral-700 bg-neutral-900 text-neutral-300',
           };
 
+  const setupSteps = [
+    { label: 'Create account', done: status.hasAccount },
+    { label: 'Submit details', done: status.detailsSubmitted },
+    { label: 'Enable payouts', done: status.payoutsEnabled },
+  ];
+
+  const primaryConnectButtonClass = `${primaryButtonClasses} w-full rounded-full`;
+
   return (
-    <div className="w-full max-w-3xl">
-      <h1 className="mb-4 text-2xl font-semibold text-slate-900 dark:text-slate-100">
-        Payouts
-      </h1>
+    <div className="mx-auto w-full max-w-5xl space-y-5">
+      <header>
+        <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Payouts</h1>
+        <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+          Connect Stripe Express to receive payouts from paid invoices.
+        </p>
+      </header>
 
-      {!status.hasAccount ? (
-        <div className="space-y-4">
-          {showStripeDebug && (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-              <p>
-                <strong>Debug</strong> Key mode: {modeLabel.toLowerCase()}
-              </p>
-              <p>Connected account: {status.accountId ?? 'none'}</p>
-              <p>accounts.retrieve: {retrieveStatus ?? 'not checked'}</p>
-            </div>
-          )}
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_16px_30px_rgba(0,0,0,0.45)]">
-            <div className="mb-3">
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusPill.className}`}
-              >
-                {statusPill.label}
-              </span>
-            </div>
-            <p className="mb-4 text-sm text-neutral-700 dark:text-neutral-300">
-              No Connect account yet. Connect Stripe to receive payouts.
-            </p>
-            <ConnectStripeButton label="Connect Stripe" />
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {showStripeDebug && (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
-              <p>
-                <strong>Debug</strong> Key mode: {modeLabel.toLowerCase()}
-              </p>
-              <p>Connected account: {status.accountId ?? 'none'}</p>
-              <p>accounts.retrieve: {retrieveStatus ?? 'not checked'}</p>
-            </div>
-          )}
-          <div className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_16px_30px_rgba(0,0,0,0.45)]">
-            <div className="mb-3">
-              <span
-                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusPill.className}`}
-              >
-                {statusPill.label}
-              </span>
-            </div>
-            <p className="text-sm text-neutral-700 dark:text-neutral-300">
-              {status.isReadyForTransfers
-                ? 'Payouts enabled. You can receive payouts to your connected Stripe account.'
-                : 'Connect account created, but payouts not fully enabled yet. Finish onboarding in Stripe.'}
-            </p>
-          </div>
-
-          <a
-            href="/api/stripe/connect-login"
-            className={`${primaryButtonClasses} w-full`}
-          >
-            Open Stripe payouts dashboard
-          </a>
-
-          {!status.isReadyForTransfers ? (
-            <ConnectStripeButton label="Continue Stripe onboarding" />
-          ) : null}
-          <ConnectStripeButton
-            label="Reconnect Stripe"
-            path="/api/stripe/connect/onboard?reconnect=1"
-          />
-          <ResyncConnectStatusButton />
+      {showStripeDebug && (
+        <div className="rounded-xl border border-dashed border-neutral-700 bg-neutral-950 p-3 text-xs text-neutral-300">
+          <p>
+            <strong>Debug</strong> Key mode: {modeLabel.toLowerCase()}
+          </p>
+          <p>Connected account: {status.accountId ?? 'none'}</p>
+          <p>accounts.retrieve: {retrieveStatus ?? 'not checked'}</p>
         </div>
       )}
+
+      <PricingPanel className="space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.14em] text-slate-500 dark:text-neutral-400">
+              Stripe Connect
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
+              {status.isReadyForTransfers ? 'Payouts are ready' : 'Finish payouts setup'}
+            </h2>
+          </div>
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${statusPill.className}`}
+          >
+            {statusPill.label}
+          </span>
+        </div>
+
+        <p className="text-sm text-slate-600 dark:text-neutral-300">
+          {status.isReadyForTransfers
+            ? 'Payouts are enabled. You can receive transfers to your connected Stripe account.'
+            : !status.hasAccount
+              ? 'No Connect account yet. Create one to receive payouts.'
+              : 'Your account is connected, but onboarding details are still required.'}
+        </p>
+
+        {!status.isReadyForTransfers ? (
+          <ul className="space-y-2 text-sm text-slate-600 dark:text-neutral-300">
+            {setupSteps.map((step) => (
+              <li key={step.label} className="flex items-center gap-2">
+                <span
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${step.done ? 'bg-emerald-500 dark:bg-emerald-300' : 'bg-neutral-400 dark:bg-neutral-600'}`}
+                />
+                <span className={step.done ? 'text-slate-800 dark:text-neutral-200' : 'text-slate-500 dark:text-neutral-400'}>
+                  {step.label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        <div className="space-y-3">
+          {!status.hasAccount ? (
+            <ConnectStripeButton
+              label="Connect Stripe"
+              className={primaryConnectButtonClass}
+            />
+          ) : status.isReadyForTransfers ? (
+            <a
+              href="/api/stripe/connect-login"
+              className={`${primaryButtonClasses} w-full rounded-full`}
+            >
+              Open Stripe Express
+            </a>
+          ) : (
+            <ConnectStripeButton
+              label="Continue setup"
+              className={primaryConnectButtonClass}
+            />
+          )}
+
+          {status.hasAccount ? (
+            <ConnectStripeButton
+              label="Reconnect Stripe"
+              path="/api/stripe/connect/onboard?reconnect=1"
+              className={primaryConnectButtonClass}
+            />
+          ) : null}
+
+          <ResyncConnectStatusButton className={primaryConnectButtonClass} />
+        </div>
+      </PricingPanel>
     </div>
   );
 }

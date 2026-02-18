@@ -87,7 +87,27 @@ const optionalText = (schema: z.ZodTypeAny) =>
     return trimmed === '' ? undefined : trimmed;
   }, schema.optional());
 
-const FormSchema = z.object({
+const OptionalDueDateSchema = optionalText(
+  z
+    .string()
+    .refine((value) => !Number.isNaN(Date.parse(value)), {
+      message: 'Please enter a valid due date.',
+    }),
+);
+
+const RequiredDueDateSchema = requiredText(
+  z
+    .string({
+      required_error: 'Please select a due date.',
+      invalid_type_error: 'Please select a due date.',
+    })
+    .min(1, { message: 'Please select a due date.' })
+    .refine((value) => !Number.isNaN(Date.parse(value)), {
+      message: 'Please enter a valid due date.',
+    }),
+);
+
+const BaseInvoiceFormSchema = z.object({
   id: z.string(),
   customerId: z.string({
     invalid_type_error: 'Please select a customer.',
@@ -98,18 +118,16 @@ const FormSchema = z.object({
   status: z.enum(['pending', 'paid'], {
     invalid_type_error: 'Please select an invoice status.',
   }),
-  dueDate: optionalText(
-    z
-      .string()
-      .refine((value) => !Number.isNaN(Date.parse(value)), {
-        message: 'Please enter a valid due date.',
-      }),
-  ),
   date: z.string(),
 });
 
-const CreateInvoice = FormSchema.omit({ id: true, date: true });
-const UpdateInvoice = FormSchema.omit({ id: true, date: true });
+const CreateInvoice = BaseInvoiceFormSchema.extend({
+  dueDate: RequiredDueDateSchema,
+}).omit({ id: true, date: true });
+
+const UpdateInvoice = BaseInvoiceFormSchema.extend({
+  dueDate: OptionalDueDateSchema,
+}).omit({ id: true, date: true });
 
 const CompanyProfileSchema = z.object({
   companyName: requiredText(
@@ -875,7 +893,19 @@ export async function registerUser(prevState: SignupState, formData: FormData) {
     }
   }
 
-  redirect('/login?signup=success');
+  const callbackUrlRaw = formData.get('callbackUrl');
+  const callbackUrl =
+    typeof callbackUrlRaw === 'string' &&
+    callbackUrlRaw.startsWith('/') &&
+    !callbackUrlRaw.startsWith('//')
+      ? callbackUrlRaw
+      : null;
+  const loginParams = new URLSearchParams({ signup: 'success' });
+  if (callbackUrl) {
+    loginParams.set('callbackUrl', callbackUrl);
+  }
+
+  redirect(`/login?${loginParams.toString()}`);
 }
 
 export async function authenticate(

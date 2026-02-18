@@ -1,0 +1,69 @@
+import Link from 'next/link';
+import { primaryButtonClasses } from '@/app/ui/button';
+import type { PlanId } from '@/app/lib/config';
+
+type UpgradeNudgeVariant = 'soft' | 'warn' | 'block';
+
+export default function UpgradeNudge({
+  planId,
+  usedThisMonth,
+  cap,
+  percentUsed,
+  variant,
+  interval,
+}: {
+  planId: PlanId;
+  usedThisMonth: number;
+  cap: number | null;
+  percentUsed: number;
+  variant?: UpgradeNudgeVariant;
+  interval?: string;
+}) {
+  if (cap === null) {
+    return null;
+  }
+
+  const resolvedVariant =
+    variant ??
+    (percentUsed >= 1
+      ? 'block'
+      : percentUsed >= 0.9
+        ? 'warn'
+        : percentUsed >= 0.7
+          ? 'soft'
+          : null);
+
+  if (!resolvedVariant) {
+    return null;
+  }
+
+  const message =
+    resolvedVariant === 'block'
+      ? `Invoice limit reached (${usedThisMonth}/${cap}). Upgrade to create more invoices.`
+      : resolvedVariant === 'warn'
+        ? `Almost at your limit (${usedThisMonth}/${cap}). Upgrade to avoid interruptions.`
+        : `You're close to your monthly invoice limit (${usedThisMonth}/${cap}).`;
+
+  const billingHref = interval
+    ? `/dashboard/settings/billing?interval=${encodeURIComponent(interval)}`
+    : '/dashboard/settings/billing';
+
+  return (
+    <section className="rounded-2xl border border-neutral-800/80 bg-neutral-950/95 p-4 shadow-[0_18px_35px_rgba(0,0,0,0.45)] backdrop-blur">
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-neutral-100">{message}</p>
+          <p className="text-xs text-neutral-400">
+            Current plan: <span className="uppercase tracking-wide">{planId}</span>
+          </p>
+        </div>
+        <Link
+          href={billingHref}
+          className={`${primaryButtonClasses} px-3 py-2 text-xs`}
+        >
+          Upgrade
+        </Link>
+      </div>
+    </section>
+  );
+}

@@ -4,7 +4,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/app/ui/button';
 
-export default function ResyncConnectStatusButton() {
+export default function ResyncConnectStatusButton({
+  className = 'w-full',
+}: {
+  className?: string;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +41,7 @@ export default function ResyncConnectStatusButton() {
         type="button"
         onClick={resyncStatus}
         aria-disabled={loading}
-        className="w-full"
+        className={className}
       >
         {loading ? 'Syncing...' : 'Re-sync status from Stripe'}
       </Button>

@@ -14,13 +14,13 @@ const sections = [
   { name: 'Usage', href: '/dashboard/settings/usage' },
   { name: 'Billing', href: '/dashboard/settings/billing' },
   { name: 'Pricing & Fees', href: '/dashboard/settings/pricing-fees' },
+  { name: 'Payouts', href: '/dashboard/settings/payouts' },
+  { name: 'Refunds', href: '/dashboard/settings/refunds' },
   { name: 'Team', href: '/dashboard/settings/team' },
   { name: 'Company', href: '/dashboard/settings/company-profile' },
   { name: 'SMTP', href: '/dashboard/settings/smtp' },
   { name: 'Unsubscribe', href: '/dashboard/settings/unsubscribe' },
   { name: 'Documents', href: '/dashboard/settings/documents' },
-  { name: 'Payouts', href: '/dashboard/settings/payouts' },
-  { name: 'Refunds', href: '/dashboard/settings/refunds' },
 ];
 
 export default function SettingsSectionsNav() {

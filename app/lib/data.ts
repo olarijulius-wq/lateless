@@ -11,12 +11,16 @@ import {
   LatestInvoiceRaw,
   LatePayerStat,
   Revenue,
+  RevenueDay,
 } from './definitions';
 import { formatCurrency, formatCurrencySuffix } from './utils';
 import { auth } from '@/auth';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+const sql = postgres(process.env.POSTGRES_URL!, {
+  ssl: 'require',
+  prepare: false,
+});
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -271,6 +275,30 @@ export async function fetchRevenue() {
   return data;
 }
 
+export async function fetchRevenueDaily(days: number = 30): Promise<RevenueDay[]> {
+  const session = await auth();
+  const userEmail = session?.user?.email;
+  if (!userEmail) return [];
+
+  const normalizedEmail = normalizeEmail(userEmail);
+
+  const data = await sql<RevenueDay[]>`
+    SELECT
+      to_char(date_trunc('day', paid_at), 'YYYY-MM-DD') as day,
+      SUM(amount) / 100 as revenue
+    FROM invoices
+    WHERE
+      status = 'paid'
+      AND paid_at IS NOT NULL
+      AND paid_at >= now() - (${days}::int * interval '1 day')
+      AND lower(user_email) = ${normalizedEmail}
+    GROUP BY date_trunc('day', paid_at)
+    ORDER BY date_trunc('day', paid_at) ASC
+  `;
+
+  return data;
+}
+
 export async function fetchLatestInvoices() {
   const userEmail = await requireUserEmail();
 
@@ -309,17 +337,17 @@ export async function fetchCardData() {
   const userEmail = await requireUserEmail();
 
   try {
-    const invoiceCountPromise = sql`
+    const invoiceCountRows = await sql`
       SELECT COUNT(*) FROM invoices
       WHERE lower(user_email) = ${userEmail}
     `;
 
-    const customerCountPromise = sql`
+    const customerCountRows = await sql`
       SELECT COUNT(*) FROM customers
       WHERE lower(user_email) = ${userEmail}
     `;
 
-    const invoiceStatusPromise = sql`
+    const invoiceStatusRows = await sql`
       SELECT
         SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
         SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
@@ -327,16 +355,10 @@ export async function fetchCardData() {
       WHERE lower(user_email) = ${userEmail}
     `;
 
-    const data = await Promise.all([
-      invoiceCountPromise,
-      customerCountPromise,
-      invoiceStatusPromise,
-    ]);
-
-    const numberOfInvoices = Number(data[0][0].count ?? '0');
-    const numberOfCustomers = Number(data[1][0].count ?? '0');
-    const totalPaidInvoices = formatCurrencySuffix(data[2][0].paid ?? '0');
-    const totalPendingInvoices = formatCurrencySuffix(data[2][0].pending ?? '0');
+    const numberOfInvoices = Number(invoiceCountRows[0].count ?? '0');
+    const numberOfCustomers = Number(customerCountRows[0].count ?? '0');
+    const totalPaidInvoices = formatCurrencySuffix(invoiceStatusRows[0].paid ?? '0');
+    const totalPendingInvoices = formatCurrencySuffix(invoiceStatusRows[0].pending ?? '0');
 
     return {
       numberOfCustomers,
@@ -680,6 +702,13 @@ export type UserPlanUsage = {
   maxPerMonth: number;
 };
 
+export type UserInvoiceUsageProgress = {
+  planId: PlanId;
+  maxPerMonth: number | null;
+  usedThisMonth: number;
+  percentUsed: number;
+};
+
 export async function fetchUserPlanAndUsage(): Promise<UserPlanUsage> {
   const session = await auth();
   const email = session?.user?.email;
@@ -701,27 +730,26 @@ export async function fetchUserPlanAndUsage(): Promise<UserPlanUsage> {
   const normalizedEmail = normalizeEmail(email);
 
   // loeme korraga: kasutaja plaan + mitu invoice’it tal on
-  const [userRows, invoiceRows] = await Promise.all([
-    sql<{
-      is_pro: boolean | null;
-      subscription_status: string | null;
-      cancel_at_period_end: boolean | null;
-      current_period_end: Date | string | null;
-      plan: string | null;
-    }[]>`
-      select is_pro, subscription_status, cancel_at_period_end, current_period_end, plan
-      from users
-      where lower(email) = ${normalizedEmail}
-      limit 1
-    `,
-    sql<{ count: string }[]>`
-      select count(*)::text as count
-      from invoices
-      where lower(user_email) = ${normalizedEmail}
-        and date >= date_trunc('month', current_date)::date
-        and date < (date_trunc('month', current_date) + interval '1 month')::date
-    `,
-  ]);
+  const userRows = await sql<{
+    is_pro: boolean | null;
+    subscription_status: string | null;
+    cancel_at_period_end: boolean | null;
+    current_period_end: Date | string | null;
+    plan: string | null;
+  }[]>`
+    select is_pro, subscription_status, cancel_at_period_end, current_period_end, plan
+    from users
+    where lower(email) = ${normalizedEmail}
+    limit 1
+  `;
+
+  const invoiceRows = await sql<{ count: string }[]>`
+    select count(*)::text as count
+    from invoices
+    where lower(user_email) = ${normalizedEmail}
+      and date >= date_trunc('month', current_date)::date
+      and date < (date_trunc('month', current_date) + interval '1 month')::date
+  `;
 
   const user = userRows[0];
   const plan = resolveEffectivePlan(
@@ -739,5 +767,24 @@ export async function fetchUserPlanAndUsage(): Promise<UserPlanUsage> {
     currentPeriodEnd: user?.current_period_end ?? null,
     invoiceCount,
     maxPerMonth,
+  };
+}
+
+export async function fetchUserInvoiceUsageProgress(): Promise<UserInvoiceUsageProgress> {
+  const usage = await fetchUserPlanAndUsage();
+  const maxPerMonth = Number.isFinite(usage.maxPerMonth) ? usage.maxPerMonth : null;
+  const usedThisMonth = usage.invoiceCount;
+  const percentUsed =
+    maxPerMonth === null
+      ? 0
+      : maxPerMonth <= 0
+        ? 1
+        : usedThisMonth / maxPerMonth;
+
+  return {
+    planId: usage.plan,
+    maxPerMonth,
+    usedThisMonth,
+    percentUsed,
   };
 }

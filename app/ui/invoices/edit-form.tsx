@@ -149,6 +149,11 @@ export default function EditInvoiceForm({
                 {error}
               </p>
             ))}
+            {!dueDate ? (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-300">
+                Warning: leaving due date empty keeps this invoice without a due date.
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

@@ -167,6 +167,7 @@ export default function Form({
             type="date"
             value={dueDate}
             onChange={(event) => setDueDate(event.target.value)}
+            required
             className="block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none placeholder:text-neutral-500 transition focus:border-neutral-800 focus:ring-2 focus:ring-neutral-500/30 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:border-neutral-700 dark:focus:ring-neutral-500/40"
             aria-describedby="dueDate-error"
           />
@@ -185,9 +186,9 @@ export default function Form({
             <p className="text-sm">{state.message}</p>
             <a
               className={`${primaryButtonClasses} mt-2 px-3 py-2`}
-              href="/dashboard/settings"
+              href="/dashboard/settings/billing"
             >
-              View plans
+              Upgrade
             </a>
           </div>
         )}

@@ -2,12 +2,14 @@ import { Metadata } from 'next';
 import CustomersTable from '@/app/ui/customers/table';
 import { fetchFilteredCustomers, fetchUserPlanAndUsage } from '@/app/lib/data';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { Button } from '@/app/ui/button';
 import { lusitana } from '@/app/ui/fonts';
 import ExportCustomersButton from './export-button';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
 import MobileExpandableSearchToolbar from '@/app/ui/dashboard/mobile-expandable-search-toolbar';
+import { auth } from '@/auth';
 
 export const metadata: Metadata = {
   title: 'Customers',
@@ -20,6 +22,13 @@ export default async function Page(props: {
 }) {
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
+  const session = await auth();
+  if (!session?.user?.email) {
+    const callbackUrl = query
+      ? `/dashboard/customers?query=${encodeURIComponent(query)}`
+      : '/dashboard/customers';
+    redirect(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  }
 
   const [customers, plan] = await Promise.all([
     fetchFilteredCustomers(query),

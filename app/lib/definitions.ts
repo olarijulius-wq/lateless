@@ -58,6 +58,11 @@ export type Revenue = {
   revenue: number;
 };
 
+export type RevenueDay = {
+  day: string;
+  revenue: number;
+};
+
 export type LatestInvoice = {
   id: string;
   name: string;

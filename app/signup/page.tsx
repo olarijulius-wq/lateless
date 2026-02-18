@@ -8,7 +8,18 @@ export const metadata: Metadata = {
   title: 'Sign up',
 };
 
-export default function Page() {
+type SignupPageProps = {
+  searchParams?: Promise<{
+    callbackUrl?: string;
+  }>;
+};
+
+export default async function Page(props: SignupPageProps) {
+  const searchParams = await props.searchParams;
+  const callbackUrl = searchParams?.callbackUrl ?? null;
+  const loginHref = callbackUrl
+    ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
+    : '/login';
   const googleEnabled = Boolean(
     process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
   );
@@ -22,7 +33,7 @@ export default function Page() {
       subtitle={
         <>
           Already have an account?{' '}
-          <Link href="/login" className="text-white hover:text-white/90">
+          <Link href={loginHref} className="text-white hover:text-white/90">
             Log in.
           </Link>
         </>
@@ -30,7 +41,11 @@ export default function Page() {
       maxWidthClassName="max-w-lg"
     >
       <Suspense>
-        <SignupForm googleEnabled={googleEnabled} githubEnabled={githubEnabled} />
+        <SignupForm
+          googleEnabled={googleEnabled}
+          githubEnabled={githubEnabled}
+          callbackUrl={callbackUrl}
+        />
       </Suspense>
     </AuthLayout>
   );

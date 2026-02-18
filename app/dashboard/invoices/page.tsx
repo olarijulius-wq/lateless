@@ -6,14 +6,15 @@ import { CreateInvoice } from '@/app/ui/invoices/buttons';
 import {
   fetchFilteredInvoices,
   fetchInvoicesPages,
+  fetchUserInvoiceUsageProgress,
   fetchStripeConnectAccountId,
-  fetchUserPlanAndUsage,
 } from '@/app/lib/data';
 import ExportInvoicesButton from './export-button';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
-import { primaryButtonClasses, secondaryButtonClasses } from '@/app/ui/button';
+import { toolbarButtonClasses } from '@/app/ui/button';
 import MobileExpandableSearchToolbar from '@/app/ui/dashboard/mobile-expandable-search-toolbar';
+import UpgradeNudge from '@/app/ui/upgrade-nudge';
 
 export const metadata: Metadata = {
   title: 'Invoices',
@@ -23,25 +24,24 @@ export default async function Page(props: {
   searchParams?: Promise<{
     query?: string;
     page?: string;
+    interval?: string;
   }>;
 }) {
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) || 1;
+  const interval = searchParams?.interval;
 
-  const [invoices, totalPages, plan, stripeConnectAccountId] = await Promise.all([
+  const [invoices, totalPages, usage, stripeConnectAccountId] = await Promise.all([
     fetchFilteredInvoices(query, currentPage),
     fetchInvoicesPages(query),
-    fetchUserPlanAndUsage(),
+    fetchUserInvoiceUsageProgress(),
     fetchStripeConnectAccountId(),
   ]);
 
-  const { plan: planId, invoiceCount, maxPerMonth } = plan;
-  const hasUnlimited = !Number.isFinite(maxPerMonth);
-  const canCreate = hasUnlimited || invoiceCount < maxPerMonth;
+  const { planId, usedThisMonth, maxPerMonth, percentUsed } = usage;
+  const isBlocked = maxPerMonth !== null && percentUsed >= 1;
   const canExportCsv = PLAN_CONFIG[planId].canExportCsv;
-  const planName = PLAN_CONFIG[planId].name;
-  const limitLabel = Number.isFinite(maxPerMonth) ? maxPerMonth : 'unlimited';
 
   return (
     <main>
@@ -54,50 +54,40 @@ export default async function Page(props: {
           </h1>
         </div>
 
+        <div className="mb-4">
+          <UpgradeNudge
+            planId={planId}
+            usedThisMonth={usedThisMonth}
+            cap={maxPerMonth}
+            percentUsed={percentUsed}
+            interval={interval}
+          />
+        </div>
+
         <MobileExpandableSearchToolbar
           searchPlaceholder="Search invoices..."
           actions={
             <>
               <ExportInvoicesButton canExportCsv={canExportCsv} />
-              {canCreate && <CreateInvoice />}
-              {!canCreate && (
-                <a
-                  href="/dashboard/settings"
-                  className={`hidden sm:inline-flex ${secondaryButtonClasses} px-3 py-2 text-xs`}
+              {!isBlocked && <CreateInvoice />}
+              {isBlocked && (
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  className={`${toolbarButtonClasses} cursor-not-allowed opacity-60`}
                 >
-                  View all plans
-                </a>
+                  <span>Create Invoice</span>
+                </button>
               )}
             </>
           }
         />
       </RevealOnMount>
 
-      {!canCreate && (
-        <>
-          <p className="hidden text-xs text-amber-800 dark:text-amber-200 sm:block">
-            {planName} plan limit reached. Upgrade to keep sending invoices.
-          </p>
-          <div className="rounded-xl border border-amber-300 bg-amber-100 p-4 text-amber-900 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-100 sm:hidden">
-            <p className="text-sm font-semibold">
-              {planName} plan limit reached
-            </p>
-            <p className="mt-1 text-xs text-amber-800 dark:text-amber-100/80">
-              You have used all {limitLabel} invoices for this month.
-            </p>
-            <a
-              href="/dashboard/settings"
-              className={`${primaryButtonClasses} mt-3 w-full px-3 py-2 text-xs`}
-            >
-              View all plans
-            </a>
-          </div>
-        </>
-      )}
-
-      {!hasUnlimited && (
+      {maxPerMonth !== null && (
         <p className="text-xs text-slate-600 dark:text-slate-400">
-          {invoiceCount} / {maxPerMonth} invoices used on {planId} plan.
+          {usedThisMonth} / {maxPerMonth} invoices used on {planId} plan.
         </p>
       )}
 
