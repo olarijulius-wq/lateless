@@ -5,59 +5,92 @@ import {
   isTeamMigrationRequiredError,
 } from '@/app/lib/workspaces';
 import {
-  fetchUsageSummary,
-  fetchUsageTimeseries,
+  fetchCurrentTallinnMonthWindow,
+  fetchCurrentMonthInvoiceMetricCount,
+  fetchInvoiceDailySeries,
+  getDailyWindow,
+  fetchReminderDailySeries,
   fetchUsageTopReasons,
+  getUsageCapabilities,
   isUsageMigrationRequiredError,
   normalizeUsageInvoiceMetric,
+  normalizeUsageInvoiceWindow,
   USAGE_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/usage';
 
 export const runtime = 'nodejs';
 
-function getCurrentMonthRange(now: Date) {
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const monthEnd = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-  );
-  return { monthStart, monthEnd };
-}
-
 export async function GET(request: Request) {
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
     const plan = await fetchUserPlanAndUsage();
-    const { monthStart, monthEnd } = getCurrentMonthRange(new Date());
-    const metric = normalizeUsageInvoiceMetric(
-      new URL(request.url).searchParams.get('metric'),
-    );
+    const monthWindow = await fetchCurrentTallinnMonthWindow();
+    const params = new URL(request.url).searchParams;
+    const metric = normalizeUsageInvoiceMetric(params.get('metric'));
+    const win = normalizeUsageInvoiceWindow(params.get('win'));
 
-    const [summary, timeseries, topSkipReasons] = await Promise.all([
-      fetchUsageSummary(context.workspaceId, monthStart, monthEnd),
-      fetchUsageTimeseries({
-        workspaceId: context.workspaceId,
-        userEmail: context.userEmail,
-        days: 30,
-        invoiceMetric: metric,
-      }),
-      fetchUsageTopReasons(context.workspaceId, monthStart, monthEnd),
-    ]);
+    const [capabilities, monthMetric, invoiceDailyWindow, invoiceDaily, reminderDaily, topSkipReasons] =
+      await Promise.all([
+        getUsageCapabilities(),
+        fetchCurrentMonthInvoiceMetricCount({
+          workspaceId: context.workspaceId,
+          userEmail: context.userEmail,
+          metric: 'created',
+        }),
+        getDailyWindow(win),
+        fetchInvoiceDailySeries({
+          workspaceId: context.workspaceId,
+          userEmail: context.userEmail,
+          win,
+          metric,
+        }),
+        fetchReminderDailySeries({
+          workspaceId: context.workspaceId,
+          userEmail: context.userEmail,
+          days: 30,
+        }),
+        fetchUsageTopReasons({
+          workspaceId: context.workspaceId,
+          userEmail: context.userEmail,
+          monthStart: monthWindow.monthStart,
+          monthEnd: monthWindow.monthEnd,
+        }),
+      ]);
 
     return NextResponse.json({
       ok: true,
       workspaceId: context.workspaceId,
       userRole: context.userRole,
+      metric,
+      win,
+      capabilities,
       plan: {
         plan: plan.plan,
         invoiceCount: plan.invoiceCount,
         maxPerMonth: plan.maxPerMonth,
         subscriptionStatus: plan.subscriptionStatus,
       },
-      summary,
-      timeseries,
+      month: {
+        created: monthMetric.count,
+        total: monthMetric.count,
+        debug: monthMetric,
+      },
+      invoices: {
+        points: invoiceDaily.points,
+        window: invoiceDailyWindow,
+        debug: invoiceDaily.debug,
+      },
+      reminders: {
+        points: reminderDaily.points,
+        totals: reminderDaily.totals,
+        debug: reminderDaily.debug,
+      },
       topSkipReasons,
-      monthStart: monthStart.toISOString(),
-      monthEnd: monthEnd.toISOString(),
+      monthStart: monthWindow.monthStart.toISOString(),
+      monthEnd: monthWindow.monthEnd.toISOString(),
+      monthStartDate: monthWindow.monthStartDate,
+      monthEndDate: monthWindow.monthEndDate,
+      timezone: monthWindow.timezone,
     });
   } catch (error) {
     if (isTeamMigrationRequiredError(error)) {

@@ -18,6 +18,7 @@ import {
 } from '@/app/lib/email';
 import { initialLoginState, type LoginState } from '@/app/lib/login-state';
 import { logFunnelEvent } from '@/app/lib/funnel-events';
+import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -250,15 +251,11 @@ async function fetchUserPlan(userEmail: string): Promise<PlanId> {
 }
 
 async function fetchInvoiceCountThisMonth(userEmail: string) {
-  const [{ count = '0' } = { count: '0' }] = await sql<{ count: string }[]>`
-    select count(*)::text as count
-    from invoices
-    where lower(user_email) = ${userEmail}
-      and date >= date_trunc('month', current_date)::date
-      and date < (date_trunc('month', current_date) + interval '1 month')::date
-  `;
-
-  return Number(count);
+  const usage = await fetchCurrentMonthInvoiceMetricCount({
+    userEmail,
+    metric: 'created',
+  });
+  return usage.count;
 }
 
 function buildPlanLimitMessage(plan: PlanId) {

@@ -16,6 +16,7 @@ import {
 import { formatCurrency, formatCurrencySuffix } from './utils';
 import { auth } from '@/auth';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
+import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 
 const sql = postgres(process.env.POSTGRES_URL!, {
   ssl: 'require',
@@ -1177,13 +1178,10 @@ export async function fetchUserPlanAndUsage(): Promise<UserPlanUsage> {
     limit 1
   `;
 
-  const invoiceRows = await sql<{ count: string }[]>`
-    select count(*)::text as count
-    from invoices
-    where lower(user_email) = ${normalizedEmail}
-      and date >= date_trunc('month', current_date)::date
-      and date < (date_trunc('month', current_date) + interval '1 month')::date
-  `;
+  const invoiceMetricUsage = await fetchCurrentMonthInvoiceMetricCount({
+    userEmail: normalizedEmail,
+    metric: 'created',
+  });
 
   const user = userRows[0];
   const plan = resolveEffectivePlan(
@@ -1191,7 +1189,7 @@ export async function fetchUserPlanAndUsage(): Promise<UserPlanUsage> {
     user?.subscription_status ?? null,
   );
   const maxPerMonth = PLAN_CONFIG[plan].maxPerMonth;
-  const invoiceCount = Number(invoiceRows[0]?.count ?? '0');
+  const invoiceCount = invoiceMetricUsage.count;
 
   return {
     plan,

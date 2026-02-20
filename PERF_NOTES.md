@@ -138,3 +138,21 @@ How to confirm throttling:
     - `with bounds as (select date_trunc('day', now() at time zone 'Europe/Tallinn') - interval '29 days' as start_day, date_trunc('day', now() at time zone 'Europe/Tallinn') as end_day), days as (select generate_series((select start_day from bounds), (select end_day from bounds), interval '1 day') as day), grouped as (select date_trunc('day', i.issued_at at time zone 'Europe/Tallinn') as day, count(*)::int as count from public.invoices i where i.workspace_id = '<workspace_id>' and i.issued_at is not null and i.issued_at >= ((select start_day from bounds) at time zone 'Europe/Tallinn') and i.issued_at < (((select end_day from bounds) + interval '1 day') at time zone 'Europe/Tallinn') group by 1) select to_char(days.day, 'YYYY-MM-DD') as day, coalesce(grouped.count, 0) as created_count from days left join grouped on grouped.day = days.day order by days.day asc;`
   - Email fallback (if `invoices.workspace_id` does not exist):
     - `with bounds as (select date_trunc('day', now() at time zone 'Europe/Tallinn') - interval '29 days' as start_day, date_trunc('day', now() at time zone 'Europe/Tallinn') as end_day), days as (select generate_series((select start_day from bounds), (select end_day from bounds), interval '1 day') as day), grouped as (select date_trunc('day', i.issued_at at time zone 'Europe/Tallinn') as day, count(*)::int as count from public.invoices i where lower(i.user_email) = lower('<user_email>') and i.issued_at is not null and i.issued_at >= ((select start_day from bounds) at time zone 'Europe/Tallinn') and i.issued_at < (((select end_day from bounds) + interval '1 day') at time zone 'Europe/Tallinn') group by 1) select to_char(days.day, 'YYYY-MM-DD') as day, coalesce(grouped.count, 0) as created_count from days left join grouped on grouped.day = days.day order by days.day asc;`
+
+## Usage Analytics Dev Sanity Checklist (P0)
+
+- Create 3 invoices today in Tallinn-local daytime and confirm `Created` daily count increases by 3 in `/dashboard/settings/usage` (Invoices card, last 30 days).
+- Send 1 invoice email and confirm `Sent` daily count increases by 1 (Invoices card, metric `Sent`).
+- Mark 1 invoice as paid and confirm `Paid` daily count increases by 1 (Invoices card, metric `Paid`).
+- Open `Diagnostics` on usage page and confirm `monthTotal === sumDaily` for the selected metric.
+- Confirm month tile `Invoices created` equals plan line `Monthly invoices used` and is sourced from the same created metric query.
+- Timezone boundary check: create an invoice at 23:30 Europe/Tallinn and verify it appears on that Tallinn date (not shifted to adjacent day).
+
+## Usage analytics sanity
+
+- Confirm `created_at` exists and is populated:
+  - `select count(*) as total, count(created_at) as with_created_at from public.invoices;`
+- Quick 7-day created counts (user scope):
+  - `select date_trunc('day', created_at at time zone 'Europe/Tallinn')::date as day, count(*) from public.invoices where lower(user_email)=lower('<email>') and created_at >= now() - interval '7 days' group by 1 order by 1 desc;`
+- Quick 7-day created counts (workspace scope):
+  - `select date_trunc('day', created_at at time zone 'Europe/Tallinn')::date as day, count(*) from public.invoices where workspace_id = '<workspace_id>' and created_at >= now() - interval '7 days' group by 1 order by 1 desc;`
