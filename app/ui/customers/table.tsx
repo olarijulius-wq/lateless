@@ -84,7 +84,7 @@ export default function CustomersTable({
                             <InitialAvatar name={customer.name} />
                           )}
                           <Link
-                            href={`/dashboard/customers/${customer.id}`}
+                            href={`/dashboard/customers/${customer.id}?returnTo=${encodeURIComponent(returnToPath)}`}
                             className="truncate text-slate-900 hover:text-slate-700 dark:text-zinc-100 dark:hover:text-zinc-300"
                           >
                             {customer.name}
@@ -173,7 +173,7 @@ export default function CustomersTable({
                           <InitialAvatar name={customer.name} />
                         )}
                         <Link
-                          href={`/dashboard/customers/${customer.id}`}
+                          href={`/dashboard/customers/${customer.id}?returnTo=${encodeURIComponent(returnToPath)}`}
                           className="hover:text-slate-700 dark:hover:text-zinc-300"
                         >
                           {customer.name}

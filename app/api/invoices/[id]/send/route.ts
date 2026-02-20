@@ -16,7 +16,12 @@ function normalizeEmail(email: string) {
 
 function sanitizeReturnTo(value: string | null) {
   if (!value) return '/dashboard/invoices';
-  if (!value.startsWith('/dashboard/invoices')) return '/dashboard/invoices';
+  if (
+    !value.startsWith('/dashboard/invoices') &&
+    !value.startsWith('/dashboard/customers')
+  ) {
+    return '/dashboard/invoices';
+  }
   return value;
 }
 
@@ -118,6 +123,8 @@ export async function POST(
 
     revalidatePath('/dashboard/invoices');
     revalidatePath(`/dashboard/invoices/${invoice.id}`);
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/onboarding');
 
     return NextResponse.json({
       ok: true,

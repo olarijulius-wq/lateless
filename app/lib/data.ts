@@ -3,6 +3,7 @@ import {
   CustomerField,
   CustomerForm,
   CustomerInvoice,
+  CustomerInvoiceScoped,
   CustomersTableType,
   CompanyProfile,
   InvoiceDetail,
@@ -416,6 +417,8 @@ export type InvoiceSortKey =
 export type InvoiceSortDir = 'asc' | 'desc';
 export type CustomerSortKey = 'name' | 'email' | 'created_at' | 'total_invoices';
 export type CustomerSortDir = 'asc' | 'desc';
+export type CustomerInvoiceSortKey = 'due_date' | 'amount' | 'created_at';
+export type CustomerInvoiceSortDir = 'asc' | 'desc';
 export type LatePayerSortKey =
   | 'days_overdue'
   | 'paid_invoices'
@@ -427,6 +430,7 @@ export type LatePayerSortDir = 'asc' | 'desc';
 const DEFAULT_INVOICES_PAGE_SIZE = 50;
 const DEFAULT_CUSTOMERS_PAGE_SIZE = 50;
 const DEFAULT_LATE_PAYERS_PAGE_SIZE = 100;
+const DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE = 25;
 
 const ORDER_BY_SQL_BY_KEY: Record<InvoiceSortKey, (dir: InvoiceSortDir) => string> = {
   due_date: (dir) =>
@@ -449,6 +453,15 @@ const CUSTOMER_ORDER_BY_SQL_BY_KEY: Record<
   email: (dir) => `lower(customers.email) ${dir.toUpperCase()}, customers.id DESC`,
   created_at: (dir) => `customers.created_at ${dir.toUpperCase()}, customers.id DESC`,
   total_invoices: (dir) => `COUNT(invoices.id) ${dir.toUpperCase()}, lower(customers.name) ASC`,
+};
+
+const CUSTOMER_INVOICE_ORDER_BY_SQL_BY_KEY: Record<
+  CustomerInvoiceSortKey,
+  (dir: CustomerInvoiceSortDir) => string
+> = {
+  due_date: (dir) => `invoices.due_date ${dir.toUpperCase()} NULLS LAST, invoices.date DESC, invoices.id DESC`,
+  amount: (dir) => `invoices.amount ${dir.toUpperCase()}, invoices.date DESC, invoices.id DESC`,
+  created_at: (dir) => `invoices.date ${dir.toUpperCase()}, invoices.id DESC`,
 };
 
 const LATE_PAYER_ORDER_BY_SQL_BY_KEY: Record<
@@ -525,6 +538,27 @@ function normalizeCustomerPageSize(pageSize: number | undefined): number {
     return pageSize;
   }
   return DEFAULT_CUSTOMERS_PAGE_SIZE;
+}
+
+function normalizeCustomerInvoiceSortKey(sortKey: string | undefined): CustomerInvoiceSortKey {
+  if (sortKey === 'due_date' || sortKey === 'amount' || sortKey === 'created_at') {
+    return sortKey;
+  }
+  return 'due_date';
+}
+
+function normalizeCustomerInvoiceSortDir(sortDir: string | undefined): CustomerInvoiceSortDir {
+  if (sortDir === 'asc' || sortDir === 'desc') {
+    return sortDir;
+  }
+  return 'asc';
+}
+
+function normalizeCustomerInvoicePageSize(pageSize: number | undefined): number {
+  if (pageSize === 10 || pageSize === 25 || pageSize === 50 || pageSize === 100) {
+    return pageSize;
+  }
+  return DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE;
 }
 
 function normalizeLatePayerSortKey(sortKey: string | undefined): LatePayerSortKey {
@@ -766,6 +800,9 @@ export async function fetchInvoiceById(id: string) {
         invoices.status,
         invoices.date,
         invoices.due_date,
+        invoices.paid_at,
+        invoices.reminder_level,
+        invoices.last_reminder_sent_at,
         invoices.invoice_number,
         logs.status as last_email_status,
         logs.sent_at as last_email_sent_at,
@@ -809,6 +846,9 @@ export async function fetchInvoiceById(id: string) {
           invoices.status,
           invoices.date,
           invoices.due_date,
+          invoices.paid_at,
+          invoices.reminder_level,
+          invoices.last_reminder_sent_at,
           invoices.invoice_number,
           null::text as last_email_status,
           null::timestamptz as last_email_sent_at,
@@ -844,6 +884,9 @@ export async function fetchInvoiceById(id: string) {
           invoices.status,
           invoices.date,
           invoices.due_date,
+          null::timestamptz AS paid_at,
+          null::integer AS reminder_level,
+          null::timestamptz AS last_reminder_sent_at,
           invoices.invoice_number,
           null::text AS last_email_status,
           null::timestamptz AS last_email_sent_at,
@@ -946,6 +989,160 @@ export async function fetchInvoicesByCustomerId(customerId: string) {
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch customer invoices.');
+  }
+}
+
+export async function fetchCustomerInvoiceSummaryByCustomerId(customerId: string) {
+  const userEmail = await requireUserEmail();
+
+  try {
+    const [data] = await sql<{
+      total_count: string;
+      total_paid: number | null;
+      total_unpaid: number | null;
+      total_overdue: number | null;
+    }[]>`
+      SELECT
+        COUNT(*)::text AS total_count,
+        SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS total_paid,
+        SUM(CASE WHEN invoices.status <> 'paid' THEN invoices.amount ELSE 0 END) AS total_unpaid,
+        SUM(
+          CASE
+            WHEN invoices.status <> 'paid'
+              AND invoices.due_date IS NOT NULL
+              AND invoices.due_date < current_date
+            THEN invoices.amount
+            ELSE 0
+          END
+        ) AS total_overdue
+      FROM invoices
+      WHERE invoices.customer_id = ${customerId}
+        AND lower(invoices.user_email) = ${userEmail}
+    `;
+
+    return {
+      totalCount: Number(data?.total_count ?? '0'),
+      totalPaid: data?.total_paid ?? 0,
+      totalUnpaid: data?.total_unpaid ?? 0,
+      totalOverdue: data?.total_overdue ?? 0,
+    };
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch customer invoice summary.');
+  }
+}
+
+export async function fetchFilteredCustomerInvoicesByCustomerId(
+  customerId: string,
+  query: string,
+  currentPage: number = 1,
+  statusFilter: string = 'all',
+  sortKey: string = 'due_date',
+  sortDir: string = 'asc',
+  pageSize: number = DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE,
+) {
+  const userEmail = await requireUserEmail();
+  const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
+  const safeStatusFilter = normalizeInvoiceStatusFilter(statusFilter);
+  const safeSortKey = normalizeCustomerInvoiceSortKey(sortKey);
+  const safeSortDir = normalizeCustomerInvoiceSortDir(sortDir);
+  const safePageSize = normalizeCustomerInvoicePageSize(pageSize);
+  const offset = (safeCurrentPage - 1) * safePageSize;
+  const orderByClause = CUSTOMER_INVOICE_ORDER_BY_SQL_BY_KEY[safeSortKey](safeSortDir);
+
+  try {
+    const data = await sql<CustomerInvoiceScoped[]>`
+      SELECT
+        invoices.id,
+        invoices.amount,
+        invoices.status,
+        invoices.date,
+        invoices.due_date,
+        invoices.invoice_number
+      FROM invoices
+      WHERE invoices.customer_id = ${customerId}
+        AND lower(invoices.user_email) = ${userEmail}
+        AND (
+          ${safeStatusFilter} = 'all'
+          OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
+          OR (${safeStatusFilter} = 'unpaid' AND invoices.status <> 'paid')
+          OR (
+            ${safeStatusFilter} = 'overdue'
+            AND (
+              invoices.status = 'overdue'
+              OR (
+                invoices.due_date IS NOT NULL
+                AND invoices.due_date < current_date
+                AND invoices.status <> 'paid'
+              )
+            )
+          )
+        )
+        AND (
+          COALESCE(invoices.invoice_number, '') ILIKE ${`%${query}%`}
+          OR invoices.id::text ILIKE ${`%${query}%`}
+          OR invoices.amount::text ILIKE ${`%${query}%`}
+          OR invoices.status ILIKE ${`%${query}%`}
+          OR invoices.date::text ILIKE ${`%${query}%`}
+          OR COALESCE(invoices.due_date::text, '') ILIKE ${`%${query}%`}
+        )
+      ORDER BY ${sql.unsafe(orderByClause)}
+      LIMIT ${safePageSize} OFFSET ${offset}
+    `;
+
+    return data;
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch customer invoices.');
+  }
+}
+
+export async function fetchCustomerInvoicesPagesByCustomerId(
+  customerId: string,
+  query: string,
+  statusFilter: string = 'all',
+  pageSize: number = DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE,
+) {
+  const userEmail = await requireUserEmail();
+  const safeStatusFilter = normalizeInvoiceStatusFilter(statusFilter);
+  const safePageSize = normalizeCustomerInvoicePageSize(pageSize);
+
+  try {
+    const data = await sql`
+      SELECT COUNT(*)
+      FROM invoices
+      WHERE invoices.customer_id = ${customerId}
+        AND lower(invoices.user_email) = ${userEmail}
+        AND (
+          ${safeStatusFilter} = 'all'
+          OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
+          OR (${safeStatusFilter} = 'unpaid' AND invoices.status <> 'paid')
+          OR (
+            ${safeStatusFilter} = 'overdue'
+            AND (
+              invoices.status = 'overdue'
+              OR (
+                invoices.due_date IS NOT NULL
+                AND invoices.due_date < current_date
+                AND invoices.status <> 'paid'
+              )
+            )
+          )
+        )
+        AND (
+          COALESCE(invoices.invoice_number, '') ILIKE ${`%${query}%`}
+          OR invoices.id::text ILIKE ${`%${query}%`}
+          OR invoices.amount::text ILIKE ${`%${query}%`}
+          OR invoices.status ILIKE ${`%${query}%`}
+          OR invoices.date::text ILIKE ${`%${query}%`}
+          OR COALESCE(invoices.due_date::text, '') ILIKE ${`%${query}%`}
+        )
+    `;
+
+    return Math.ceil(Number(data[0].count) / safePageSize);
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch total number of customer invoices.');
   }
 }
 

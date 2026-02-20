@@ -116,6 +116,9 @@ export type InvoiceDetail = {
   status: InvoiceStatus;
   date: string;
   due_date: string | null;
+  paid_at: string | null;
+  reminder_level: number | null;
+  last_reminder_sent_at: string | null;
   last_email_status: string | null;
   last_email_sent_at: string | null;
   last_email_error: string | null;
@@ -166,6 +169,15 @@ export type CustomerInvoice = {
   amount: number;
   status: InvoiceStatus;
   date: string;
+};
+
+export type CustomerInvoiceScoped = {
+  id: string;
+  amount: number;
+  status: InvoiceStatus;
+  date: string;
+  due_date: string | null;
+  invoice_number: string | null;
 };
 
 export type CompanyProfile = {

@@ -258,12 +258,8 @@ async function fetchInvoiceCountThisMonth(userEmail: string) {
   return usage.count;
 }
 
-function buildPlanLimitMessage(plan: PlanId) {
-  const config = PLAN_CONFIG[plan];
-  const limitLabel = Number.isFinite(config.maxPerMonth)
-    ? `${config.maxPerMonth} invoices per month`
-    : 'unlimited invoices';
-  return `${config.name} plan limit reached (${limitLabel}). Upgrade your plan to create more invoices.`;
+function buildPlanLimitMessage(used: number, cap: number) {
+  return `Monthly invoice limit reached (${used}/${cap}).`;
 }
 
 function sanitizeInvoicesReturnTo(returnToRaw: FormDataEntryValue | null): string {
@@ -272,13 +268,19 @@ function sanitizeInvoicesReturnTo(returnToRaw: FormDataEntryValue | null): strin
   }
 
   const trimmed = returnToRaw.trim();
-  if (!trimmed.startsWith('/dashboard/invoices')) {
+  if (
+    !trimmed.startsWith('/dashboard/invoices') &&
+    !trimmed.startsWith('/dashboard/customers')
+  ) {
     return '/dashboard/invoices';
   }
 
   try {
     const parsed = new URL(trimmed, 'http://localhost');
-    if (!parsed.pathname.startsWith('/dashboard/invoices')) {
+    if (
+      !parsed.pathname.startsWith('/dashboard/invoices') &&
+      !parsed.pathname.startsWith('/dashboard/customers')
+    ) {
       return '/dashboard/invoices';
     }
     return `${parsed.pathname}${parsed.search}`;
@@ -305,6 +307,27 @@ function sanitizeCustomersReturnTo(returnToRaw: FormDataEntryValue | null): stri
     return `${parsed.pathname}${parsed.search}`;
   } catch {
     return '/dashboard/customers';
+  }
+}
+
+function sanitizeOnboardingReturnTo(returnToRaw: FormDataEntryValue | null): string | null {
+  if (typeof returnToRaw !== 'string') {
+    return null;
+  }
+
+  const trimmed = returnToRaw.trim();
+  if (!trimmed.startsWith('/dashboard/onboarding')) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed, 'http://localhost');
+    if (!parsed.pathname.startsWith('/dashboard/onboarding')) {
+      return null;
+    }
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return null;
   }
 }
 
@@ -366,7 +389,7 @@ export async function createInvoice(
       return {
         ok: false,
         code: 'LIMIT_REACHED',
-        message: buildPlanLimitMessage(plan),
+        message: buildPlanLimitMessage(invoiceCount, planConfig.maxPerMonth),
       };
     }
   }
@@ -457,8 +480,11 @@ export async function createInvoice(
     };
   }
 
+  const onboardingReturnTo = sanitizeOnboardingReturnTo(formData.get('returnTo'));
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/onboarding');
   revalidatePath('/dashboard/invoices');
-  redirect('/dashboard/invoices');
+  redirect(onboardingReturnTo ?? '/dashboard/invoices');
 }
 
 export async function updateInvoice(
@@ -589,7 +615,7 @@ export async function duplicateInvoice(
       return {
         ok: false,
         code: 'LIMIT_REACHED',
-        message: buildPlanLimitMessage(plan),
+        message: buildPlanLimitMessage(invoiceCount, planConfig.maxPerMonth),
       };
     }
   }
@@ -745,8 +771,11 @@ export async function createCustomer(
     return { message: 'Database Error: Failed to Create Customer.' };
   }
 
+  const onboardingReturnTo = sanitizeOnboardingReturnTo(formData.get('returnTo'));
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/onboarding');
   revalidatePath('/dashboard/customers');
-  redirect('/dashboard/customers');
+  redirect(onboardingReturnTo ?? '/dashboard/customers');
 }
 
 export async function updateCustomer(
@@ -825,6 +854,8 @@ export async function deleteCustomer(id: string) {
 
   revalidatePath('/dashboard/customers');
   revalidatePath('/dashboard/invoices');
+  revalidatePath('/dashboard');
+  revalidatePath('/dashboard/onboarding');
 }
 
 export async function saveCompanyProfile(
@@ -872,6 +903,8 @@ export async function saveCompanyProfile(
       source: 'dashboard',
     });
 
+    revalidatePath('/dashboard');
+    revalidatePath('/dashboard/onboarding');
     revalidatePath('/dashboard/settings');
 
     return {
