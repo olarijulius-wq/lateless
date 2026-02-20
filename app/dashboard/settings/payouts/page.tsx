@@ -9,6 +9,7 @@ import ResyncConnectStatusButton from './resync-connect-status-button';
 import { checkConnectedAccountAccess } from '@/app/lib/stripe-connect';
 import PricingPanel from '@/app/ui/pricing/panel';
 import { primaryButtonClasses } from '@/app/ui/button';
+import { SectionCard } from '@/app/ui/page-layout';
 
 export const metadata: Metadata = {
   title: 'Payouts',
@@ -63,21 +64,20 @@ export default async function PayoutsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5">
-      <header>
-        <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">Payouts</h1>
-        <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+      <SectionCard className="space-y-2">
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Payouts</h2>
+        <p className="text-sm text-slate-600 dark:text-neutral-300">
           Connect Stripe Express to receive payouts from paid invoices.
         </p>
-      </header>
-
+      </SectionCard>
       {showStripeDebug && (
-        <div className="rounded-xl border border-dashed border-neutral-700 bg-neutral-950 p-3 text-xs text-neutral-300">
+        <SectionCard className="border-dashed bg-neutral-950 p-3 text-xs text-neutral-300 dark:border-neutral-800">
           <p>
             <strong>Debug</strong> Key mode: {modeLabel.toLowerCase()}
           </p>
           <p>Connected account: {status.accountId ?? 'none'}</p>
           <p>accounts.retrieve: {retrieveStatus ?? 'not checked'}</p>
-        </div>
+        </SectionCard>
       )}
 
       <PricingPanel className="space-y-5">

@@ -1,5 +1,28 @@
 # Perf Notes (Next.js App Router)
 
+## UI Unification Audit Checklist (Phase A)
+
+Main list pages (already good, keep stable):
+- `/dashboard/invoices`: Keep current list controls + URL state + table rhythm.
+- `/dashboard/customers`: Keep current list controls + URL state + table rhythm.
+- `/dashboard/late-payers`: Keep current list controls + URL state + table rhythm.
+
+Secondary pages (polish/unify):
+- `/dashboard/invoices/[id]`: Problem: dense mixed sections, weak scan hierarchy, empty/right-side dead space.
+  Fix plan: move to shared `PageShell` + `TwoColumnDetail`, compact key fields grid, scoped activity/reminder/payment cards.
+- `/dashboard/customers/[id]`: Problem: loads all invoices without scoped search/filter/paging.
+  Fix plan: add server-side paged customer invoice query + namespaced URL params (`ci*`) + compact stats and section cards.
+- `/dashboard/settings/*`: Problem: headings/card rhythm differ per page, spacing and max-width vary.
+  Fix plan: keep existing logic, normalize top-level wrappers with shared section surfaces and consistent action placement.
+- `/dashboard/profile`, `/dashboard/feedback`, `/dashboard/reminders`: Problem: uneven heading/section rhythm vs list pages.
+  Fix plan: align with `PageShell` and shared card spacing where safe.
+- `/dashboard/onboarding` and `/onboarding`: Problem: duplicated onboarding entry points and mixed UI patterns.
+  Fix plan: canonicalize on `/dashboard/onboarding`, redirect legacy route, unify steps + persistent hide/reopen behavior.
+- Dashboard setup card (`/dashboard`): Problem: always visible and heavy after setup completion.
+  Fix plan: support hide/dismiss and completion collapse with a small floating reopen entry point.
+- Secondary auth/invite/verify/pay pages: Problem: inconsistent empty/help states and action placement.
+  Fix plan: apply `EmptyState`/section-card pattern opportunistically without changing core flow logic.
+
 Top likely causes of slow dev navigation in this repo and what to check next:
 
 1. Repeated server auth/database reads on settings/dashboard routes

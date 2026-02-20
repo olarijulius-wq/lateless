@@ -1,6 +1,7 @@
 import SettingsSectionsNav from '@/app/ui/dashboard/settings-sections-nav';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { isReminderManualRunAdmin } from '@/app/lib/reminder-admin';
+import { PageShell, SectionCard } from '@/app/ui/page-layout';
 
 export default async function SettingsLayout({
   children,
@@ -23,21 +24,18 @@ export default async function SettingsLayout({
   }
 
   return (
-    <div className="w-full max-w-5xl space-y-6">
-      <div className="space-y-3">
-        <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-          Settings
-        </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Workspace-level configuration for usage, billing, team, integrations,
-          and documents.
-        </p>
+    <PageShell
+      title="Settings"
+      subtitle="Workspace-level configuration for usage, billing, team, integrations, and documents."
+      className="max-w-5xl"
+    >
+      <SectionCard className="p-4">
         <SettingsSectionsNav
           canViewFunnel={canViewFunnel}
           currentUserEmail={currentUserEmail}
         />
-      </div>
+      </SectionCard>
       {children}
-    </div>
+    </PageShell>
   );
 }
