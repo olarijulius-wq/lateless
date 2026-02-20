@@ -69,10 +69,55 @@ type ReminderRunLogsSchemaMeta = {
   hasUserEmail: boolean;
   hasActorEmail: boolean;
   hasConfig: boolean;
+  hasHasMore: boolean;
   rawJsonType: string | null;
 };
 
 export type ReminderRunLogsScopeMode = 'workspace' | 'account';
+export type ReminderRunsQueryScope = 'workspace' | 'all';
+export type ReminderRunsQueryTriggeredBy = 'all' | 'cron' | 'manual';
+export type ReminderRunsQueryHasMore = 'all' | 'true' | 'false';
+export type ReminderRunsQuerySent = 'all' | 'gt0' | 'eq0';
+export type ReminderRunsQueryLegacy = 'all' | 'legacy' | 'scoped';
+export type ReminderRunsQuerySort =
+  | 'ran_at'
+  | 'sent'
+  | 'failed'
+  | 'skipped'
+  | 'triggered_by'
+  | 'actor_email';
+export type ReminderRunsQueryDir = 'asc' | 'desc';
+
+export type ReminderRunsQuery = {
+  scope: ReminderRunsQueryScope;
+  workspaceId?: string | null;
+  userEmail?: string | null;
+  q?: string;
+  triggeredBy?: ReminderRunsQueryTriggeredBy;
+  hasMore?: ReminderRunsQueryHasMore;
+  sent?: ReminderRunsQuerySent;
+  legacy?: ReminderRunsQueryLegacy;
+  sort?: ReminderRunsQuerySort;
+  dir?: ReminderRunsQueryDir;
+  page?: number;
+  pageSize?: number;
+};
+
+export type ReminderRunLogsPagedResult = {
+  rows: ReminderRunLogRecord[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  capabilities: {
+    hasWorkspaceId: boolean;
+    hasUserEmail: boolean;
+    hasActorEmail: boolean;
+    hasConfig: boolean;
+    hasHasMore: boolean;
+    hasSearchableNotes: boolean;
+  };
+};
 
 let reminderRunLogsSchemaReadyPromise: Promise<void> | null = null;
 let reminderRunLogsSchemaMetaPromise: Promise<ReminderRunLogsSchemaMeta> | null = null;
@@ -86,6 +131,7 @@ async function getReminderRunLogsSchemaMeta() {
         has_user_email: boolean;
         has_actor_email: boolean;
         has_config: boolean;
+        has_has_more: boolean;
         raw_json_type: string | null;
       }[]>`
         select
@@ -118,6 +164,13 @@ async function getReminderRunLogsSchemaMeta() {
               and table_name = 'reminder_runs'
               and column_name = 'config'
           ) as has_config,
+          exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'reminder_runs'
+              and column_name = 'has_more'
+          ) as has_has_more,
           (
             select c.data_type
             from information_schema.columns c
@@ -137,6 +190,7 @@ async function getReminderRunLogsSchemaMeta() {
         hasUserEmail: result.has_user_email,
         hasActorEmail: result.has_actor_email,
         hasConfig: result.has_config,
+        hasHasMore: result.has_has_more,
         rawJsonType: result.raw_json_type,
       };
     })();
@@ -371,16 +425,16 @@ export async function insertReminderRunLog(payload: ReminderRunLogInsertPayload)
 }
 
 export async function listReminderRunLogs(options?: {
+  scope?: 'workspace' | 'all';
   limit?: number;
   workspaceId?: string | null;
   userEmail?: string | null;
 }) {
-  await assertReminderRunLogsSchemaReady();
-
   const schemaMeta = await getReminderRunLogsSchemaMeta();
   const safeLimit = Number.isFinite(options?.limit)
     ? Math.max(1, Math.min(100, Math.trunc(options?.limit ?? 20)))
     : 20;
+  const scope = options?.scope === 'all' ? 'all' : 'workspace';
   const workspaceId = options?.workspaceId?.trim() || null;
   const userEmail = options?.userEmail?.trim().toLowerCase() || null;
 
@@ -397,7 +451,7 @@ export async function listReminderRunLogs(options?: {
       sent,
       failed,
       skipped,
-      has_more,
+      ${schemaMeta.hasHasMore ? 'has_more' : 'false as has_more'},
       duration_ms,
       ${
         schemaMeta.rawJsonType === 'json' || schemaMeta.rawJsonType === 'jsonb'
@@ -424,7 +478,14 @@ export async function listReminderRunLogs(options?: {
     raw_json: unknown;
   }> = [];
 
-  if (schemaMeta.hasWorkspaceId && workspaceId) {
+  if (scope === 'all') {
+    rows = await sql.unsafe(
+      `${baseSelect}
+       order by ran_at desc
+       limit $1`,
+      [safeLimit],
+    );
+  } else if (schemaMeta.hasWorkspaceId && workspaceId) {
     rows = await sql.unsafe(
       `${baseSelect}
        where workspace_id = $1::uuid
@@ -450,4 +511,247 @@ export async function listReminderRunLogs(options?: {
   }
 
   return rows.map((row) => mapReminderRunLogRow(row));
+}
+
+const DEFAULT_REMINDER_RUNS_PAGE_SIZE = 50;
+
+function normalizeReminderRunsPageSize(pageSize: number | undefined): number {
+  if (pageSize === 10 || pageSize === 25 || pageSize === 50 || pageSize === 100) {
+    return pageSize;
+  }
+  return DEFAULT_REMINDER_RUNS_PAGE_SIZE;
+}
+
+function normalizeReminderRunsPage(page: number | undefined): number {
+  if (!Number.isFinite(page) || !page || page < 1) {
+    return 1;
+  }
+  return Math.trunc(page);
+}
+
+function normalizeReminderRunsScope(scope: string | undefined): ReminderRunsQueryScope {
+  return scope === 'all' ? 'all' : 'workspace';
+}
+
+function normalizeReminderRunsTriggeredBy(
+  triggeredBy: string | undefined,
+): ReminderRunsQueryTriggeredBy {
+  if (triggeredBy === 'cron' || triggeredBy === 'manual') {
+    return triggeredBy;
+  }
+  return 'all';
+}
+
+function normalizeReminderRunsHasMore(hasMore: string | undefined): ReminderRunsQueryHasMore {
+  if (hasMore === 'true' || hasMore === 'false') {
+    return hasMore;
+  }
+  return 'all';
+}
+
+function normalizeReminderRunsSent(sent: string | undefined): ReminderRunsQuerySent {
+  if (sent === 'gt0' || sent === 'eq0') {
+    return sent;
+  }
+  return 'all';
+}
+
+function normalizeReminderRunsLegacy(legacy: string | undefined): ReminderRunsQueryLegacy {
+  if (legacy === 'legacy' || legacy === 'scoped') {
+    return legacy;
+  }
+  return 'all';
+}
+
+function normalizeReminderRunsSort(sort: string | undefined): ReminderRunsQuerySort {
+  if (
+    sort === 'ran_at' ||
+    sort === 'sent' ||
+    sort === 'failed' ||
+    sort === 'skipped' ||
+    sort === 'triggered_by' ||
+    sort === 'actor_email'
+  ) {
+    return sort;
+  }
+  return 'ran_at';
+}
+
+function normalizeReminderRunsDir(dir: string | undefined): ReminderRunsQueryDir {
+  if (dir === 'asc' || dir === 'desc') {
+    return dir;
+  }
+  return 'desc';
+}
+
+function getReminderRunsOrderBySql(
+  schemaMeta: ReminderRunLogsSchemaMeta,
+  sort: ReminderRunsQuerySort,
+  dir: ReminderRunsQueryDir,
+) {
+  if (sort === 'ran_at') {
+    return `ran_at ${dir.toUpperCase()}, id DESC`;
+  }
+  if (sort === 'sent') {
+    return `sent ${dir.toUpperCase()}, ran_at DESC, id DESC`;
+  }
+  if (sort === 'failed') {
+    return `failed ${dir.toUpperCase()}, ran_at DESC, id DESC`;
+  }
+  if (sort === 'skipped') {
+    return `skipped ${dir.toUpperCase()}, ran_at DESC, id DESC`;
+  }
+  if (sort === 'triggered_by') {
+    return `lower(triggered_by) ${dir.toUpperCase()}, ran_at DESC, id DESC`;
+  }
+  if (sort === 'actor_email' && schemaMeta.hasActorEmail) {
+    return `lower(actor_email) ${dir.toUpperCase()} NULLS LAST, ran_at DESC, id DESC`;
+  }
+  return `ran_at DESC, id DESC`;
+}
+
+export async function listReminderRunLogsPaged(
+  query: ReminderRunsQuery,
+): Promise<ReminderRunLogsPagedResult> {
+  const schemaMeta = await getReminderRunLogsSchemaMeta();
+  const page = normalizeReminderRunsPage(query.page);
+  const pageSize = normalizeReminderRunsPageSize(query.pageSize);
+  const offset = (page - 1) * pageSize;
+
+  const scope = normalizeReminderRunsScope(query.scope);
+  const workspaceId = query.workspaceId?.trim() || null;
+  const userEmail = query.userEmail?.trim().toLowerCase() || null;
+  const search = query.q?.trim() || '';
+  const triggeredBy = normalizeReminderRunsTriggeredBy(query.triggeredBy);
+  const hasMore = normalizeReminderRunsHasMore(query.hasMore);
+  const sent = normalizeReminderRunsSent(query.sent);
+  const legacy = normalizeReminderRunsLegacy(query.legacy);
+  const sort = normalizeReminderRunsSort(query.sort);
+  const dir = normalizeReminderRunsDir(query.dir);
+
+  const whereClauses: string[] = [];
+  const values: Array<string | number | boolean> = [];
+  const pushValue = (value: string | number | boolean) => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+
+  if (scope === 'workspace') {
+    if (schemaMeta.hasWorkspaceId && workspaceId) {
+      whereClauses.push(`workspace_id = ${pushValue(workspaceId)}::uuid`);
+    } else if (schemaMeta.hasUserEmail && userEmail) {
+      whereClauses.push(`lower(user_email) = ${pushValue(userEmail)}`);
+    }
+  }
+
+  if (triggeredBy !== 'all') {
+    whereClauses.push(`triggered_by = ${pushValue(triggeredBy)}`);
+  }
+
+  if (schemaMeta.hasHasMore && hasMore !== 'all') {
+    whereClauses.push(`has_more = ${pushValue(hasMore === 'true')}`);
+  }
+
+  if (sent === 'gt0') {
+    whereClauses.push('sent > 0');
+  } else if (sent === 'eq0') {
+    whereClauses.push('sent = 0');
+  }
+
+  if (scope === 'all' && schemaMeta.hasWorkspaceId && legacy !== 'all') {
+    whereClauses.push(legacy === 'legacy' ? 'workspace_id is null' : 'workspace_id is not null');
+  }
+
+  if (search.length > 0) {
+    const like = `%${search}%`;
+    const searchTerms: string[] = [`triggered_by ILIKE ${pushValue(like)}`];
+    if (schemaMeta.hasActorEmail) {
+      searchTerms.push(`coalesce(actor_email, '') ILIKE ${pushValue(like)}`);
+    }
+    if (schemaMeta.hasUserEmail) {
+      searchTerms.push(`coalesce(user_email, '') ILIKE ${pushValue(like)}`);
+    }
+    if (schemaMeta.hasWorkspaceId) {
+      searchTerms.push(`coalesce(workspace_id::text, '') ILIKE ${pushValue(like)}`);
+    }
+    if (schemaMeta.rawJsonType === 'json' || schemaMeta.rawJsonType === 'jsonb') {
+      searchTerms.push(`coalesce(raw_json::jsonb->>'notes', '') ILIKE ${pushValue(like)}`);
+    }
+    whereClauses.push(`(${searchTerms.join(' OR ')})`);
+  }
+
+  const whereSql = whereClauses.length > 0 ? `where ${whereClauses.join(' and ')}` : '';
+  const orderBySql = getReminderRunsOrderBySql(schemaMeta, sort, dir);
+
+  const countRows = await sql.unsafe<{ count: string }[]>(
+    `select count(*)::text as count from public.reminder_runs ${whereSql}`,
+    values,
+  );
+  const totalCount = Number(countRows[0]?.count ?? 0);
+  const totalPages = Math.ceil(totalCount / pageSize);
+
+  const selectValues = [...values, pageSize, offset];
+  const limitPlaceholder = `$${values.length + 1}`;
+  const offsetPlaceholder = `$${values.length + 2}`;
+
+  const rows = await sql.unsafe<{
+    id: string;
+    ran_at: Date;
+    triggered_by: string;
+    workspace_id: string | null;
+    user_email: string | null;
+    actor_email: string | null;
+    config: Record<string, unknown> | null;
+    attempted: number;
+    sent: number;
+    failed: number;
+    skipped: number;
+    has_more: boolean;
+    duration_ms: number;
+    raw_json: unknown;
+  }[]>(
+    `
+      select
+        id,
+        ran_at,
+        triggered_by,
+        ${schemaMeta.hasWorkspaceId ? 'workspace_id' : 'null::uuid as workspace_id'},
+        ${schemaMeta.hasUserEmail ? 'user_email' : 'null::text as user_email'},
+        ${schemaMeta.hasActorEmail ? 'actor_email' : 'null::text as actor_email'},
+        ${schemaMeta.hasConfig ? 'config' : 'null::jsonb as config'},
+        attempted,
+        sent,
+        failed,
+        skipped,
+        ${schemaMeta.hasHasMore ? 'has_more' : 'false as has_more'},
+        duration_ms,
+        ${
+          schemaMeta.rawJsonType === 'json' || schemaMeta.rawJsonType === 'jsonb'
+            ? 'raw_json::jsonb as raw_json'
+            : 'raw_json::text as raw_json'
+        }
+      from public.reminder_runs
+      ${whereSql}
+      order by ${orderBySql}
+      limit ${limitPlaceholder}
+      offset ${offsetPlaceholder}
+    `,
+    selectValues,
+  );
+
+  return {
+    rows: rows.map((row) => mapReminderRunLogRow(row)),
+    totalCount,
+    page,
+    pageSize,
+    totalPages,
+    capabilities: {
+      hasWorkspaceId: schemaMeta.hasWorkspaceId,
+      hasUserEmail: schemaMeta.hasUserEmail,
+      hasActorEmail: schemaMeta.hasActorEmail,
+      hasConfig: schemaMeta.hasConfig,
+      hasHasMore: schemaMeta.hasHasMore,
+      hasSearchableNotes: schemaMeta.rawJsonType === 'json' || schemaMeta.rawJsonType === 'jsonb',
+    },
+  };
 }

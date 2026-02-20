@@ -47,6 +47,9 @@ export async function POST(req: Request) {
       );
     }
 
+    const activeWorkspaceId = context.workspaceId;
+    const actorEmail = context.userEmail;
+
     const runUrl = new URL('/api/reminders/run', getBaseUrl(req));
     runUrl.searchParams.set('triggeredBy', 'manual');
     if (dryRun) {
@@ -59,8 +62,9 @@ export async function POST(req: Request) {
         'x-reminder-cron-token': cronToken,
         'x-dry-run': dryRun ? '1' : '0',
         'x-reminders-triggered-by': 'manual',
-        'x-reminders-workspace-id': context.workspaceId,
-        'x-reminders-user-email': context.userEmail,
+        'x-reminders-workspace-id': activeWorkspaceId,
+        'x-reminders-user-email': actorEmail,
+        'x-reminders-actor-email': actorEmail,
       },
       cache: 'no-store',
     });

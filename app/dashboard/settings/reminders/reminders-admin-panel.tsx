@@ -1,8 +1,28 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import type { ReminderRunLogRecord } from '@/app/lib/reminder-run-logs';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
+import { useDebouncedCallback } from 'use-debounce';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import Pagination from '@/app/ui/invoices/pagination';
+import SelectTrigger from '@/app/ui/list-controls/select-trigger';
+import {
+  listControlsInputClasses,
+  listControlsLabelClasses,
+  listControlsPanelClasses,
+  listControlsRowClasses,
+} from '@/app/ui/list-controls/styles';
+import { secondaryButtonClasses, toolbarButtonClasses } from '@/app/ui/button';
+import type {
+  ReminderRunLogRecord,
+  ReminderRunsQueryDir,
+  ReminderRunsQueryHasMore,
+  ReminderRunsQueryLegacy,
+  ReminderRunsQuerySent,
+  ReminderRunsQuerySort,
+  ReminderRunsQueryTriggeredBy,
+} from '@/app/lib/reminder-run-logs';
 
 type RunNowResponse = {
   attempted?: number;
@@ -38,6 +58,7 @@ type DiagnosticsPayload = {
   counts: {
     totalRuns: number;
     workspaceScopedRuns: number;
+    legacyRuns: number;
     cronRunsMissingWorkspaceId: number;
     rowsMissingUserEmail: number;
     totalBadRows: number;
@@ -58,9 +79,27 @@ type RemindersAdminPanelProps = {
   runs: ReminderRunLogRecord[];
   activeWorkspaceId: string | null;
   activeUserEmail: string | null;
-  scopeMode: 'workspace' | 'account';
+  selectedScope: 'workspace' | 'all';
+  canUseAllScope: boolean;
+  queryState: {
+    q: string;
+    triggeredBy: ReminderRunsQueryTriggeredBy;
+    hasMore: ReminderRunsQueryHasMore;
+    sent: ReminderRunsQuerySent;
+    legacy: ReminderRunsQueryLegacy;
+    sort: ReminderRunsQuerySort;
+    dir: ReminderRunsQueryDir;
+  };
+  totalCount: number;
+  currentPage: number;
+  pageSize: number;
+  totalPages: number;
+  supportsHasMoreFilter: boolean;
   diagnostics: DiagnosticsPayload | null;
 };
+
+const PAGE_SIZE_KEY = 'lateless.reminderRunsPageSize';
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 function formatTimestamp(value: string) {
   const parsed = new Date(value);
@@ -176,6 +215,22 @@ function formatConfig(config: ReminderRunLogRecord['config']) {
   return `${config.batchSize}/${config.throttleMs}/${config.maxRunMs}`;
 }
 
+function getRunNotes(run: ReminderRunLogRecord) {
+  const raw = getRawObject(run);
+  const notesValue = raw?.notes;
+  if (typeof notesValue === 'string' && notesValue.trim().length > 0) {
+    return notesValue.trim();
+  }
+  return null;
+}
+
+function normalizeStoredPageSize(value: string | null): number | null {
+  if (value === '10' || value === '25' || value === '50' || value === '100') {
+    return Number(value);
+  }
+  return null;
+}
+
 function getZeroSentExplanation(latestRun: ReminderRunLogRecord | null): string | null {
   if (!latestRun || latestRun.sent > 0) {
     return null;
@@ -197,10 +252,19 @@ export default function RemindersAdminPanel({
   runs,
   activeWorkspaceId,
   activeUserEmail,
-  scopeMode,
+  selectedScope,
+  canUseAllScope,
+  queryState,
+  totalCount,
+  currentPage,
+  pageSize,
+  totalPages,
+  supportsHasMoreFilter,
   diagnostics,
 }: RemindersAdminPanelProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isRefreshing, startTransition] = useTransition();
   const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState<RunNowResponse | null>(null);
@@ -208,6 +272,7 @@ export default function RemindersAdminPanel({
   const [fixResult, setFixResult] = useState<string>('');
   const [isFixing, setIsFixing] = useState(false);
   const [expandedRunIds, setExpandedRunIds] = useState<Set<string>>(new Set());
+  const [searchValue, setSearchValue] = useState(queryState.q);
   const latestRun = runs[0] ?? null;
 
   const latestRunSummary = useMemo(() => {
@@ -231,6 +296,68 @@ export default function RemindersAdminPanel({
 
   const latestRunNowSummary = pickSummary(runResult);
   const zeroSentExplanation = getZeroSentExplanation(latestRun);
+  const isAllScope = selectedScope === 'all';
+
+  const replaceWithParams = (updater: (params: URLSearchParams) => void) => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    updater(params);
+    params.set('page', '1');
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
+  useEffect(() => {
+    if (searchParams.get('pageSize')) {
+      return;
+    }
+
+    const storedPageSize = normalizeStoredPageSize(
+      window.localStorage.getItem(PAGE_SIZE_KEY),
+    );
+    if (!storedPageSize) {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    params.set('pageSize', String(storedPageSize));
+    params.set('page', '1');
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    setSearchValue(queryState.q);
+  }, [queryState.q]);
+
+  const handleSearch = useDebouncedCallback((term: string) => {
+    replaceWithParams((params) => {
+      const normalized = term.trim();
+      if (normalized) {
+        params.set('q', normalized);
+      } else {
+        params.delete('q');
+      }
+    });
+  }, 300);
+
+  const handleScopeChange = (nextScope: 'workspace' | 'all') => {
+    if (nextScope === selectedScope) {
+      return;
+    }
+    if (nextScope === 'all' && !canUseAllScope) {
+      return;
+    }
+    const nextParams = new URLSearchParams(searchParams?.toString() ?? '');
+    if (nextScope === 'workspace') {
+      nextParams.delete('scope');
+      nextParams.delete('legacy');
+    } else {
+      nextParams.set('scope', 'all');
+    }
+    nextParams.set('page', '1');
+    const query = nextParams.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
 
   const handleRunNow = () => {
     if (isRunning) {
@@ -328,8 +455,14 @@ export default function RemindersAdminPanel({
         </summary>
         <div className="mt-3 space-y-3">
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Scope target: {scopeMode === 'workspace' ? activeWorkspaceId ?? '—' : activeUserEmail ?? '—'}
+            Scope target: {isAllScope ? 'Global (all runs)' : activeWorkspaceId ?? activeUserEmail ?? '—'}
           </p>
+          {diagnostics ? (
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Workspace-scoped runs: {diagnostics.counts.workspaceScopedRuns} | Total runs:{' '}
+              {diagnostics.counts.totalRuns} | Legacy / Unscoped runs: {diagnostics.counts.legacyRuns}
+            </p>
+          ) : null}
           {diagnostics ? (
             <div className="grid gap-3 md:grid-cols-2">
               <pre className="overflow-x-auto rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-800 dark:border-neutral-800 dark:bg-black dark:text-neutral-200">
@@ -422,15 +555,214 @@ export default function RemindersAdminPanel({
         <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
           Recent runs
         </h2>
-        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-          <span>Last 20 run logs from `public.reminder_runs`.</span>
-          <span className="inline-flex rounded-full border border-neutral-300 px-2 py-0.5 text-xs font-medium text-slate-700 dark:border-neutral-700 dark:text-slate-300">
-            Scope: {scopeMode === 'workspace' ? 'This workspace' : 'This account'}
-          </span>
-          {scopeMode === 'workspace' && activeWorkspaceId ? (
-            <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
-              {activeWorkspaceId}
+        <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Showing {runs.length} of {totalCount} runs.
+        </div>
+
+        <div className={clsx(listControlsPanelClasses, 'mt-3')}>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleScopeChange('workspace')}
+              className={clsx(
+                selectedScope === 'workspace'
+                  ? toolbarButtonClasses
+                  : secondaryButtonClasses,
+                'h-9 px-3 text-xs md:text-sm',
+              )}
+            >
+              This workspace
+            </button>
+            <button
+              type="button"
+              onClick={() => handleScopeChange('all')}
+              disabled={!canUseAllScope}
+              className={clsx(
+                selectedScope === 'all' ? toolbarButtonClasses : secondaryButtonClasses,
+                'h-9 px-3 text-xs md:text-sm',
+              )}
+            >
+              All runs (incl. legacy)
+            </button>
+            <span className="text-xs text-slate-500 dark:text-slate-400">
+              Scope: {isAllScope ? 'All runs (incl. legacy)' : 'This workspace'}
             </span>
+            {!isAllScope && activeWorkspaceId ? (
+              <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                {activeWorkspaceId}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="relative flex flex-1 shrink-0">
+            <label htmlFor="reminder-runs-search" className="sr-only">
+              Search runs
+            </label>
+            <input
+              id="reminder-runs-search"
+              className={clsx(listControlsInputClasses, 'peer block py-[9px] pl-10')}
+              placeholder="Search triggered_by, actor, user, workspace, notes..."
+              value={searchValue}
+              onChange={(event) => {
+                setSearchValue(event.target.value);
+                handleSearch(event.target.value);
+              }}
+            />
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-neutral-500 transition peer-focus:text-neutral-700 dark:peer-focus:text-neutral-300" />
+          </div>
+
+          <div className={listControlsRowClasses}>
+            <label className={listControlsLabelClasses} htmlFor="reminder-runs-triggered">
+              Triggered
+            </label>
+            <SelectTrigger
+              id="reminder-runs-triggered"
+              value={queryState.triggeredBy}
+              onChange={(event) => {
+                replaceWithParams((params) => {
+                  if (event.target.value === 'all') {
+                    params.delete('t');
+                  } else {
+                    params.set('t', event.target.value);
+                  }
+                });
+              }}
+              className="min-w-28"
+            >
+              <option value="all">All</option>
+              <option value="cron">Cron</option>
+              <option value="manual">Manual</option>
+            </SelectTrigger>
+
+            <label className={listControlsLabelClasses} htmlFor="reminder-runs-more">
+              Has more
+            </label>
+            <SelectTrigger
+              id="reminder-runs-more"
+              value={queryState.hasMore}
+              disabled={!supportsHasMoreFilter}
+              onChange={(event) => {
+                replaceWithParams((params) => {
+                  if (event.target.value === 'all') {
+                    params.delete('more');
+                  } else {
+                    params.set('more', event.target.value);
+                  }
+                });
+              }}
+              className="min-w-24"
+            >
+              <option value="all">All</option>
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </SelectTrigger>
+
+            <label className={listControlsLabelClasses} htmlFor="reminder-runs-sent">
+              Sent
+            </label>
+            <SelectTrigger
+              id="reminder-runs-sent"
+              value={queryState.sent}
+              onChange={(event) => {
+                replaceWithParams((params) => {
+                  if (event.target.value === 'all') {
+                    params.delete('sent');
+                  } else {
+                    params.set('sent', event.target.value);
+                  }
+                });
+              }}
+              className="min-w-24"
+            >
+              <option value="all">All</option>
+              <option value="gt0">Sent &gt; 0</option>
+              <option value="eq0">Sent = 0</option>
+            </SelectTrigger>
+
+            <label className={listControlsLabelClasses} htmlFor="reminder-runs-legacy">
+              Legacy
+            </label>
+            <SelectTrigger
+              id="reminder-runs-legacy"
+              value={isAllScope ? queryState.legacy : 'all'}
+              disabled={!isAllScope}
+              onChange={(event) => {
+                replaceWithParams((params) => {
+                  if (event.target.value === 'all') {
+                    params.delete('legacy');
+                  } else {
+                    params.set('legacy', event.target.value);
+                  }
+                });
+              }}
+              className="min-w-28"
+            >
+              <option value="all">All</option>
+              <option value="legacy">Legacy</option>
+              <option value="scoped">Scoped</option>
+            </SelectTrigger>
+
+            <label className={listControlsLabelClasses} htmlFor="reminder-runs-sort">
+              Sort
+            </label>
+            <SelectTrigger
+              id="reminder-runs-sort"
+              value={queryState.sort}
+              onChange={(event) => {
+                replaceWithParams((params) => {
+                  params.set('sort', event.target.value);
+                });
+              }}
+              className="min-w-32"
+            >
+              <option value="ran_at">Ran at</option>
+              <option value="sent">Sent</option>
+              <option value="failed">Failed</option>
+              <option value="skipped">Skipped</option>
+              <option value="triggered_by">Triggered by</option>
+              <option value="actor_email">Actor email</option>
+            </SelectTrigger>
+
+            <SelectTrigger
+              aria-label="Sort direction"
+              value={queryState.dir}
+              onChange={(event) => {
+                replaceWithParams((params) => {
+                  params.set('dir', event.target.value);
+                });
+              }}
+              className="min-w-24"
+            >
+              <option value="desc">Desc</option>
+              <option value="asc">Asc</option>
+            </SelectTrigger>
+
+            <label className={clsx(listControlsLabelClasses, 'ml-1')} htmlFor="reminder-runs-size">
+              Rows per page
+            </label>
+            <SelectTrigger
+              id="reminder-runs-size"
+              value={String(pageSize)}
+              onChange={(event) => {
+                const nextPageSize = Number(event.target.value);
+                window.localStorage.setItem(PAGE_SIZE_KEY, String(nextPageSize));
+                replaceWithParams((params) => {
+                  params.set('pageSize', String(nextPageSize));
+                });
+              }}
+              className="min-w-24"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </SelectTrigger>
+          </div>
+          {!supportsHasMoreFilter ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              `has_more` filter unavailable in this schema version.
+            </p>
           ) : null}
         </div>
 
@@ -443,16 +775,13 @@ export default function RemindersAdminPanel({
                 <tr>
                   <th className="px-3 py-2">time</th>
                   <th className="px-3 py-2">triggered_by</th>
-                  <th className="px-3 py-2">workspace_id</th>
-                  <th className="px-3 py-2">user_email</th>
+                  <th className="px-3 py-2">workspace/legacy</th>
                   <th className="px-3 py-2">actor</th>
-                  <th className="px-3 py-2">config</th>
-                  <th className="px-3 py-2">dryRun</th>
-                  <th className="px-3 py-2">batch/throttle</th>
                   <th className="px-3 py-2">sent</th>
                   <th className="px-3 py-2">failed</th>
                   <th className="px-3 py-2">skipped</th>
                   <th className="px-3 py-2">has_more</th>
+                  <th className="px-3 py-2">meta</th>
                   <th className="px-3 py-2">notes</th>
                   <th className="px-3 py-2">details</th>
                 </tr>
@@ -464,54 +793,79 @@ export default function RemindersAdminPanel({
                     ? 'No eligible overdue invoices'
                     : null;
                   const topReasonBadge = getSkippedTopReasonBadge(run);
+                  const runNotes = getRunNotes(run);
 
                   return [
-                    <tr key={`row-${run.id}`} className="text-slate-800 dark:text-slate-200">
-                        <td className="px-3 py-2">{formatTimestamp(run.ranAt)}</td>
-                        <td className="px-3 py-2">{run.triggeredBy}</td>
-                        <td className="px-3 py-2 font-mono text-xs">
-                          {getShortWorkspaceId(run.workspaceId)}
-                        </td>
-                        <td className="px-3 py-2">{run.userEmail ?? '—'}</td>
-                        <td className="px-3 py-2">
-                          {run.actorEmail ?? '—'}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-xs">
-                          {formatConfig(run.config)}
-                        </td>
-                        <td className="px-3 py-2">{getDryRunLabel(run)}</td>
-                        <td className="px-3 py-2">{getBatchThrottle(run)}</td>
-                        <td className="px-3 py-2">{run.sent}</td>
-                        <td className="px-3 py-2">{run.failed}</td>
-                        <td className="px-3 py-2">{run.skipped}</td>
-                        <td className="px-3 py-2">{run.hasMore ? 'true' : 'false'}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex flex-wrap gap-1">
-                            {noEligibleBadge ? (
-                              <span className="inline-flex rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                                {noEligibleBadge}
-                              </span>
-                            ) : null}
-                            {topReasonBadge ? (
-                              <span className="inline-flex rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-                                {topReasonBadge}
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleDetails(run.id)}
-                            className="inline-flex rounded-md border border-neutral-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-900"
+                    <tr
+                      key={`row-${run.id}`}
+                      className={clsx(
+                        'text-slate-800 dark:text-slate-200',
+                        isExpanded && 'bg-neutral-50 dark:bg-neutral-900/40',
+                      )}
+                    >
+                      <td className="px-3 py-2">{formatTimestamp(run.ranAt)}</td>
+                      <td className="px-3 py-2">{run.triggeredBy}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-col gap-1">
+                          <span
+                            className={`inline-flex w-fit rounded-md border px-1.5 py-0.5 text-[11px] ${
+                              run.workspaceId
+                                ? 'border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200'
+                                : 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
+                            }`}
                           >
-                            {isExpanded ? 'Hide' : 'Details'}
-                          </button>
-                        </td>
+                            {run.workspaceId ? 'Workspace' : 'Legacy / Unscoped'}
+                          </span>
+                          <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                            {getShortWorkspaceId(run.workspaceId)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">{run.actorEmail ?? '—'}</td>
+                      <td className="px-3 py-2">{run.sent}</td>
+                      <td className="px-3 py-2">{run.failed}</td>
+                      <td className="px-3 py-2">{run.skipped}</td>
+                      <td className="px-3 py-2">{run.hasMore ? 'true' : 'false'}</td>
+                      <td className="px-3 py-2">
+                        <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400">
+                          <div>user: {run.userEmail ?? '—'}</div>
+                          <div>cfg: {formatConfig(run.config)}</div>
+                          <div>dryRun: {getDryRunLabel(run)}</div>
+                          <div>batch/throttle: {getBatchThrottle(run)}</div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {runNotes ? (
+                            <span className="inline-flex rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                              {runNotes}
+                            </span>
+                          ) : null}
+                          {noEligibleBadge ? (
+                            <span className="inline-flex rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                              {noEligibleBadge}
+                            </span>
+                          ) : null}
+                          {topReasonBadge ? (
+                            <span className="inline-flex rounded-md border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                              {topReasonBadge}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleDetails(run.id)}
+                          className="inline-flex rounded-md border border-neutral-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-slate-300 dark:hover:bg-neutral-900"
+                        >
+                          {isExpanded ? 'Hide' : 'Details'}
+                        </button>
+                      </td>
                     </tr>,
                     isExpanded ? (
                       <tr key={`details-${run.id}`}>
-                        <td colSpan={14} className="bg-neutral-50 px-3 py-2 dark:bg-black/30">
+                        <td colSpan={11} className="bg-neutral-50 px-3 py-2 dark:bg-black/30">
                           <pre className="overflow-x-auto rounded-lg border border-neutral-200 bg-white p-3 text-xs text-neutral-800 dark:border-neutral-800 dark:bg-black dark:text-neutral-200">
                             {JSON.stringify(run.rawJson, null, 2) || 'null'}
                           </pre>
@@ -524,6 +878,15 @@ export default function RemindersAdminPanel({
             </table>
           </div>
         )}
+
+        {totalPages > 1 ? (
+          <div className="mt-6 flex w-full flex-col items-center gap-2">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Page {currentPage} of {totalPages}
+            </p>
+            <Pagination totalPages={totalPages} />
+          </div>
+        ) : null}
       </section>
     </div>
   );

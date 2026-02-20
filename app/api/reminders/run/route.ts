@@ -71,6 +71,11 @@ type RunErrorItem = {
   message: string;
 };
 
+type RunLogScope = {
+  workspaceId: string | null;
+  userEmail: string | null;
+};
+
 type WorkspaceAccumulator = {
   sentCount: number;
   skippedCount: number;
@@ -258,6 +263,7 @@ async function parseRunOptions(req: Request) {
   const triggeredByFromHeader = req.headers.get('x-reminders-triggered-by');
   const runLogWorkspaceIdFromHeader = req.headers.get('x-reminders-workspace-id');
   const runLogUserEmailFromHeader = req.headers.get('x-reminders-user-email');
+  const runLogActorEmailFromHeader = req.headers.get('x-reminders-actor-email');
 
   let dryRun = dryRunFromQuery === '1' || dryRunFromQuery === 'true';
   if (!dryRun) {
@@ -296,6 +302,7 @@ async function parseRunOptions(req: Request) {
     triggeredBy,
     runLogWorkspaceId: runLogWorkspaceIdFromHeader?.trim() || null,
     runLogUserEmail: runLogUserEmailFromHeader?.trim().toLowerCase() || null,
+    runLogActorEmail: runLogActorEmailFromHeader?.trim().toLowerCase() || null,
   };
 }
 
@@ -409,6 +416,38 @@ async function fetchReminderCandidates(
   `;
 }
 
+function resolveRunLogScope(input: {
+  headerWorkspaceId: string | null;
+  headerUserEmail: string | null;
+  candidates: ReminderCandidate[];
+  eligibleCandidates: ReminderCandidate[];
+}): RunLogScope {
+  const candidatesForScope =
+    input.eligibleCandidates.length > 0 ? input.eligibleCandidates : input.candidates;
+
+  const fromCandidatesWorkspaceId =
+    candidatesForScope.find((candidate) => candidate.workspace_id)?.workspace_id ?? null;
+  const workspaceId = input.headerWorkspaceId ?? fromCandidatesWorkspaceId;
+
+  if (input.headerUserEmail) {
+    return { workspaceId, userEmail: input.headerUserEmail };
+  }
+
+  const matchingWorkspaceCandidate = workspaceId
+    ? candidatesForScope.find((candidate) => candidate.workspace_id === workspaceId)
+    : null;
+  const firstCandidateWithUser = candidatesForScope.find((candidate) =>
+    Boolean(candidate.user_email?.trim()),
+  );
+
+  const userEmail =
+    matchingWorkspaceCandidate?.user_email?.trim().toLowerCase() ||
+    firstCandidateWithUser?.user_email?.trim().toLowerCase() ||
+    null;
+
+  return { workspaceId, userEmail };
+}
+
 // ÜHINE job, mida POST ja GET mõlemad kasutavad
 async function runReminderJob(req: Request) {
   const authorization = await authorizeRunRequest(req);
@@ -418,13 +457,25 @@ async function runReminderJob(req: Request) {
 
   const startedAt = Date.now();
   const ranAtIso = new Date(startedAt).toISOString();
-  const { dryRun, triggeredBy, runLogWorkspaceId, runLogUserEmail } =
+  const {
+    dryRun,
+    triggeredBy,
+    runLogWorkspaceId,
+    runLogUserEmail,
+    runLogActorEmail,
+  } =
     await parseRunOptions(req);
   const baseUrl = getBaseUrl();
   const batchSize = parsePositiveInt(process.env.EMAIL_BATCH_SIZE, DEFAULT_EMAIL_BATCH_SIZE);
   const delayMs = parsePositiveInt(process.env.EMAIL_THROTTLE_MS, DEFAULT_EMAIL_THROTTLE_MS);
   const maxRunMs = parsePositiveInt(process.env.EMAIL_MAX_RUN_MS, DEFAULT_EMAIL_MAX_RUN_MS);
   const selectionLimit = Math.max(batchSize * 10, batchSize + 1);
+  const runConfig = {
+    batchSize,
+    throttleMs: delayMs,
+    maxRunMs,
+    dryRun,
+  };
 
   let includeReminderPauseJoin = false;
   try {
@@ -727,6 +778,12 @@ async function runReminderJob(req: Request) {
   );
 
   const hasMore = run.hasMore || hasMoreFromSelection;
+  const runLogScope = resolveRunLogScope({
+    headerWorkspaceId: runLogWorkspaceId,
+    headerUserEmail: runLogUserEmail,
+    candidates: reminders,
+    eligibleCandidates: eligibleReminders,
+  });
 
   if (!dryRun && sentByUser.size > 0) {
     await Promise.all(
@@ -753,6 +810,10 @@ async function runReminderJob(req: Request) {
     dryRun,
     triggeredBy,
     durationMs,
+    actorEmail: triggeredBy === 'manual' ? runLogActorEmail : null,
+    workspaceId: runLogScope.workspaceId,
+    userEmail: runLogScope.userEmail,
+    config: runConfig,
     summary: {
       attempted: run.attempted,
       sent: sentCount,
@@ -775,8 +836,10 @@ async function runReminderJob(req: Request) {
   try {
     await insertReminderRunLog({
       triggeredBy: triggeredBy === 'cron' ? 'cron' : 'manual',
-      workspaceId: runLogWorkspaceId,
-      userEmail: runLogUserEmail,
+      workspaceId: runLogScope.workspaceId,
+      userEmail: runLogScope.userEmail,
+      actorEmail: triggeredBy === 'manual' ? runLogActorEmail : null,
+      config: runConfig,
       attempted: run.attempted,
       sent: sentCount,
       failed: run.failed,

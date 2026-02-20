@@ -6,11 +6,17 @@ import {
   isTeamMigrationRequiredError,
 } from '@/app/lib/workspaces';
 import {
-  getReminderRunLogsScopeMode,
-  listReminderRunLogs,
+  listReminderRunLogsPaged,
   isReminderRunLogsMigrationRequiredError,
   type ReminderRunLogRecord,
+  type ReminderRunsQueryDir,
+  type ReminderRunsQueryHasMore,
+  type ReminderRunsQueryLegacy,
+  type ReminderRunsQuerySent,
+  type ReminderRunsQuerySort,
+  type ReminderRunsQueryTriggeredBy,
 } from '@/app/lib/reminder-run-logs';
+import { isSettingsRemindersAdminEmail } from '@/app/lib/admin-gates';
 import {
   countBadRows,
   countScopeRuns,
@@ -25,12 +31,48 @@ export const metadata: Metadata = {
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
-export default async function RemindersAdminPage() {
+export default async function RemindersAdminPage(props: {
+  searchParams?: Promise<{
+    scope?: string;
+    q?: string;
+    t?: string;
+    more?: string;
+    sent?: string;
+    legacy?: string;
+    sort?: string;
+    dir?: string;
+    page?: string;
+    pageSize?: string;
+  }>;
+}) {
   let migrationWarning: string | null = null;
   let runs: ReminderRunLogRecord[] = [];
   let activeWorkspaceId: string | null = null;
   let activeUserEmail: string | null = null;
-  let scopeMode: 'workspace' | 'account' = 'workspace';
+  let selectedScope: 'workspace' | 'all' = 'workspace';
+  let canUseAllScope = false;
+  let totalCount = 0;
+  let currentPage = 1;
+  let pageSize = 50;
+  let totalPages = 0;
+  let supportsHasMoreFilter = true;
+  let queryState: {
+    q: string;
+    triggeredBy: ReminderRunsQueryTriggeredBy;
+    hasMore: ReminderRunsQueryHasMore;
+    sent: ReminderRunsQuerySent;
+    legacy: ReminderRunsQueryLegacy;
+    sort: ReminderRunsQuerySort;
+    dir: ReminderRunsQueryDir;
+  } = {
+    q: '',
+    triggeredBy: 'all',
+    hasMore: 'all',
+    sent: 'all',
+    legacy: 'all',
+    sort: 'ran_at',
+    dir: 'desc',
+  };
   let diagnostics:
     | {
         schema: {
@@ -43,6 +85,7 @@ export default async function RemindersAdminPage() {
         counts: {
           totalRuns: number;
           workspaceScopedRuns: number;
+          legacyRuns: number;
           cronRunsMissingWorkspaceId: number;
           rowsMissingUserEmail: number;
           totalBadRows: number;
@@ -61,6 +104,7 @@ export default async function RemindersAdminPage() {
     | null = null;
 
   try {
+    const searchParams = await props.searchParams;
     const context = await ensureWorkspaceContextForCurrentUser();
     const canView = context.userRole === 'owner' || context.userRole === 'admin';
 
@@ -70,12 +114,79 @@ export default async function RemindersAdminPage() {
 
     activeWorkspaceId = context.workspaceId;
     activeUserEmail = context.userEmail;
-    scopeMode = await getReminderRunLogsScopeMode();
-    runs = await listReminderRunLogs({
-      limit: 20,
+    canUseAllScope = isSettingsRemindersAdminEmail(context.userEmail);
+    const requestedScope = searchParams?.scope?.trim().toLowerCase();
+    selectedScope = requestedScope === 'all' && canUseAllScope ? 'all' : 'workspace';
+
+    const q = searchParams?.q?.trim() || '';
+    const triggeredBy: ReminderRunsQueryTriggeredBy =
+      searchParams?.t === 'cron' || searchParams?.t === 'manual' ? searchParams.t : 'all';
+    const hasMore: ReminderRunsQueryHasMore =
+      searchParams?.more === 'true' || searchParams?.more === 'false'
+        ? searchParams.more
+        : 'all';
+    const sent: ReminderRunsQuerySent =
+      searchParams?.sent === 'gt0' || searchParams?.sent === 'eq0'
+        ? searchParams.sent
+        : 'all';
+    const legacy: ReminderRunsQueryLegacy =
+      searchParams?.legacy === 'legacy' || searchParams?.legacy === 'scoped'
+        ? searchParams.legacy
+        : 'all';
+    const sort: ReminderRunsQuerySort =
+      searchParams?.sort === 'sent' ||
+      searchParams?.sort === 'failed' ||
+      searchParams?.sort === 'skipped' ||
+      searchParams?.sort === 'triggered_by' ||
+      searchParams?.sort === 'actor_email' ||
+      searchParams?.sort === 'ran_at'
+        ? searchParams.sort
+        : 'ran_at';
+    const dir: ReminderRunsQueryDir =
+      searchParams?.dir === 'asc' || searchParams?.dir === 'desc'
+        ? searchParams.dir
+        : 'desc';
+    const parsedPage = Number(searchParams?.page);
+    const safePage = Number.isFinite(parsedPage) && parsedPage > 0 ? Math.trunc(parsedPage) : 1;
+    const parsedPageSize = Number(searchParams?.pageSize);
+    const safePageSize =
+      parsedPageSize === 10 ||
+      parsedPageSize === 25 ||
+      parsedPageSize === 50 ||
+      parsedPageSize === 100
+        ? parsedPageSize
+        : 50;
+
+    const logs = await listReminderRunLogsPaged({
+      scope: selectedScope,
       workspaceId: context.workspaceId,
       userEmail: context.userEmail,
+      q,
+      triggeredBy,
+      hasMore,
+      sent,
+      legacy,
+      sort,
+      dir,
+      page: safePage,
+      pageSize: safePageSize,
     });
+    runs = logs.rows;
+    totalCount = logs.totalCount;
+    currentPage = logs.page;
+    pageSize = logs.pageSize;
+    totalPages = logs.totalPages;
+    supportsHasMoreFilter = logs.capabilities.hasHasMore;
+    queryState = {
+      q,
+      triggeredBy,
+      hasMore,
+      sent,
+      legacy,
+      sort,
+      dir,
+    };
+
     const schema = await getReminderRunsSchema(sql);
     const [badCounts, scopeCounts, samples] = await Promise.all([
       countBadRows(sql, schema),
@@ -97,6 +208,7 @@ export default async function RemindersAdminPage() {
       counts: {
         totalRuns: scopeCounts.totalRuns,
         workspaceScopedRuns: scopeCounts.workspaceScopedRuns,
+        legacyRuns: Math.max(0, scopeCounts.totalRuns - scopeCounts.workspaceScopedRuns),
         cronRunsMissingWorkspaceId: badCounts.cronRunsMissingWorkspaceId,
         rowsMissingUserEmail: badCounts.rowsMissingUserEmail,
         totalBadRows: badCounts.totalBadRows,
@@ -130,7 +242,14 @@ export default async function RemindersAdminPage() {
         runs={runs}
         activeWorkspaceId={activeWorkspaceId}
         activeUserEmail={activeUserEmail}
-        scopeMode={scopeMode}
+        selectedScope={selectedScope}
+        canUseAllScope={canUseAllScope}
+        queryState={queryState}
+        totalCount={totalCount}
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalPages={totalPages}
+        supportsHasMoreFilter={supportsHasMoreFilter}
         diagnostics={diagnostics}
       />
     </div>
