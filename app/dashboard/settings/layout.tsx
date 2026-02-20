@@ -8,14 +8,18 @@ export default async function SettingsLayout({
   children: React.ReactNode;
 }) {
   let canViewFunnel = false;
+  let currentUserEmail: string | null = null;
+
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
+    currentUserEmail = context.userEmail;
     const hasWorkspaceAccess =
       context.userRole === 'owner' || context.userRole === 'admin';
     canViewFunnel =
       hasWorkspaceAccess && isReminderManualRunAdmin(context.userEmail);
   } catch {
     canViewFunnel = false;
+    currentUserEmail = null;
   }
 
   return (
@@ -28,7 +32,10 @@ export default async function SettingsLayout({
           Workspace-level configuration for usage, billing, team, integrations,
           and documents.
         </p>
-        <SettingsSectionsNav canViewFunnel={canViewFunnel} />
+        <SettingsSectionsNav
+          canViewFunnel={canViewFunnel}
+          currentUserEmail={currentUserEmail}
+        />
       </div>
       {children}
     </div>

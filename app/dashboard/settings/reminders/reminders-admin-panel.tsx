@@ -104,7 +104,8 @@ function getZeroSentExplanation(latestRun: ReminderRunLogRecord | null): string 
 
 export default function RemindersAdminPanel({ runs }: RemindersAdminPanelProps) {
   const router = useRouter();
-  const [isRunning, startTransition] = useTransition();
+  const [isRefreshing, startTransition] = useTransition();
+  const [isRunning, setIsRunning] = useState(false);
   const [runResult, setRunResult] = useState<RunNowResponse | null>(null);
   const [runError, setRunError] = useState<string>('');
   const latestRun = runs[0] ?? null;
@@ -135,7 +136,8 @@ export default function RemindersAdminPanel({ runs }: RemindersAdminPanelProps) 
     }
 
     setRunError('');
-    startTransition(async () => {
+    setIsRunning(true);
+    void (async () => {
       try {
         const response = await fetch('/api/reminders/run-manual', {
           method: 'POST',
@@ -153,12 +155,16 @@ export default function RemindersAdminPanel({ runs }: RemindersAdminPanelProps) 
         if (payload?.runLogWarning) {
           setRunError(`Run warning: ${payload.runLogWarning}`);
         }
-        router.refresh();
+        startTransition(() => {
+          router.refresh();
+        });
       } catch {
         setRunResult(null);
         setRunError('Failed to run reminders.');
+      } finally {
+        setIsRunning(false);
       }
-    });
+    })();
   };
 
   return (
@@ -181,10 +187,10 @@ export default function RemindersAdminPanel({ runs }: RemindersAdminPanelProps) 
           <button
             type="button"
             onClick={handleRunNow}
-            disabled={isRunning}
+            disabled={isRunning || isRefreshing}
             className="inline-flex h-9 items-center justify-center rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-black transition hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-white dark:text-black dark:hover:bg-neutral-100"
           >
-            {isRunning ? 'Running...' : 'Run now'}
+            {isRunning || isRefreshing ? 'Running...' : 'Run now'}
           </button>
         </div>
 

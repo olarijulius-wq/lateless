@@ -9,6 +9,8 @@ export type ReminderRunLogTriggeredBy = 'manual' | 'cron';
 
 export type ReminderRunLogInsertPayload = {
   triggeredBy: ReminderRunLogTriggeredBy;
+  workspaceId?: string | null;
+  userEmail?: string | null;
   attempted: number;
   sent: number;
   failed: number;
@@ -50,17 +52,55 @@ export function isReminderRunLogsMigrationRequiredError(error: unknown): boolean
 }
 
 let reminderRunLogsSchemaReadyPromise: Promise<void> | null = null;
+let reminderRunLogsSchemaMetaPromise: Promise<{
+  hasWorkspaceId: boolean;
+  hasUserEmail: boolean;
+}> | null = null;
 
-export async function assertReminderRunLogsSchemaReady(): Promise<void> {
-  if (!reminderRunLogsSchemaReadyPromise) {
-    reminderRunLogsSchemaReadyPromise = (async () => {
-      const [result] = await sql<{ runs: string | null }[]>`
-        select to_regclass('public.reminder_runs') as runs
+async function getReminderRunLogsSchemaMeta() {
+  if (!reminderRunLogsSchemaMetaPromise) {
+    reminderRunLogsSchemaMetaPromise = (async () => {
+      const [result] = await sql<{
+        runs: string | null;
+        has_workspace_id: boolean;
+        has_user_email: boolean;
+      }[]>`
+        select
+          to_regclass('public.reminder_runs') as runs,
+          exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'reminder_runs'
+              and column_name = 'workspace_id'
+          ) as has_workspace_id,
+          exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'reminder_runs'
+              and column_name = 'user_email'
+          ) as has_user_email
       `;
 
       if (!result?.runs) {
         throw buildReminderRunLogsMigrationRequiredError();
       }
+
+      return {
+        hasWorkspaceId: result.has_workspace_id,
+        hasUserEmail: result.has_user_email,
+      };
+    })();
+  }
+
+  return reminderRunLogsSchemaMetaPromise;
+}
+
+export async function assertReminderRunLogsSchemaReady(): Promise<void> {
+  if (!reminderRunLogsSchemaReadyPromise) {
+    reminderRunLogsSchemaReadyPromise = (async () => {
+      await getReminderRunLogsSchemaMeta();
     })();
   }
 
@@ -68,7 +108,7 @@ export async function assertReminderRunLogsSchemaReady(): Promise<void> {
 }
 
 export async function insertReminderRunLog(payload: ReminderRunLogInsertPayload) {
-  await assertReminderRunLogsSchemaReady();
+  const schemaMeta = await getReminderRunLogsSchemaMeta();
 
   const ranAt =
     payload.ranAt instanceof Date
@@ -76,53 +116,225 @@ export async function insertReminderRunLog(payload: ReminderRunLogInsertPayload)
       : typeof payload.ranAt === 'string'
         ? payload.ranAt
         : null;
+  const workspaceId = payload.workspaceId?.trim() || null;
+  const userEmail = payload.userEmail?.trim().toLowerCase() || null;
 
-  const [row] = await sql<{
-    id: string;
-    ran_at: Date;
-    triggered_by: string;
-    attempted: number;
-    sent: number;
-    failed: number;
-    skipped: number;
-    has_more: boolean;
-    duration_ms: number;
-    raw_json: Record<string, unknown> | null;
-  }[]>`
-    insert into public.reminder_runs (
-      ran_at,
-      triggered_by,
-      attempted,
-      sent,
-      failed,
-      skipped,
-      has_more,
-      duration_ms,
-      raw_json
-    )
-    values (
-      coalesce(${ranAt}::timestamptz, now()),
-      ${payload.triggeredBy},
-      ${payload.attempted},
-      ${payload.sent},
-      ${payload.failed},
-      ${payload.skipped},
-      ${payload.hasMore},
-      ${payload.durationMs},
-      ${JSON.stringify(payload.rawJson)}::jsonb
-    )
-    returning
-      id,
-      ran_at,
-      triggered_by,
-      attempted,
-      sent,
-      failed,
-      skipped,
-      has_more,
-      duration_ms,
-      raw_json
-  `;
+  let row:
+    | {
+        id: string;
+        ran_at: Date;
+        triggered_by: string;
+        attempted: number;
+        sent: number;
+        failed: number;
+        skipped: number;
+        has_more: boolean;
+        duration_ms: number;
+        raw_json: Record<string, unknown> | null;
+      }
+    | undefined;
+
+  if (schemaMeta.hasWorkspaceId && schemaMeta.hasUserEmail) {
+    [row] = await sql<{
+      id: string;
+      ran_at: Date;
+      triggered_by: string;
+      attempted: number;
+      sent: number;
+      failed: number;
+      skipped: number;
+      has_more: boolean;
+      duration_ms: number;
+      raw_json: Record<string, unknown> | null;
+    }[]>`
+      insert into public.reminder_runs (
+        ran_at,
+        triggered_by,
+        workspace_id,
+        user_email,
+        attempted,
+        sent,
+        failed,
+        skipped,
+        has_more,
+        duration_ms,
+        raw_json
+      )
+      values (
+        coalesce(${ranAt}::timestamptz, now()),
+        ${payload.triggeredBy},
+        ${workspaceId}::uuid,
+        ${userEmail},
+        ${payload.attempted},
+        ${payload.sent},
+        ${payload.failed},
+        ${payload.skipped},
+        ${payload.hasMore},
+        ${payload.durationMs},
+        ${JSON.stringify(payload.rawJson)}::jsonb
+      )
+      returning
+        id,
+        ran_at,
+        triggered_by,
+        attempted,
+        sent,
+        failed,
+        skipped,
+        has_more,
+        duration_ms,
+        raw_json
+    `;
+  } else if (schemaMeta.hasWorkspaceId) {
+    [row] = await sql<{
+      id: string;
+      ran_at: Date;
+      triggered_by: string;
+      attempted: number;
+      sent: number;
+      failed: number;
+      skipped: number;
+      has_more: boolean;
+      duration_ms: number;
+      raw_json: Record<string, unknown> | null;
+    }[]>`
+      insert into public.reminder_runs (
+        ran_at,
+        triggered_by,
+        workspace_id,
+        attempted,
+        sent,
+        failed,
+        skipped,
+        has_more,
+        duration_ms,
+        raw_json
+      )
+      values (
+        coalesce(${ranAt}::timestamptz, now()),
+        ${payload.triggeredBy},
+        ${workspaceId}::uuid,
+        ${payload.attempted},
+        ${payload.sent},
+        ${payload.failed},
+        ${payload.skipped},
+        ${payload.hasMore},
+        ${payload.durationMs},
+        ${JSON.stringify(payload.rawJson)}::jsonb
+      )
+      returning
+        id,
+        ran_at,
+        triggered_by,
+        attempted,
+        sent,
+        failed,
+        skipped,
+        has_more,
+        duration_ms,
+        raw_json
+    `;
+  } else if (schemaMeta.hasUserEmail) {
+    [row] = await sql<{
+      id: string;
+      ran_at: Date;
+      triggered_by: string;
+      attempted: number;
+      sent: number;
+      failed: number;
+      skipped: number;
+      has_more: boolean;
+      duration_ms: number;
+      raw_json: Record<string, unknown> | null;
+    }[]>`
+      insert into public.reminder_runs (
+        ran_at,
+        triggered_by,
+        user_email,
+        attempted,
+        sent,
+        failed,
+        skipped,
+        has_more,
+        duration_ms,
+        raw_json
+      )
+      values (
+        coalesce(${ranAt}::timestamptz, now()),
+        ${payload.triggeredBy},
+        ${userEmail},
+        ${payload.attempted},
+        ${payload.sent},
+        ${payload.failed},
+        ${payload.skipped},
+        ${payload.hasMore},
+        ${payload.durationMs},
+        ${JSON.stringify(payload.rawJson)}::jsonb
+      )
+      returning
+        id,
+        ran_at,
+        triggered_by,
+        attempted,
+        sent,
+        failed,
+        skipped,
+        has_more,
+        duration_ms,
+        raw_json
+    `;
+  } else {
+    [row] = await sql<{
+      id: string;
+      ran_at: Date;
+      triggered_by: string;
+      attempted: number;
+      sent: number;
+      failed: number;
+      skipped: number;
+      has_more: boolean;
+      duration_ms: number;
+      raw_json: Record<string, unknown> | null;
+    }[]>`
+      insert into public.reminder_runs (
+        ran_at,
+        triggered_by,
+        attempted,
+        sent,
+        failed,
+        skipped,
+        has_more,
+        duration_ms,
+        raw_json
+      )
+      values (
+        coalesce(${ranAt}::timestamptz, now()),
+        ${payload.triggeredBy},
+        ${payload.attempted},
+        ${payload.sent},
+        ${payload.failed},
+        ${payload.skipped},
+        ${payload.hasMore},
+        ${payload.durationMs},
+        ${JSON.stringify(payload.rawJson)}::jsonb
+      )
+      returning
+        id,
+        ran_at,
+        triggered_by,
+        attempted,
+        sent,
+        failed,
+        skipped,
+        has_more,
+        duration_ms,
+        raw_json
+    `;
+  }
+
+  if (!row) {
+    throw new Error('Failed to write reminder run log.');
+  }
 
   return {
     id: row.id,

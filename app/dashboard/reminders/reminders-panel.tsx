@@ -994,7 +994,8 @@ export default function RemindersPanel({
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
   const [pauseTarget, setPauseTarget] = useState<ReminderPanelItem | null>(null);
   const [pendingInvoiceId, setPendingInvoiceId] = useState<string | null>(null);
-  const [isRunning, startTransition] = useTransition();
+  const [isRunning, startRunTransition] = useTransition();
+  const [, startRefreshTransition] = useTransition();
   const previewRef = useRef<HTMLElement | null>(null);
 
   const selectedItem = useMemo(
@@ -1072,17 +1073,14 @@ export default function RemindersPanel({
 
     setRunMessage('');
     setLatestRunResult(null);
-    startTransition(async () => {
+    startRunTransition(async () => {
       try {
-        const endpoint = new URL('/api/reminders/run', window.location.origin);
-        if (dryRun) {
-          endpoint.searchParams.set('dryRun', '1');
-        } else {
-          endpoint.searchParams.delete('dryRun');
-        }
-        endpoint.searchParams.set('source', 'dev');
-
-        const response = await fetch(endpoint.toString(), { method: 'POST' });
+        const response = await fetch('/api/reminders/run-manual', {
+          method: 'POST',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dryRun }),
+        });
         const payload = (await response.json().catch(() => null)) as {
           updatedCount?: number;
           dryRun?: boolean;
@@ -1152,7 +1150,9 @@ export default function RemindersPanel({
           setRecentRunsError('Failed to load recent runs.');
         }
 
-        router.refresh();
+        startRefreshTransition(() => {
+          router.refresh();
+        });
       } catch {
         setRunMessage('Failed to run reminders.');
       }
@@ -1197,7 +1197,7 @@ export default function RemindersPanel({
     setPauseMessage('');
     setPauseModalOpen(false);
 
-    startTransition(async () => {
+    startRunTransition(async () => {
       try {
         await sendPauseMutation({
           endpoint: '/api/reminders/pause',
@@ -1222,7 +1222,7 @@ export default function RemindersPanel({
     setPendingInvoiceId(item.invoiceId);
     setPauseMessage('');
 
-    startTransition(async () => {
+    startRunTransition(async () => {
       try {
         await sendPauseMutation({
           endpoint: '/api/reminders/resume',

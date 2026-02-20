@@ -256,6 +256,8 @@ async function parseRunOptions(req: Request) {
   const triggeredByFromQuery =
     url.searchParams.get('triggeredBy') ?? url.searchParams.get('source');
   const triggeredByFromHeader = req.headers.get('x-reminders-triggered-by');
+  const runLogWorkspaceIdFromHeader = req.headers.get('x-reminders-workspace-id');
+  const runLogUserEmailFromHeader = req.headers.get('x-reminders-user-email');
 
   let dryRun = dryRunFromQuery === '1' || dryRunFromQuery === 'true';
   if (!dryRun) {
@@ -289,7 +291,12 @@ async function parseRunOptions(req: Request) {
     }
   }
 
-  return { dryRun, triggeredBy };
+  return {
+    dryRun,
+    triggeredBy,
+    runLogWorkspaceId: runLogWorkspaceIdFromHeader?.trim() || null,
+    runLogUserEmail: runLogUserEmailFromHeader?.trim().toLowerCase() || null,
+  };
 }
 
 async function fetchReminderCandidates(
@@ -411,7 +418,8 @@ async function runReminderJob(req: Request) {
 
   const startedAt = Date.now();
   const ranAtIso = new Date(startedAt).toISOString();
-  const { dryRun, triggeredBy } = await parseRunOptions(req);
+  const { dryRun, triggeredBy, runLogWorkspaceId, runLogUserEmail } =
+    await parseRunOptions(req);
   const baseUrl = getBaseUrl();
   const batchSize = parsePositiveInt(process.env.EMAIL_BATCH_SIZE, DEFAULT_EMAIL_BATCH_SIZE);
   const delayMs = parsePositiveInt(process.env.EMAIL_THROTTLE_MS, DEFAULT_EMAIL_THROTTLE_MS);
@@ -767,6 +775,8 @@ async function runReminderJob(req: Request) {
   try {
     await insertReminderRunLog({
       triggeredBy: triggeredBy === 'cron' ? 'cron' : 'manual',
+      workspaceId: runLogWorkspaceId,
+      userEmail: runLogUserEmail,
       attempted: run.attempted,
       sent: sentCount,
       failed: run.failed,

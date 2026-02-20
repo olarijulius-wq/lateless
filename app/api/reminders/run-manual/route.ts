@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { auth } from '@/auth';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
-import { isReminderManualRunAdmin } from '@/app/lib/reminder-admin';
+import { isSettingsRemindersAdminEmail } from '@/app/lib/admin-gates';
 
 export const runtime = 'nodejs';
 
@@ -20,20 +20,23 @@ export async function POST(req: Request) {
     const session = await auth();
     const userEmail = session?.user?.email?.trim().toLowerCase() ?? '';
 
-    if (!userEmail) {
-      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    if (!isSettingsRemindersAdminEmail(userEmail)) {
+      return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
     }
 
     const context = await ensureWorkspaceContextForCurrentUser();
     if (context.userRole !== 'owner' && context.userRole !== 'admin') {
-      return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 });
+      return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
     }
 
-    if (!isReminderManualRunAdmin(userEmail)) {
-      return NextResponse.json(
-        { ok: false, error: 'Manual reminder runs are restricted to admin users.' },
-        { status: 403 },
-      );
+    if (!isSettingsRemindersAdminEmail(context.userEmail)) {
+      return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+    }
+
+    let dryRun = false;
+    if ((req.headers.get('content-type') ?? '').toLowerCase().includes('application/json')) {
+      const body = (await req.json().catch(() => null)) as { dryRun?: boolean } | null;
+      dryRun = body?.dryRun === true;
     }
 
     const cronToken = process.env.REMINDER_CRON_TOKEN?.trim();
@@ -46,12 +49,18 @@ export async function POST(req: Request) {
 
     const runUrl = new URL('/api/reminders/run', getBaseUrl(req));
     runUrl.searchParams.set('triggeredBy', 'manual');
+    if (dryRun) {
+      runUrl.searchParams.set('dryRun', '1');
+    }
 
     const runResponse = await fetch(runUrl.toString(), {
       method: 'POST',
       headers: {
         'x-reminder-cron-token': cronToken,
+        'x-dry-run': dryRun ? '1' : '0',
         'x-reminders-triggered-by': 'manual',
+        'x-reminders-workspace-id': context.workspaceId,
+        'x-reminders-user-email': context.userEmail,
       },
       cache: 'no-store',
     });
@@ -59,6 +68,9 @@ export async function POST(req: Request) {
     const payload = await runResponse.json().catch(() => null);
 
     if (runResponse.ok) {
+      revalidatePath('/dashboard');
+      revalidatePath('/dashboard/(overview)');
+      revalidatePath('/dashboard/reminders');
       revalidatePath('/dashboard/settings/reminders');
     }
 

@@ -15,8 +15,6 @@ import {
 import { Metadata } from 'next';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
 import { requireUserEmail } from '@/app/lib/data';
-import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
-import { isReminderManualRunAdmin } from '@/app/lib/reminder-admin';
 import { primaryButtonClasses } from '@/app/ui/button';
 import { CARD_INTERACTIVE, LIGHT_SURFACE } from '@/app/ui/theme/tokens';
 
@@ -32,7 +30,6 @@ type SetupState = {
   invoiceCreated: boolean;
   firstReminderSent: boolean;
   connectStripe: boolean;
-  canOpenReminderAdmin: boolean;
 };
 
 function isUndefinedTableError(error: unknown): boolean {
@@ -88,34 +85,106 @@ async function fetchSetupState(): Promise<SetupState> {
     `,
   ]);
 
-  let firstReminderSent = false;
+  let firstReminderSentFromRuns = false;
+  let firstReminderSentFallback = false;
   try {
-    const [reminderEvent] = await sql<{ done: boolean }[]>`
-      select exists (
-        select 1
-        from public.funnel_events
-        where lower(user_email) = ${userEmail}
-          and event_name = 'first_reminder_sent'
-        limit 1
-      ) as done
+    const [runsMeta] = await sql<{
+      table_exists: boolean;
+      has_workspace_id: boolean;
+      has_user_email: boolean;
+      has_raw_json: boolean;
+    }[]>`
+      select
+        to_regclass('public.reminder_runs') is not null as table_exists,
+        exists (
+          select 1
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'reminder_runs'
+            and column_name = 'workspace_id'
+        ) as has_workspace_id,
+        exists (
+          select 1
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'reminder_runs'
+            and column_name = 'user_email'
+        ) as has_user_email,
+        exists (
+          select 1
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'reminder_runs'
+            and column_name = 'raw_json'
+        ) as has_raw_json
     `;
-    firstReminderSent = Boolean(reminderEvent?.done);
+
+    if (!runsMeta?.table_exists) {
+      throw Object.assign(new Error('reminder_runs missing'), { code: '42P01' });
+    }
+
+    if (runsMeta.has_workspace_id && activeWorkspaceId) {
+      const [row] = await sql<{ done: boolean }[]>`
+        select exists (
+          select 1
+          from public.reminder_runs
+          where workspace_id = ${activeWorkspaceId}
+            and sent > 0
+            and ran_at >= now() - interval '7 days'
+        ) as done
+      `;
+      firstReminderSentFromRuns = Boolean(row?.done);
+    } else if (runsMeta.has_user_email) {
+      const [row] = await sql<{ done: boolean }[]>`
+        select exists (
+          select 1
+          from public.reminder_runs
+          where lower(user_email) = ${userEmail}
+            and sent > 0
+            and ran_at >= now() - interval '7 days'
+        ) as done
+      `;
+      firstReminderSentFromRuns = Boolean(row?.done);
+    } else if (runsMeta.has_raw_json) {
+      const [row] = await sql<{ done: boolean }[]>`
+        select exists (
+          select 1
+          from public.reminder_runs rr
+          join lateral jsonb_array_elements_text(
+            coalesce(rr.raw_json -> 'updatedInvoiceIds', '[]'::jsonb)
+          ) as updated_invoice_id on true
+          join public.invoices i
+            on i.id::text = updated_invoice_id
+          where lower(i.user_email) = ${userEmail}
+            and rr.sent > 0
+            and rr.ran_at >= now() - interval '7 days'
+        ) as done
+      `;
+      firstReminderSentFromRuns = Boolean(row?.done);
+    }
   } catch (error) {
-    if (!isUndefinedTableError(error)) {
+    if (isUndefinedTableError(error)) {
+      // Ignore; fallback query below covers this case.
+    } else {
       console.error('Failed to read first_reminder_sent setup state:', error);
     }
   }
 
-  let canOpenReminderAdmin = false;
   try {
-    const context = await ensureWorkspaceContextForCurrentUser();
-    const hasWorkspaceAccess =
-      context.userRole === 'owner' || context.userRole === 'admin';
-    canOpenReminderAdmin =
-      hasWorkspaceAccess && isReminderManualRunAdmin(context.userEmail);
-  } catch {
-    canOpenReminderAdmin = false;
+    const [fallbackRow] = await sql<{ done: boolean }[]>`
+      select exists (
+        select 1
+        from public.invoices
+        where lower(user_email) = ${userEmail}
+          and reminder_level > 0
+      ) as done
+    `;
+    firstReminderSentFallback = Boolean(fallbackRow?.done);
+  } catch (error) {
+    console.error('Failed to read reminder fallback setup state:', error);
   }
+
+  const firstReminderSent = firstReminderSentFromRuns || firstReminderSentFallback;
 
   return {
     companySaved: Boolean(companyRow[0]?.done),
@@ -123,7 +192,6 @@ async function fetchSetupState(): Promise<SetupState> {
     invoiceCreated: Number(invoiceRow[0]?.count ?? '0') > 0,
     firstReminderSent,
     connectStripe: Boolean(user?.stripe_connect_account_id?.trim()),
-    canOpenReminderAdmin,
   };
 }
 
@@ -174,13 +242,9 @@ export default async function Page(props: {
     {
       key: 'reminder',
       title: 'Send a test reminder',
-      description: setup.canOpenReminderAdmin
-        ? 'Run a manual reminder once to validate email flow.'
-        : 'Open invoices and trigger your first reminder flow.',
-      href: setup.canOpenReminderAdmin
-        ? '/dashboard/settings/reminders'
-        : '/dashboard/invoices',
-      ctaLabel: setup.canOpenReminderAdmin ? 'Open reminders' : 'Open invoices',
+      description: 'Run a reminder and confirm it was sent.',
+      href: '/dashboard/reminders',
+      ctaLabel: 'Open reminders',
       done: setup.firstReminderSent,
     },
   ];

@@ -8,8 +8,9 @@ import {
   NEUTRAL_FOCUS_RING_CLASSES,
   NEUTRAL_INACTIVE_ITEM_CLASSES,
 } from '@/app/ui/dashboard/neutral-interaction';
+import { isSettingsRemindersAdminEmail } from '@/app/lib/admin-gates';
 
-const sections = [
+const baseSections = [
   { name: 'Overview', href: '/dashboard/settings' },
   { name: 'Usage', href: '/dashboard/settings/usage' },
   { name: 'Billing', href: '/dashboard/settings/billing' },
@@ -20,16 +21,28 @@ const sections = [
   { name: 'Company', href: '/dashboard/settings/company-profile' },
   { name: 'SMTP', href: '/dashboard/settings/smtp' },
   { name: 'Unsubscribe', href: '/dashboard/settings/unsubscribe' },
-  { name: 'Reminders', href: '/dashboard/settings/reminders' },
   { name: 'Documents', href: '/dashboard/settings/documents' },
 ];
 
+const remindersSection = {
+  name: 'Reminders',
+  href: '/dashboard/settings/reminders',
+};
+
 export default function SettingsSectionsNav({
   canViewFunnel = false,
+  currentUserEmail,
 }: {
   canViewFunnel?: boolean;
+  currentUserEmail?: string | null;
 }) {
   const pathname = usePathname();
+  const canViewSettingsReminders = isSettingsRemindersAdminEmail(currentUserEmail);
+
+  const sections = canViewSettingsReminders
+    ? [...baseSections, remindersSection]
+    : baseSections;
+
   const resolvedSections = canViewFunnel
     ? [...sections, { name: 'Funnel', href: '/dashboard/settings/funnel' }]
     : sections;
