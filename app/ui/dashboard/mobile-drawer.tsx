@@ -159,7 +159,7 @@ export default function MobileDrawer({
                 Homepage
               </Link>
               <Link
-                href="/onboarding"
+                href="/dashboard/onboarding"
                 onClick={() => onOpenChange(false)}
                 className={accountMenuItemClasses}
               >

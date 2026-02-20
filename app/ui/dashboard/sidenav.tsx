@@ -110,7 +110,7 @@ export default async function SideNav() {
                 Homepage
               </Link>
               <Link
-                href="/onboarding"
+                href="/dashboard/onboarding"
                 className={accountMenuItemClasses}
               >
                 <UserCircleIcon className="h-4 w-4" />
