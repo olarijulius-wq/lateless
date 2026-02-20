@@ -6,6 +6,11 @@ import {
   requireUserEmail,
 } from '@/app/lib/data';
 import { stripe } from '@/app/lib/stripe';
+import {
+  assertStripeConfig,
+  createStripeRequestVerifier,
+  normalizeStripeConfigError,
+} from '@/app/lib/stripe-guard';
 
 export const runtime = 'nodejs';
 
@@ -20,6 +25,8 @@ export async function POST() {
   }
 
   try {
+    assertStripeConfig();
+
     const [user] = await sql<
       { id: string; stripe_connect_account_id: string | null }[]
     >`
@@ -37,7 +44,8 @@ export async function POST() {
       );
     }
 
-    const account = (await stripe.accounts.retrieve(accountId)) as Stripe.Account;
+    const verifier = createStripeRequestVerifier(stripe);
+    const account = (await verifier.verifyConnectedAccountAccess(accountId)) as Stripe.Account;
     const connectAccountId = account.id;
     const payoutsEnabled = !!account.payouts_enabled;
     const detailsSubmitted = !!account.details_submitted;
@@ -66,10 +74,15 @@ export async function POST() {
 
     const status = await fetchStripeConnectStatusForUser(userEmail);
     return NextResponse.json({ ok: true, status });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const normalized = normalizeStripeConfigError(err);
     console.error('Error resyncing Stripe Connect status', err);
     return NextResponse.json(
-      { error: err?.message ?? 'Failed to re-sync status from Stripe.' },
+      {
+        error: normalized.message ?? 'Failed to re-sync status from Stripe.',
+        guidance: normalized.guidance,
+        code: normalized.code,
+      },
       { status: 500 },
     );
   }

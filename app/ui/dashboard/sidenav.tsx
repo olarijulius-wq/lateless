@@ -11,7 +11,7 @@ import {
 import { signOut } from '@/auth';
 import { auth } from '@/auth';
 import ThemeToggleMenuItem from '@/app/ui/dashboard/theme-toggle-menu-item';
-import MobileDrawer from '@/app/ui/dashboard/mobile-drawer';
+import MobileNav from '@/app/ui/dashboard/mobile-nav';
 import FitTextEmail from '@/app/ui/dashboard/fit-text-email';
 import {
   NEUTRAL_FOCUS_RING_CLASSES,
@@ -36,7 +36,7 @@ export default async function SideNav() {
 
   return (
     <div className="flex h-full flex-col gap-2 px-3 py-4 md:px-2">
-      <MobileDrawer userEmail={userEmail} logoutAction={logoutAction} />
+      <MobileNav userEmail={userEmail} logoutAction={logoutAction} />
 
       <div className="hidden md:flex md:h-full md:flex-col">
         <Link

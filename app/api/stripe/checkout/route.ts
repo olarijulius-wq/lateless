@@ -10,6 +10,10 @@ import {
   type PlanId,
 } from '@/app/lib/config';
 import { logFunnelEvent } from '@/app/lib/funnel-events';
+import {
+  assertStripeConfig,
+  normalizeStripeConfigError,
+} from '@/app/lib/stripe-guard';
 
 const checkoutParamsSchema = z.object({
   plan: z.string().trim().toLowerCase().optional(),
@@ -71,6 +75,8 @@ export async function POST(req: Request) {
       : 'http://localhost:3000');
 
   try {
+    assertStripeConfig();
+
     await logFunnelEvent({
       userEmail: normalizedEmail,
       eventName: 'checkout_started',
@@ -104,9 +110,14 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ url: checkoutSession.url });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const normalized = normalizeStripeConfigError(err);
     return NextResponse.json(
-      { error: err?.message ?? 'Stripe error' },
+      {
+        error: normalized.message,
+        guidance: normalized.guidance,
+        code: normalized.code,
+      },
       { status: 500 },
     );
   }

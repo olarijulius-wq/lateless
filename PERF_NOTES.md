@@ -49,3 +49,51 @@ How to confirm throttling:
 - Open `Settings -> Reminders -> Diagnostics`.
 - Click `Fix historical rows`.
 - Expected result: older cron rows with recoverable scope metadata are backfilled and now appear in the Recent runs table for the active workspace scope.
+
+## Launch Hardening Checks
+
+### 1) Stripe sanity (dev/prod)
+
+- Open `/dashboard/settings/billing` as owner/admin and review the **Billing self-check** panel.
+- Verify:
+  - Environment and Stripe key mode are correct.
+  - Key suffix is masked (`****1234` style).
+  - Connected account ID matches expected `acct_...`.
+  - Last webhook status is recent and `processed` for normal traffic.
+- Click **Run self-check**.
+- Expected result: `PASS`.
+- If it fails with access/config guidance, fix `STRIPE_SECRET_KEY` and/or reconnect Stripe in `/dashboard/settings/payouts`.
+
+### 2) Reminders locking
+
+- Kick one run:
+  - `curl -s -H "Authorization: Bearer $REMINDER_CRON_TOKEN" "http://localhost:3000/api/reminders/run?triggeredBy=cron" | jq`
+- Immediately kick a second run with same scope/token.
+- Expected result:
+  - One request processes normally.
+  - The other returns `{"skipped":true,"reason":"lock_not_acquired"}` (HTTP 200).
+- Manual runs (`/api/reminders/run-manual`) and cron runs share the same lock behavior.
+
+### 3) Webhook idempotency
+
+- Replay one Stripe event ID twice (via Stripe CLI or dashboard replay).
+- Expected result:
+  - First request outcome: `processed`.
+  - Second request outcome: `duplicate` with no repeated side effects.
+- Verify ledger:
+  - `select event_id, status, processed_at from public.stripe_webhook_events where event_id = '<evt_id>';`
+  - Only one row for that `event_id`.
+
+### 4) Invoice send UX end-to-end
+
+- From `/dashboard/invoices`, click **Send invoice** on a row.
+- Expected result:
+  - Button shows `Sending…` then `Sent`.
+  - List stays in place and shows a send confirmation banner.
+  - Row retains latest send state.
+- Open `/dashboard/invoices/:id` for that invoice:
+  - Last invoice email status is shown.
+  - **Send invoice** supports retry with actionable error text.
+- Guardrail checks:
+  - Missing customer email returns clear inline error and **Fix customer** link.
+  - Missing provider config returns clear admin hint to fix SMTP/Resend settings.

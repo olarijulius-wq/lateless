@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server';
 import { stripe } from '@/app/lib/stripe';
 import { auth } from '@/auth';
 import postgres from 'postgres';
+import {
+  assertStripeConfig,
+  normalizeStripeConfigError,
+} from '@/app/lib/stripe-guard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -20,41 +24,45 @@ export async function POST() {
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000');
 
-  // Võtame olemasoleva customer_id, kui on
-  const rows = await sql<{ stripe_customer_id: string | null }[]>`
-    select stripe_customer_id
-    from public.users
-    where lower(email) = ${email}
-    limit 1
-  `;
-
-  let customerId = rows[0]?.stripe_customer_id ?? null;
-
-  if (!customerId) {
-    // Kui veel pole Stripe customer'it, loome
-    const customer = await stripe.customers.create({ email });
-    customerId = customer.id;
-
-    await sql`
-      update public.users
-      set stripe_customer_id = ${customerId}
-      where lower(email) = ${email}
-    `;
-  }
-
   try {
+    assertStripeConfig();
+
+    // Võtame olemasoleva customer_id, kui on
+    const rows = await sql<{ stripe_customer_id: string | null }[]>`
+      select stripe_customer_id
+      from public.users
+      where lower(email) = ${email}
+      limit 1
+    `;
+
+    let customerId = rows[0]?.stripe_customer_id ?? null;
+
+    if (!customerId) {
+      // Kui veel pole Stripe customer'it, loome
+      const customer = await stripe.customers.create({ email });
+      customerId = customer.id;
+
+      await sql`
+        update public.users
+        set stripe_customer_id = ${customerId}
+        where lower(email) = ${email}
+      `;
+    }
+
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: customerId,
       return_url: `${baseUrl}/dashboard/settings`,
     });
 
     return NextResponse.json({ url: portalSession.url });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const normalized = normalizeStripeConfigError(err);
     console.error('Error creating billing portal session', err);
     return NextResponse.json(
       {
-        error:
-          err?.message ?? 'Failed to create billing portal session',
+        error: normalized.message,
+        guidance: normalized.guidance,
+        code: normalized.code,
       },
       { status: 500 },
     );

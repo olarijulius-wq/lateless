@@ -9,8 +9,9 @@ import { formatDateToLocal, formatCurrencySuffix } from '@/app/lib/utils';
 import type { InvoicesTable as InvoicesTableType } from '@/app/lib/definitions';
 import { DARK_PILL, DARK_SURFACE_SUBTLE } from '@/app/ui/theme/tokens';
 import { canPayInvoiceStatus } from '@/app/lib/invoice-status';
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import SendInvoiceButton from '@/app/ui/invoices/send-invoice-button';
 
 export default function InvoicesTable({
   invoices,
@@ -25,6 +26,15 @@ export default function InvoicesTable({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [sendStateByInvoiceId, setSendStateByInvoiceId] = useState<
+    Record<string, { status: string | null; sentAt: string | null }>
+  >({});
+  const [lastSentInvoiceId, setLastSentInvoiceId] = useState<string | null>(null);
+
+  const lastSentInvoice = useMemo(
+    () => invoices.find((invoice) => invoice.id === lastSentInvoiceId) ?? null,
+    [invoices, lastSentInvoiceId],
+  );
 
   useEffect(() => {
     if (!highlightedInvoiceId) {
@@ -47,8 +57,27 @@ export default function InvoicesTable({
     };
   }, [highlightedInvoiceId, pathname, router]);
 
+  useEffect(() => {
+    if (!lastSentInvoiceId) return;
+    const timeout = window.setTimeout(() => setLastSentInvoiceId(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [lastSentInvoiceId]);
+
+  function handleInvoiceSent(input: { invoiceId: string; sentAt: string }) {
+    setSendStateByInvoiceId((current) => ({
+      ...current,
+      [input.invoiceId]: { status: 'sent', sentAt: input.sentAt },
+    }));
+    setLastSentInvoiceId(input.invoiceId);
+  }
+
   return (
     <div className="mt-6 flow-root">
+      {lastSentInvoice ? (
+        <div className="mb-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-500/35 dark:bg-emerald-500/10 dark:text-emerald-200">
+          Sent invoice {lastSentInvoice.invoice_number ?? `#${lastSentInvoice.id.slice(0, 8)}`}.
+        </div>
+      ) : null}
       <div className="inline-block min-w-full align-middle">
         <div className={`rounded-2xl border border-neutral-200 bg-white p-2 shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:pt-0 ${DARK_SURFACE_SUBTLE} dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>
           <div className="md:hidden">
@@ -93,7 +122,7 @@ export default function InvoicesTable({
                         {formatCurrencySuffix(invoice.amount)}
                       </p>
                       <Link
-                        href={`/dashboard/invoices/${invoice.id}`}
+                        href={`/dashboard/invoices/${invoice.id}?returnTo=${encodeURIComponent(returnToPath)}`}
                         className="truncate text-xs text-slate-600 hover:text-slate-700 dark:text-zinc-400 dark:hover:text-zinc-300"
                       >
                         {invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`}
@@ -107,6 +136,19 @@ export default function InvoicesTable({
                       </p>
                     </div>
                     <div className="flex shrink-0 justify-end gap-2">
+                      <SendInvoiceButton
+                        invoiceId={invoice.id}
+                        compact
+                        returnTo={returnToPath}
+                        onSent={handleInvoiceSent}
+                        initialStatus={
+                          sendStateByInvoiceId[invoice.id]?.status ?? invoice.last_email_status
+                        }
+                        initialSentAt={
+                          sendStateByInvoiceId[invoice.id]?.sentAt ?? invoice.last_email_sent_at
+                        }
+                        initialError={invoice.last_email_error}
+                      />
                       {canPayInvoiceStatus(invoice.status) &&
                         (hasStripeConnect ? (
                           <PayInvoiceButton
@@ -176,7 +218,7 @@ export default function InvoicesTable({
                         <div>
                           <p>{invoice.name}</p>
                           <Link
-                            href={`/dashboard/invoices/${invoice.id}`}
+                            href={`/dashboard/invoices/${invoice.id}?returnTo=${encodeURIComponent(returnToPath)}`}
                             className="text-xs text-slate-600 hover:text-slate-700 dark:text-zinc-200 dark:hover:text-zinc-300"
                           >
                             {invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`}
@@ -209,6 +251,19 @@ export default function InvoicesTable({
                     </td>
                     <td className="whitespace-nowrap px-4 py-5 text-center">
                       <div className="flex justify-center gap-3">
+                        <SendInvoiceButton
+                          invoiceId={invoice.id}
+                          compact
+                          returnTo={returnToPath}
+                          onSent={handleInvoiceSent}
+                          initialStatus={
+                            sendStateByInvoiceId[invoice.id]?.status ?? invoice.last_email_status
+                          }
+                          initialSentAt={
+                            sendStateByInvoiceId[invoice.id]?.sentAt ?? invoice.last_email_sent_at
+                          }
+                          initialError={invoice.last_email_error}
+                        />
                         {canPayInvoiceStatus(invoice.status) &&
                           (hasStripeConnect ? (
                             <PayInvoiceButton

@@ -1,8 +1,10 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
+import postgres from 'postgres';
 import UpgradeButton from '../upgrade-button';
 import ManageBillingButton from '../manage-billing-button';
 import ConnectStripeButton from '../connect-stripe-button';
+import BillingSelfCheckPanel from './billing-self-check-panel';
 import {
   fetchStripeConnectStatusForUser,
   fetchUserPlanAndUsage,
@@ -22,6 +24,10 @@ import PricingPanel from '@/app/ui/pricing/panel';
 import { primaryButtonClasses, secondaryButtonClasses } from '@/app/ui/button';
 import { CARD_INTERACTIVE } from '@/app/ui/theme/tokens';
 import { logFunnelEvent } from '@/app/lib/funnel-events';
+import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+import { getStripeConfigState } from '@/app/lib/stripe-guard';
+
+const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const metadata: Metadata = {
   title: 'Billing Settings',
@@ -87,6 +93,33 @@ export default async function BillingSettingsPage(props: {
   } = await fetchUserPlanAndUsage();
   const connectStatus: StripeConnectStatus =
     await fetchStripeConnectStatusForUser(userEmail);
+  const workspaceContext = await ensureWorkspaceContextForCurrentUser();
+  const canRunSelfCheck =
+    workspaceContext.userRole === 'owner' || workspaceContext.userRole === 'admin';
+  const stripeState = getStripeConfigState();
+  const latestWebhook = canRunSelfCheck
+    ? (
+        await sql<{
+          event_id: string;
+          event_type: string;
+          status: string;
+          processed_at: Date | null;
+          received_at: Date;
+          error: string | null;
+        }[]>`
+          select
+            event_id,
+            event_type,
+            status,
+            processed_at,
+            received_at,
+            error
+          from public.stripe_webhook_events
+          order by received_at desc
+          limit 1
+        `
+      )[0]
+    : null;
 
   const periodEndLabel = formatEtDateTime(currentPeriodEnd);
   const planConfig = PLAN_CONFIG[plan];
@@ -279,6 +312,31 @@ export default async function BillingSettingsPage(props: {
         </p>
         <ManageBillingButton label="Open billing portal" />
       </PricingPanel>
+
+      {canRunSelfCheck ? (
+        <PricingPanel>
+          <BillingSelfCheckPanel
+            initialSnapshot={{
+              environment: stripeState.environment,
+              keyMode: stripeState.secretKeyMode,
+              keySuffix: stripeState.secretKeyMasked,
+              connectAccountId: connectStatus.accountId,
+              latestWebhook: latestWebhook
+                ? {
+                    eventId: latestWebhook.event_id,
+                    eventType: latestWebhook.event_type,
+                    status: latestWebhook.status,
+                    processedAt: latestWebhook.processed_at
+                      ? latestWebhook.processed_at.toISOString()
+                      : null,
+                    receivedAt: latestWebhook.received_at.toISOString(),
+                    error: latestWebhook.error,
+                  }
+                : null,
+            }}
+          />
+        </PricingPanel>
+      ) : null}
 
       {!connectStatus.hasAccount && (
         <PricingPanel className="space-y-3">

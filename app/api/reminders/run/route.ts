@@ -27,6 +27,11 @@ import {
 import { logFunnelEvent } from '@/app/lib/funnel-events';
 import { auth } from '@/auth';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+import {
+  acquireJobLock,
+  isJobLocksMigrationRequiredError,
+  releaseJobLock,
+} from '@/app/lib/job-locks';
 
 export const runtime = 'nodejs';
 
@@ -40,6 +45,7 @@ type ReminderCandidate = {
   amount: number;
   due_date: string;
   reminder_level: number;
+  last_reminder_sent_at: string | null;
   user_email: string;
   customer_name: string;
   customer_email: string | null;
@@ -309,6 +315,7 @@ async function parseRunOptions(req: Request) {
 async function fetchReminderCandidates(
   includeReminderPauseJoin: boolean,
   selectionLimit: number,
+  scopeWorkspaceId: string | null,
 ) {
   if (includeReminderPauseJoin) {
     return sql<ReminderCandidate[]>`
@@ -317,6 +324,7 @@ async function fetchReminderCandidates(
         invoices.amount,
         invoices.due_date,
         invoices.reminder_level,
+        invoices.last_reminder_sent_at,
         invoices.user_email,
         invoices.invoice_number,
         invoices.status,
@@ -350,6 +358,7 @@ async function fetchReminderCandidates(
         AND invoices.due_date IS NOT NULL
         AND invoices.due_date < current_date
         AND invoices.reminder_level < 3
+        AND (${scopeWorkspaceId}::uuid is null OR workspaces.id = ${scopeWorkspaceId}::uuid)
         AND (
           (invoices.reminder_level = 0 AND current_date > invoices.due_date)
           OR (
@@ -372,6 +381,7 @@ async function fetchReminderCandidates(
       invoices.amount,
       invoices.due_date,
       invoices.reminder_level,
+      invoices.last_reminder_sent_at,
       invoices.user_email,
       invoices.invoice_number,
       invoices.status,
@@ -400,6 +410,7 @@ async function fetchReminderCandidates(
       AND invoices.due_date IS NOT NULL
       AND invoices.due_date < current_date
       AND invoices.reminder_level < 3
+      AND (${scopeWorkspaceId}::uuid is null OR workspaces.id = ${scopeWorkspaceId}::uuid)
       AND (
         (invoices.reminder_level = 0 AND current_date > invoices.due_date)
         OR (
@@ -476,6 +487,44 @@ async function runReminderJob(req: Request) {
     maxRunMs,
     dryRun,
   };
+  const scopeWorkspaceId = runLogWorkspaceId?.trim() || null;
+  const lockKey = `reminders_run:${scopeWorkspaceId ?? 'global'}`;
+  const lockHolder = `${triggeredBy}:${ranAtIso}:${Math.random().toString(36).slice(2, 10)}`;
+
+  let lockAcquired = false;
+  try {
+    lockAcquired = await acquireJobLock({
+      lockKey,
+      holder: lockHolder,
+      ttlSeconds: Math.max(120, Math.ceil(maxRunMs / 1000) + 30),
+    });
+  } catch (error) {
+    if (isJobLocksMigrationRequiredError(error)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'Reminders locking requires DB migration 033_add_job_locks_and_invoice_email_logs.sql. Run migrations and retry.',
+          code: 'REMINDER_LOCK_MIGRATION_REQUIRED',
+        },
+        { status: 503 },
+      );
+    }
+    throw error;
+  }
+
+  if (!lockAcquired) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: 'lock_not_acquired',
+      lockKey,
+      triggeredBy,
+      dryRun,
+    });
+  }
+
+  try {
 
   let includeReminderPauseJoin = false;
   try {
@@ -487,7 +536,11 @@ async function runReminderJob(req: Request) {
     }
   }
 
-  const reminders = await fetchReminderCandidates(includeReminderPauseJoin, selectionLimit);
+  const reminders = await fetchReminderCandidates(
+    includeReminderPauseJoin,
+    selectionLimit,
+    scopeWorkspaceId,
+  );
   const hasMoreFromSelection = reminders.length >= selectionLimit;
   const updatedInvoiceIds: string[] = [];
   const workspaceStats = new Map<string, WorkspaceAccumulator>();
@@ -496,6 +549,7 @@ async function runReminderJob(req: Request) {
   const eligibleReminders: ReminderCandidate[] = [];
   const seenInvoiceIds = new Set<string>();
   const sentByUser = new Map<string, number>();
+  let concurrentClaimSkips = 0;
 
   if (reminders.length === 0) {
     console.log('No reminders to send (either none overdue or owners not verified).');
@@ -631,6 +685,21 @@ async function runReminderJob(req: Request) {
       }
 
       try {
+        const claimed = await sql<{ id: string }[]>`
+          update invoices
+          set reminder_level = reminder_level + 1,
+              last_reminder_sent_at = now()
+          where id = ${reminder.id}
+            and reminder_level = ${reminder.reminder_level}
+          returning id
+        `;
+
+        if (claimed.length === 0) {
+          concurrentClaimSkips += 1;
+          incrementSkip(workspaceAccumulator, 'duplicate_in_run');
+          return;
+        }
+
         const payLink = generatePayLink(baseUrl, reminder.id);
         const amountLabel = formatAmount(reminder.amount);
         const dueDateLabel = formatDate(reminder.due_date);
@@ -675,14 +744,6 @@ async function runReminderJob(req: Request) {
           bodyText,
         });
 
-        await sql`
-          update invoices
-          set reminder_level = reminder_level + 1,
-              last_reminder_sent_at = now()
-          where id = ${reminder.id}
-            and reminder_level = ${reminder.reminder_level}
-        `;
-
         updatedInvoiceIds.push(reminder.id);
         const normalizedUserEmail = reminder.user_email.trim().toLowerCase();
         sentByUser.set(
@@ -693,6 +754,19 @@ async function runReminderJob(req: Request) {
           workspaceAccumulator.sentCount += 1;
         }
       } catch (error) {
+        try {
+          await sql`
+            update invoices
+            set
+              reminder_level = ${reminder.reminder_level},
+              last_reminder_sent_at = ${reminder.last_reminder_sent_at}
+            where id = ${reminder.id}
+              and reminder_level = ${reminder.reminder_level + 1}
+          `;
+        } catch (rollbackError) {
+          console.error('Reminder rollback failed:', reminder.id, rollbackError);
+        }
+
         console.error('Reminder send failed:', reminder.id, error);
         const errorItem = {
           invoiceId: reminder.id,
@@ -743,35 +817,40 @@ async function runReminderJob(req: Request) {
   }
 
   const sentCount = dryRun ? run.attempted : updatedInvoiceIds.length;
-  const skippedCount = decisions.filter((decision) => !decision.willSend).length;
-  const skippedBreakdown = decisions.reduce<Required<ReminderRunSkippedBreakdown>>((acc, decision) => {
-    if (decision.willSend) {
-      return acc;
-    }
+  const skippedCount =
+    decisions.filter((decision) => !decision.willSend).length + concurrentClaimSkips;
+  const skippedBreakdown = decisions.reduce<Required<ReminderRunSkippedBreakdown>>(
+    (acc, decision) => {
+      if (decision.willSend) {
+        return acc;
+      }
 
-    if (decision.reason === 'paused_customer' || decision.reason === 'paused_invoice') {
-      acc.paused += 1;
-      return acc;
-    }
+      if (decision.reason === 'paused_customer' || decision.reason === 'paused_invoice') {
+        acc.paused += 1;
+        return acc;
+      }
 
-    if (decision.reason === 'unsubscribed') {
-      acc.unsubscribed += 1;
-      return acc;
-    }
+      if (decision.reason === 'unsubscribed') {
+        acc.unsubscribed += 1;
+        return acc;
+      }
 
-    if (decision.reason === 'missing_email') {
-      acc.missing_email += 1;
-      return acc;
-    }
+      if (decision.reason === 'missing_email') {
+        acc.missing_email += 1;
+        return acc;
+      }
 
-    if (decision.reason === 'not_eligible') {
-      acc.not_eligible += 1;
-      return acc;
-    }
+      if (decision.reason === 'not_eligible') {
+        acc.not_eligible += 1;
+        return acc;
+      }
 
-    acc.other += 1;
-    return acc;
-  }, { ...emptyBreakdown });
+      acc.other += 1;
+      return acc;
+    },
+    { ...emptyBreakdown },
+  );
+  skippedBreakdown.other += concurrentClaimSkips;
 
   console.log(
     `[reminders] ranAt=${ranAtIso} dryRun=${dryRun} attempted=${run.attempted} sent=${sentCount} skipped=${skippedCount} errors=${errors.length} hasMore=${run.hasMore || hasMoreFromSelection}`,
@@ -868,6 +947,14 @@ async function runReminderJob(req: Request) {
     runLogWritten,
     runLogWarning: runWarnings.length > 0 ? runWarnings.join('; ') : null,
   });
+  } finally {
+    await releaseJobLock({
+      lockKey,
+      holder: lockHolder,
+    }).catch((error) => {
+      console.error('Failed to release reminders lock:', lockKey, error);
+    });
+  }
 }
 
 // SIIT ALATES AINULT 2 HANDLERIT

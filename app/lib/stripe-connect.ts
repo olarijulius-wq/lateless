@@ -1,5 +1,9 @@
 import type Stripe from 'stripe';
 import { stripe } from '@/app/lib/stripe';
+import {
+  createStripeRequestVerifier,
+  normalizeStripeConfigError,
+} from '@/app/lib/stripe-guard';
 
 export const CONNECT_MODE_MISMATCH_MESSAGE =
   'Connected Stripe account belongs to a different mode/account. Reconnect payouts in the same Stripe mode as your API keys.';
@@ -29,26 +33,26 @@ export function isStripePermissionOrNoAccessError(error: unknown): boolean {
   return (
     stripeError?.type === 'StripePermissionError' ||
     stripeError?.rawType === 'permission_error' ||
-    /does not have access/i.test(message)
+    /does not have access/i.test(message) ||
+    /application access may have been revoked/i.test(message)
   );
 }
 
 export async function checkConnectedAccountAccess(
   connectedAccountId: string,
 ): Promise<ConnectedAccountAccessCheck> {
+  const verifier = createStripeRequestVerifier(stripe);
   try {
-    const account = (await stripe.accounts.retrieve(
-      connectedAccountId,
-    )) as Stripe.Account;
+    const account = await verifier.verifyConnectedAccountAccess(connectedAccountId);
     return { ok: true, account };
   } catch (error: unknown) {
-    const stripeError = error as { message?: string } | null;
+    const normalizedError = normalizeStripeConfigError(error);
     const isModeMismatch = isStripePermissionOrNoAccessError(error);
 
     return {
       ok: false,
       isModeMismatch,
-      message: stripeError?.message ?? 'Failed to retrieve connected Stripe account.',
+      message: normalizedError.guidance,
     };
   }
 }

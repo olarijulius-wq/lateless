@@ -14,6 +14,10 @@ import {
   getConnectChargeCapabilityStatus,
   isStripePermissionOrNoAccessError,
 } from '@/app/lib/stripe-connect';
+import {
+  assertStripeConfig,
+  normalizeStripeConfigError,
+} from '@/app/lib/stripe-guard';
 
 export const runtime = 'nodejs';
 
@@ -85,6 +89,8 @@ export async function POST(
   const payoutsSetupUrl = '/dashboard/settings/payouts';
 
   try {
+    assertStripeConfig();
+
     const ownerEmail = normalizeEmail(invoice.user_email);
     const connectStatus = await fetchStripeConnectStatusForUser(ownerEmail);
     const connectedAccountId = connectStatus.accountId;
@@ -195,7 +201,7 @@ export async function POST(
     }
 
     return NextResponse.json({ url: checkoutSession.url });
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (isPricingFeesMigrationRequiredError(error)) {
       return NextResponse.json(
         {
@@ -212,14 +218,20 @@ export async function POST(
         {
           ok: false,
           code: 'CONNECT_MODE_MISMATCH',
-          message: CONNECT_MODE_MISMATCH_MESSAGE,
+          message:
+            'Check Stripe secret key + Connect account, re-authorize Connect if needed.',
           actionUrl: payoutsSetupUrl,
         },
         { status: 409 },
       );
     }
+    const normalized = normalizeStripeConfigError(error);
     return NextResponse.json(
-      { error: error?.message ?? 'Stripe error' },
+      {
+        error: normalized.message,
+        guidance: normalized.guidance,
+        code: normalized.code,
+      },
       { status: 500 },
     );
   }

@@ -33,6 +33,7 @@ import {
   toolbarButtonClasses,
 } from '@/app/ui/button';
 import { DARK_INPUT, DARK_SURFACE } from '@/app/ui/theme/tokens';
+import SendInvoiceButton from '@/app/ui/invoices/send-invoice-button';
 
 export const metadata: Metadata = {
   title: 'Invoice',
@@ -45,13 +46,18 @@ const STRIPE_FEE_HIGH_FIXED = 50;
 
 export default async function Page(props: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ paid?: string }>;
+  searchParams?: Promise<{ paid?: string; returnTo?: string }>;
 }) {
   const params = await props.params;
   const searchParams = props.searchParams
     ? await props.searchParams
     : undefined;
   const justPaid = searchParams?.paid === '1';
+  const returnTo =
+    typeof searchParams?.returnTo === 'string' &&
+    searchParams.returnTo.startsWith('/dashboard/invoices')
+      ? searchParams.returnTo
+      : '/dashboard/invoices';
   const id = params.id;
   const [invoice, { plan }, userEmail] = await Promise.all([
     fetchInvoiceById(id),
@@ -200,13 +206,13 @@ export default async function Page(props: {
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href={`/dashboard/invoices/${invoice.id}/edit`}
+            href={`/dashboard/invoices/${invoice.id}/edit?returnTo=${encodeURIComponent(returnTo)}`}
             className={`${toolbarButtonClasses} h-9 px-3`}
           >
             Edit
           </Link>
           <Link
-            href="/dashboard/invoices"
+            href={returnTo}
             className={`${toolbarButtonClasses} h-9 px-3`}
           >
             Back
@@ -271,6 +277,13 @@ export default async function Page(props: {
               {statusLabel}
             </button>
           </form>
+          <SendInvoiceButton
+            invoiceId={invoice.id}
+            returnTo={returnTo}
+            initialStatus={invoice.last_email_status}
+            initialSentAt={invoice.last_email_sent_at}
+            initialError={invoice.last_email_error}
+          />
           {canPayInvoiceStatus(invoice.status) &&
             (hasConnect ? (
               <PayInvoiceButton invoiceId={invoice.id} />
@@ -284,6 +297,14 @@ export default async function Page(props: {
             ))}
           <DuplicateInvoiceButton id={invoice.id} />
         </div>
+        {invoice.last_email_status ? (
+          <p className="mt-2 text-xs text-slate-600 dark:text-zinc-400">
+            Last invoice email: {invoice.last_email_status}
+            {invoice.last_email_sent_at
+              ? ` at ${formatDateToLocal(invoice.last_email_sent_at)}`
+              : ''}
+          </p>
+        ) : null}
       </div>
 
       <div className={`rounded-2xl border border-neutral-200 bg-white p-6 shadow-[0_12px_24px_rgba(15,23,42,0.06)] ${DARK_SURFACE} dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>

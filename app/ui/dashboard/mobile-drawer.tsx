@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import Link from 'next/link';
 import clsx from 'clsx';
 import { usePathname } from 'next/navigation';
 import {
   ArrowLeftIcon,
-  Bars3Icon,
+  Cog6ToothIcon,
+  HomeIcon,
   PowerIcon,
   UserCircleIcon,
-  XMarkIcon,
 } from '@heroicons/react/24/outline';
 import { getDashboardLinks } from '@/app/ui/dashboard/nav-links-data';
 import ThemeToggleMenuItem from '@/app/ui/dashboard/theme-toggle-menu-item';
@@ -20,13 +20,19 @@ import {
 } from '@/app/ui/dashboard/neutral-interaction';
 
 type MobileDrawerProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   userEmail: string;
   logoutAction: () => Promise<void>;
 };
 
-export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerProps) {
+export default function MobileDrawer({
+  open,
+  onOpenChange,
+  userEmail,
+  logoutAction,
+}: MobileDrawerProps) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
   const mainLinks = getDashboardLinks(userEmail);
   const accountMenuItemClasses = `flex items-center gap-2 rounded-lg px-2 py-2 text-base text-slate-900 transition dark:text-neutral-100 ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`;
 
@@ -35,7 +41,7 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setOpen(false);
+        onOpenChange(false);
       }
     };
 
@@ -47,50 +53,38 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleEscape);
     };
-  }, [open]);
+  }, [open, onOpenChange]);
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
+      <div
         className={clsx(
-          'pointer-events-auto fixed right-[calc(env(safe-area-inset-right)+12px)] top-[calc(env(safe-area-inset-top)+12px)] z-[130] inline-flex h-12 w-12 items-center justify-center rounded-xl border border-neutral-200 bg-white/95 text-slate-900 shadow-lg backdrop-blur transition hover:border-neutral-300 hover:bg-neutral-100 dark:border-neutral-800 dark:bg-black/90 dark:text-neutral-200 dark:hover:border-neutral-700 dark:hover:text-white md:hidden',
-          open && 'pointer-events-none opacity-0',
+          'pointer-events-none fixed inset-0 z-[120] bg-black/35 transition-opacity duration-300 ease-out md:hidden',
+          open ? 'opacity-100' : 'opacity-0',
+          open ? 'pointer-events-auto' : 'pointer-events-none',
         )}
-        aria-expanded={open}
-        aria-controls="dashboard-mobile-drawer"
-        aria-label="Open navigation menu"
-      >
-        <Bars3Icon className="h-6 w-6" />
-      </button>
+        onClick={() => onOpenChange(false)}
+        aria-hidden={!open}
+      />
 
       <div
         id="dashboard-mobile-drawer"
         className={clsx(
-          'fixed inset-0 z-[120] border-r border-neutral-200 bg-white text-slate-900 transition-transform duration-300 ease-out dark:border-neutral-800 dark:bg-black dark:text-neutral-100 md:hidden',
+          'fixed inset-y-0 left-0 z-[125] w-[min(86vw,360px)] border-r border-neutral-200 bg-white text-slate-900 shadow-2xl transition-transform duration-300 ease-out dark:border-neutral-800 dark:bg-black dark:text-neutral-100 md:hidden',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
         aria-hidden={!open}
       >
         <div className="flex h-full flex-col overflow-y-auto px-5 pb-8 pt-5">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-start">
             <Link
               href="/"
-              onClick={() => setOpen(false)}
+              onClick={() => onOpenChange(false)}
               className="inline-flex items-center gap-2 text-sm text-slate-600 transition hover:text-slate-900 dark:text-neutral-400 dark:hover:text-neutral-200"
             >
               <ArrowLeftIcon className="h-4 w-4" />
               Home
             </Link>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-200 text-slate-600 transition hover:border-neutral-300 hover:bg-neutral-100 hover:text-slate-900 dark:border-neutral-800 dark:text-neutral-400 dark:hover:border-neutral-700 dark:hover:text-neutral-100"
-              aria-label="Close navigation menu"
-            >
-              <XMarkIcon className="h-5 w-5" />
-            </button>
           </div>
 
           <div className="mt-10 space-y-1">
@@ -107,7 +101,7 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
                   <Link
                     key={link.name}
                     href={link.href}
-                    onClick={() => setOpen(false)}
+                    onClick={() => onOpenChange(false)}
                     className={clsx(
                       `${lusitana.className} flex items-center gap-3 rounded-xl px-2 py-3 text-3xl leading-none text-slate-700 transition hover:bg-neutral-100 hover:text-slate-900 dark:text-neutral-400 dark:hover:bg-neutral-950 dark:hover:text-white`,
                       isActive && 'text-slate-900 dark:text-white',
@@ -131,11 +125,19 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
             <div className="space-y-1">
               <Link
                 href="/dashboard/profile"
-                onClick={() => setOpen(false)}
+                onClick={() => onOpenChange(false)}
                 className={accountMenuItemClasses}
               >
                 <UserCircleIcon className="h-5 w-5" />
                 My profile
+              </Link>
+              <Link
+                href="/dashboard/settings"
+                onClick={() => onOpenChange(false)}
+                className={accountMenuItemClasses}
+              >
+                <Cog6ToothIcon className="h-5 w-5" />
+                Settings
               </Link>
               <ThemeToggleMenuItem
                 staticLabel="Toggle theme"
@@ -143,15 +145,15 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
               />
               <Link
                 href="/"
-                onClick={() => setOpen(false)}
+                onClick={() => onOpenChange(false)}
                 className={accountMenuItemClasses}
               >
-                <ArrowLeftIcon className="h-5 w-5" />
+                <HomeIcon className="h-5 w-5" />
                 Homepage
               </Link>
               <Link
                 href="/onboarding"
-                onClick={() => setOpen(false)}
+                onClick={() => onOpenChange(false)}
                 className={accountMenuItemClasses}
               >
                 <UserCircleIcon className="h-5 w-5" />
@@ -159,7 +161,7 @@ export default function MobileDrawer({ userEmail, logoutAction }: MobileDrawerPr
               </Link>
               <form
                 action={logoutAction}
-                onSubmit={() => setOpen(false)}
+                onSubmit={() => onOpenChange(false)}
               >
                 <button
                   type="submit"

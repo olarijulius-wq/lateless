@@ -162,7 +162,7 @@ export default function EditInvoiceForm({
       </div>
       <div className="mt-6 flex justify-end gap-4">
         <Link
-          href="/dashboard/invoices"
+          href={returnTo || '/dashboard/invoices'}
           className={neutralSecondaryButtonClasses}
         >
           Cancel

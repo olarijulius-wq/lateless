@@ -3,6 +3,10 @@ import postgres from 'postgres';
 import { stripe } from '@/app/lib/stripe';
 import { requireUserEmail } from '@/app/lib/data';
 import { checkConnectedAccountAccess } from '@/app/lib/stripe-connect';
+import {
+  assertStripeConfig,
+  normalizeStripeConfigError,
+} from '@/app/lib/stripe-guard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -27,6 +31,8 @@ export async function POST(req: Request) {
     new URL(req.url).searchParams.get('reconnect') === '1';
 
   try {
+    assertStripeConfig();
+
     const [user] = await sql<
       { id: string; stripe_connect_account_id: string | null }[]
     >`
@@ -92,13 +98,14 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ url: accountLink.url });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const normalized = normalizeStripeConfigError(err);
     console.error('Error creating Stripe Connect onboarding link', err);
     return NextResponse.json(
       {
-        error:
-          err?.message ??
-          `Failed to start onboarding in ${mode} mode.`,
+        error: normalized.message ?? `Failed to start onboarding in ${mode} mode.`,
+        guidance: normalized.guidance,
+        code: normalized.code,
       },
       { status: 500 },
     );

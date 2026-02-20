@@ -35,6 +35,15 @@ function isUndefinedColumnError(error: unknown): boolean {
   );
 }
 
+function isUndefinedTableError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === '42P01'
+  );
+}
+
 export async function requireUserEmail() {
   const session = await auth();
   const sessionEmail = session?.user?.email;
@@ -570,6 +579,9 @@ export async function fetchFilteredInvoices(
         invoices.due_date,
         invoices.status,
         invoices.invoice_number,
+        logs.status as last_email_status,
+        logs.sent_at as last_email_sent_at,
+        logs.error as last_email_error,
         CASE
           WHEN invoices.status = 'pending'
             AND invoices.due_date IS NOT NULL
@@ -582,6 +594,13 @@ export async function fetchFilteredInvoices(
         customers.image_url
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
+      left join lateral (
+        select status, sent_at, error
+        from public.invoice_email_logs l
+        where l.invoice_id = invoices.id
+        order by l.created_at desc
+        limit 1
+      ) logs on true
       WHERE lower(invoices.user_email) = ${userEmail}
         AND lower(customers.user_email) = ${userEmail}
         AND (
@@ -614,6 +633,61 @@ export async function fetchFilteredInvoices(
 
     return invoices;
   } catch (error) {
+    if (isUndefinedTableError(error)) {
+      const invoices = await sql<InvoicesTable[]>`
+        SELECT
+          invoices.id,
+          invoices.amount,
+          invoices.date,
+          invoices.due_date,
+          invoices.status,
+          invoices.invoice_number,
+          null::text as last_email_status,
+          null::timestamptz as last_email_sent_at,
+          null::text as last_email_error,
+          CASE
+            WHEN invoices.status = 'pending'
+              AND invoices.due_date IS NOT NULL
+              AND invoices.due_date < current_date
+            THEN (current_date - invoices.due_date)
+            ELSE 0
+          END AS days_overdue,
+          customers.name,
+          customers.email,
+          customers.image_url
+        FROM invoices
+        JOIN customers ON invoices.customer_id = customers.id
+        WHERE lower(invoices.user_email) = ${userEmail}
+          AND lower(customers.user_email) = ${userEmail}
+          AND (
+            ${safeStatusFilter} = 'all'
+            OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
+            OR (${safeStatusFilter} = 'unpaid' AND invoices.status <> 'paid')
+            OR (
+              ${safeStatusFilter} = 'overdue'
+              AND (
+                invoices.status = 'overdue'
+                OR (
+                  invoices.due_date IS NOT NULL
+                  AND invoices.due_date < current_date
+                  AND invoices.status <> 'paid'
+                )
+              )
+            )
+          )
+          AND (
+            customers.name ILIKE ${`%${query}%`} OR
+            customers.email ILIKE ${`%${query}%`} OR
+            invoices.amount::text ILIKE ${`%${query}%`} OR
+            COALESCE(invoices.invoice_number, '') ILIKE ${`%${query}%`} OR
+            invoices.date::text ILIKE ${`%${query}%`} OR
+            invoices.status ILIKE ${`%${query}%`}
+          )
+        ORDER BY ${sql.unsafe(orderByClause)}
+        LIMIT ${safePageSize} OFFSET ${offset}
+      `;
+      return invoices;
+    }
     console.error('Database Error:', error);
     throw new Error('Failed to fetch invoices.');
   }
@@ -692,12 +766,22 @@ export async function fetchInvoiceById(id: string) {
         invoices.date,
         invoices.due_date,
         invoices.invoice_number,
+        logs.status as last_email_status,
+        logs.sent_at as last_email_sent_at,
+        logs.error as last_email_error,
         customers.name AS customer_name,
         customers.email AS customer_email
       FROM invoices
       JOIN customers
         ON customers.id = invoices.customer_id
         AND lower(customers.user_email) = ${userEmail}
+      left join lateral (
+        select status, sent_at, error
+        from public.invoice_email_logs l
+        where l.invoice_id = invoices.id
+        order by l.created_at desc
+        limit 1
+      ) logs on true
       WHERE invoices.id = ${id}
         AND lower(invoices.user_email) = ${userEmail}
       LIMIT 1
@@ -705,6 +789,41 @@ export async function fetchInvoiceById(id: string) {
 
     return data[0];
   } catch (error) {
+    if (isUndefinedTableError(error)) {
+      const fallback = await sql<InvoiceDetail[]>`
+        SELECT
+          invoices.id,
+          invoices.customer_id,
+          invoices.amount,
+          invoices.currency,
+          invoices.processing_uplift_amount,
+          invoices.payable_amount,
+          invoices.platform_fee_amount,
+          invoices.stripe_processing_fee_amount,
+          invoices.stripe_processing_fee_currency,
+          invoices.stripe_balance_transaction_id,
+          invoices.stripe_net_amount,
+          invoices.merchant_net_amount,
+          invoices.net_received_amount,
+          invoices.status,
+          invoices.date,
+          invoices.due_date,
+          invoices.invoice_number,
+          null::text as last_email_status,
+          null::timestamptz as last_email_sent_at,
+          null::text as last_email_error,
+          customers.name AS customer_name,
+          customers.email AS customer_email
+        FROM invoices
+        JOIN customers
+          ON customers.id = invoices.customer_id
+          AND lower(customers.user_email) = ${userEmail}
+        WHERE invoices.id = ${id}
+          AND lower(invoices.user_email) = ${userEmail}
+        LIMIT 1
+      `;
+      return fallback[0];
+    }
     if (isUndefinedColumnError(error)) {
       const fallback = await sql<InvoiceDetail[]>`
         SELECT
@@ -725,6 +844,9 @@ export async function fetchInvoiceById(id: string) {
           invoices.date,
           invoices.due_date,
           invoices.invoice_number,
+          null::text AS last_email_status,
+          null::timestamptz AS last_email_sent_at,
+          null::text AS last_email_error,
           customers.name AS customer_name,
           customers.email AS customer_email
         FROM invoices

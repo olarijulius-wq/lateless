@@ -447,6 +447,14 @@ async function sendWithResend(input: {
   }
 }
 
+function ensureResendConfigured() {
+  if (!process.env.RESEND_API_KEY?.trim()) {
+    throw new Error(
+      'Resend is not configured. Set RESEND_API_KEY in environment variables.',
+    );
+  }
+}
+
 async function sendWithSmtp(
   settings: WorkspaceEmailSettingsRow,
   smtpPassword: string,
@@ -505,6 +513,7 @@ export async function sendWorkspaceTestEmail(input: {
     '<p>This is a test email from your <strong>Lateless SMTP integration</strong> settings.</p>';
 
   if (!settings || settings.provider === 'resend') {
+    ensureResendConfigured();
     await sendWithResend({
       to: input.toEmail,
       subject,
@@ -528,4 +537,44 @@ export async function sendWorkspaceTestEmail(input: {
   }
 
   await sendWithSmtp(settings, smtpPassword, input.toEmail, subject, bodyHtml, bodyText);
+}
+
+export async function sendWorkspaceEmail(input: {
+  workspaceId: string;
+  toEmail: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText: string;
+}): Promise<{ provider: EmailProviderMode }> {
+  const settings = await fetchWorkspaceEmailSettingsWithSecret(input.workspaceId);
+
+  if (!settings || settings.provider === 'resend') {
+    ensureResendConfigured();
+    await sendWithResend({
+      to: input.toEmail,
+      subject: input.subject,
+      bodyHtml: input.bodyHtml,
+      bodyText: input.bodyText,
+    });
+    return { provider: 'resend' };
+  }
+
+  if (!settings.smtp_host || !settings.smtp_port || !settings.smtp_username) {
+    throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
+  }
+
+  const smtpPassword = await getSmtpPasswordFromRow(input.workspaceId, settings);
+  if (!smtpPassword) {
+    throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
+  }
+
+  await sendWithSmtp(
+    settings,
+    smtpPassword,
+    input.toEmail,
+    input.subject,
+    input.bodyHtml,
+    input.bodyText,
+  );
+  return { provider: 'smtp' };
 }

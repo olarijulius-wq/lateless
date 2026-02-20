@@ -91,6 +91,9 @@ export type InvoicesTable = {
   amount: number;
   invoice_number: string | null;
   status: InvoiceStatus;
+  last_email_status: string | null;
+  last_email_sent_at: string | null;
+  last_email_error: string | null;
 };
 
 export type InvoiceDetail = {
@@ -113,6 +116,9 @@ export type InvoiceDetail = {
   status: InvoiceStatus;
   date: string;
   due_date: string | null;
+  last_email_status: string | null;
+  last_email_sent_at: string | null;
+  last_email_error: string | null;
 };
 
 export type CustomersTableType = {

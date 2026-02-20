@@ -14,6 +14,11 @@ import {
 import { allowedPayStatuses, canPayInvoiceStatus } from "@/app/lib/invoice-status";
 import { logFunnelEvent } from "@/app/lib/funnel-events";
 import { stripe } from "@/app/lib/stripe";
+import {
+  assertStripeConfig,
+  createStripeRequestVerifier,
+  normalizeStripeConfigError,
+} from "@/app/lib/stripe-guard";
 
 export const runtime = "nodejs";
 
@@ -47,10 +52,6 @@ function isStripeResourceMissing404(err: any): boolean {
     err?.code === "resource_missing" &&
     typeof err?.message === "string"
   );
-}
-
-function isUniqueViolation(err: any): boolean {
-  return err?.code === "23505";
 }
 
 function readInvoiceIdFromMetadata(
@@ -1799,15 +1800,38 @@ export async function POST(req: Request) {
   });
 
   try {
-    await sql`
-      insert into public.stripe_webhook_events (event_id, event_type, account, livemode)
-      values (${event.id}, ${event.type}, ${event.account ?? null}, ${event.livemode})
-    `;
-  } catch (err: any) {
-    if (isUniqueViolation(err)) {
-      return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
+    assertStripeConfig({ expectedMode: event.livemode ? "live" : "test" });
+    if (event.account) {
+      const verifier = createStripeRequestVerifier(stripe);
+      await verifier.verifyConnectedAccountAccess(event.account);
     }
-    throw err;
+  } catch (error) {
+    const normalized = normalizeStripeConfigError(error);
+    console.error("[stripe webhook] outcome=error", {
+      id: event.id,
+      type: event.type,
+      code: normalized.code,
+      error: normalized.message,
+      guidance: normalized.guidance,
+    });
+    return NextResponse.json(
+      { ok: false, code: normalized.code, error: normalized.guidance },
+      { status: 500 },
+    );
+  }
+
+  const inserted = await sql<{ event_id: string }[]>`
+    insert into public.stripe_webhook_events (event_id, event_type, account, livemode)
+    values (${event.id}, ${event.type}, ${event.account ?? null}, ${event.livemode})
+    on conflict (event_id) do nothing
+    returning event_id
+  `;
+  if (inserted.length === 0) {
+    console.log("[stripe webhook] outcome=duplicate", {
+      id: event.id,
+      type: event.type,
+    });
+    return NextResponse.json({ ok: true, deduped: true }, { status: 200 });
   }
 
   try {
@@ -1822,6 +1846,10 @@ export async function POST(req: Request) {
       where event_id = ${event.id}
     `;
 
+    console.log("[stripe webhook] outcome=processed", {
+      id: event.id,
+      type: event.type,
+    });
     debugLog("[stripe webhook] processed", { id: event.id, type: event.type });
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err: unknown) {
@@ -1840,7 +1868,7 @@ export async function POST(req: Request) {
       // best effort only; original handler failure still drives retry semantics
     }
 
-    console.error("[stripe webhook] failed", {
+    console.error("[stripe webhook] outcome=error", {
       id: event.id,
       type: event.type,
       message,
