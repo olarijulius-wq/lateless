@@ -21,6 +21,88 @@ type SchemaSnapshot = {
   workspaceUsers: Set<string>;
 };
 
+type QueryTraceState = {
+  nextId: number;
+  lastLabel: string | null;
+};
+
+function withQueryTrace(
+  tx: any,
+  input: {
+    workspaceId: string;
+    userId: string;
+    plan: string;
+    interval: string | null;
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+    source: string;
+    eventKey: string;
+  },
+): { tx: any; trace: QueryTraceState } {
+  const trace: QueryTraceState = { nextId: 1, lastLabel: null };
+  const isDev = process.env.NODE_ENV === 'development';
+  if (!isDev) {
+    return { tx, trace };
+  }
+
+  const tracedTx = {
+    unsafe: async (query: string, params: unknown[]) => {
+      const label = `billing-sync.q${trace.nextId}`;
+      trace.nextId += 1;
+      trace.lastLabel = label;
+
+      const normalizedQuery = query.replace(/\s+/g, ' ').trim();
+      const queryPreview =
+        normalizedQuery.length > 220 ? `${normalizedQuery.slice(0, 220)}...` : normalizedQuery;
+      const typedParams = params.map((value, index) => ({
+        index: index + 1,
+        type: value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value,
+        value,
+      }));
+
+      console.info('[billing-sync] query', {
+        label,
+        query: queryPreview,
+        context: {
+          workspaceId: input.workspaceId,
+          workspaceIdType: typeof input.workspaceId,
+          userId: input.userId,
+          userIdType: typeof input.userId,
+          plan: input.plan,
+          planType: typeof input.plan,
+          interval: input.interval,
+          intervalType: input.interval === null ? 'null' : typeof input.interval,
+          stripeCustomerId: input.stripeCustomerId,
+          stripeCustomerIdType:
+            input.stripeCustomerId === null ? 'null' : typeof input.stripeCustomerId,
+          stripeSubscriptionId: input.stripeSubscriptionId,
+          stripeSubscriptionIdType:
+            input.stripeSubscriptionId === null ? 'null' : typeof input.stripeSubscriptionId,
+          source: input.source,
+          sourceType: typeof input.source,
+          eventKey: input.eventKey,
+          eventKeyType: typeof input.eventKey,
+        },
+        params: typedParams,
+      });
+
+      try {
+        return await tx.unsafe(query, params);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[billing-sync] query failed', {
+          label,
+          message,
+          params: typedParams,
+        });
+        throw error;
+      }
+    },
+  };
+
+  return { tx: tracedTx, trace };
+}
+
 export async function applyPlanSync(input: {
   workspaceId: string;
   userId: string;
@@ -62,74 +144,101 @@ export async function applyPlanSync(input: {
       },
     };
   }
+  let traceState: QueryTraceState | null = null;
+  try {
+    return await sql.begin(async (tx) => {
+      const traced = withQueryTrace(tx, {
+        workspaceId,
+        userId,
+        plan,
+        interval: input.interval,
+        stripeCustomerId: input.stripeCustomerId,
+        stripeSubscriptionId: input.stripeSubscriptionId,
+        source,
+        eventKey: input.stripeEventIdOrReconcileKey,
+      });
+      traceState = traced.trace;
+      const qtx = traced.tx;
+      const schema = await readSchemaSnapshot(qtx);
 
-  return sql.begin(async (tx) => {
-    const schema = await readSchemaSnapshot(tx);
+      const targetUserIds = await resolveTargetUserIds(qtx, {
+        schema,
+        workspaceId,
+        userId,
+      });
 
-    const targetUserIds = await resolveTargetUserIds(tx, {
-      schema,
-      workspaceId,
-      userId,
+      const usersWrite = await updateUsers(qtx, {
+        schema,
+        userIds: targetUserIds,
+        plan,
+        status,
+        interval: input.interval,
+        stripeCustomerId: input.stripeCustomerId,
+        stripeSubscriptionId: input.stripeSubscriptionId,
+        livemode: input.livemode,
+        latestInvoiceId: input.latestInvoiceId,
+        source,
+        eventKey: input.stripeEventIdOrReconcileKey,
+      });
+
+      const workspacesWrite = await updateWorkspaces(qtx, {
+        schema,
+        workspaceId,
+        plan,
+        status,
+        interval: input.interval,
+        stripeCustomerId: input.stripeCustomerId,
+        stripeSubscriptionId: input.stripeSubscriptionId,
+        livemode: input.livemode,
+        latestInvoiceId: input.latestInvoiceId,
+        source,
+        eventKey: input.stripeEventIdOrReconcileKey,
+      });
+
+      const membershipWrite = await updateMembershipTables(qtx, {
+        schema,
+        workspaceId,
+        userId,
+        plan,
+        status,
+        interval: input.interval,
+        stripeCustomerId: input.stripeCustomerId,
+        stripeSubscriptionId: input.stripeSubscriptionId,
+        livemode: input.livemode,
+        latestInvoiceId: input.latestInvoiceId,
+        source,
+        eventKey: input.stripeEventIdOrReconcileKey,
+      });
+
+      const readback = await readBackPlanSync(qtx, {
+        schema,
+        workspaceId,
+        userId: targetUserIds[0] ?? userId,
+      });
+
+      return {
+        wrote: {
+          users: usersWrite,
+          workspaces: workspacesWrite,
+          membership: membershipWrite,
+        },
+        readback,
+      };
     });
-
-    const usersWrite = await updateUsers(tx, {
-      schema,
-      userIds: targetUserIds,
-      plan,
-      status,
-      interval: input.interval,
-      stripeCustomerId: input.stripeCustomerId,
-      stripeSubscriptionId: input.stripeSubscriptionId,
-      livemode: input.livemode,
-      latestInvoiceId: input.latestInvoiceId,
-      source,
-      eventKey: input.stripeEventIdOrReconcileKey,
-    });
-
-    const workspacesWrite = await updateWorkspaces(tx, {
-      schema,
-      workspaceId,
-      plan,
-      status,
-      interval: input.interval,
-      stripeCustomerId: input.stripeCustomerId,
-      stripeSubscriptionId: input.stripeSubscriptionId,
-      livemode: input.livemode,
-      latestInvoiceId: input.latestInvoiceId,
-      source,
-      eventKey: input.stripeEventIdOrReconcileKey,
-    });
-
-    const membershipWrite = await updateMembershipTables(tx, {
-      schema,
-      workspaceId,
-      userId,
-      plan,
-      status,
-      interval: input.interval,
-      stripeCustomerId: input.stripeCustomerId,
-      stripeSubscriptionId: input.stripeSubscriptionId,
-      livemode: input.livemode,
-      latestInvoiceId: input.latestInvoiceId,
-      source,
-      eventKey: input.stripeEventIdOrReconcileKey,
-    });
-
-    const readback = await readBackPlanSync(tx, {
-      schema,
-      workspaceId,
-      userId: targetUserIds[0] ?? userId,
-    });
-
-    return {
-      wrote: {
-        users: usersWrite,
-        workspaces: workspacesWrite,
-        membership: membershipWrite,
-      },
-      readback,
-    };
-  });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (process.env.NODE_ENV === 'development') {
+      const lastQueryLabel = (traceState as QueryTraceState | null)?.lastLabel ?? null;
+      console.error('[billing-sync] applyPlanSync failed', {
+        message,
+        lastQueryLabel,
+        workspaceId,
+        userId,
+        plan,
+      });
+    }
+    throw error;
+  }
 }
 
 export async function readCanonicalWorkspacePlanSource(input: {
@@ -299,10 +408,11 @@ function buildSetAndDiffClauses(input: {
 
   const pushCoalesce = (column: string, value: any) => {
     if (!input.columns.has(column)) return;
+    if (value === null || value === undefined) return;
     params.push(value);
     const token = `$${params.length}`;
-    setClauses.push(`"${column}" = coalesce(${token}, "${column}")`);
-    diffClauses.push(`(${token} is not null and "${column}" is distinct from ${token})`);
+    setClauses.push(`"${column}" = ${token}`);
+    diffClauses.push(`"${column}" is distinct from ${token}`);
   };
 
   pushDirect('plan', input.plan);

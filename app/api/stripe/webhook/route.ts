@@ -396,10 +396,35 @@ async function syncPlanSnapshotAndCheckEffectiveness(input: {
     });
     normalizedPlan = (fallback.value ?? "").trim().toLowerCase() || "free";
   }
+  const normalizedWorkspaceId = input.workspaceId.trim();
+  const normalizedUserId = ownerUserId.trim();
+  if (!normalizedWorkspaceId || !normalizedPlan || !normalizedUserId) {
+    console.warn("[stripe webhook] plan sync skipped due to missing required context", {
+      eventId: input.event.id,
+      eventType: input.event.type,
+      workspaceId: normalizedWorkspaceId || null,
+      userId: normalizedUserId || null,
+      plan: normalizedPlan || null,
+    });
+    return {
+      effective: false,
+      wrote: {
+        users: { matched: 0, updated: 0 },
+        workspaces: { matched: 0, updated: 0 },
+        membership: { matched: 0, updated: 0 },
+      },
+      readback: {
+        userPlan: null,
+        workspacePlan: null,
+        membershipPlan: null,
+        activeWorkspaceId: null,
+      },
+    };
+  }
 
   const synced = await applyPlanSync({
-    workspaceId: input.workspaceId,
-    userId: ownerUserId,
+    workspaceId: normalizedWorkspaceId,
+    userId: normalizedUserId,
     plan: normalizedPlan,
     interval: input.interval,
     stripeCustomerId: input.customerId,
@@ -442,11 +467,11 @@ async function syncPlanSnapshotAndCheckEffectiveness(input: {
       tags: {
         "event.type": input.event.type,
         livemode: String(input.event.livemode),
-        workspaceId: input.workspaceId,
+        workspaceId: normalizedWorkspaceId,
       },
       extra: {
         eventId: input.event.id,
-        userId: ownerUserId || null,
+        userId: normalizedUserId || null,
         plan: normalizedPlan,
         wrote: synced.wrote,
         readback: synced.readback,
@@ -455,8 +480,8 @@ async function syncPlanSnapshotAndCheckEffectiveness(input: {
     console.warn("[stripe webhook] plan sync had no effect", {
       eventId: input.event.id,
       eventType: input.event.type,
-      workspaceId: input.workspaceId,
-      userId: ownerUserId || null,
+      workspaceId: normalizedWorkspaceId,
+      userId: normalizedUserId || null,
       plan: normalizedPlan,
       wrote: synced.wrote,
       readback: synced.readback,

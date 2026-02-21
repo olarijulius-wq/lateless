@@ -247,6 +247,27 @@ export async function POST(req: Request) {
         build,
       });
     }
+    const normalizedWorkspaceId = workspaceId.trim();
+    const normalizedRequestedPlan = requestedPlan.trim().toLowerCase();
+    const normalizedUserId = userId.trim();
+
+    if (!normalizedWorkspaceId || !normalizedUserId) {
+      return jsonFailure({
+        status: 409,
+        code: 'WORKSPACE_RESOLUTION_FAILED',
+        message: 'Could not resolve workspace/user context for plan sync.',
+        build,
+      });
+    }
+
+    if (!normalizedRequestedPlan) {
+      return jsonFailure({
+        status: 422,
+        code: 'PLAN_RESOLUTION_FAILED',
+        message: 'Could not resolve paid plan for plan sync.',
+        build,
+      });
+    }
 
     const customerId = parseStripeId(subscription.customer);
     const status = String(subscription.status).trim().toLowerCase();
@@ -283,9 +304,9 @@ export async function POST(req: Request) {
     )) as Array<{ id: string }>;
 
     const sync = await applyPlanSync({
-      workspaceId,
-      userId,
-      plan: requestedPlan,
+      workspaceId: normalizedWorkspaceId,
+      userId: normalizedUserId,
+      plan: normalizedRequestedPlan,
       interval,
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscription.id,
@@ -297,16 +318,16 @@ export async function POST(req: Request) {
     });
 
     const canonical = await readCanonicalWorkspacePlanSource({
-      workspaceId,
-      userId,
+      workspaceId: normalizedWorkspaceId,
+      userId: normalizedUserId,
     });
     const workspacePlan = normalizePlan(sync.readback.workspacePlan);
     const userPlan = normalizePlan(sync.readback.userPlan);
-    const normalizedRequestedPlan = normalizePlan(requestedPlan);
+    const normalizedRequestedPlanForCompare = normalizePlan(normalizedRequestedPlan);
     const effective =
       canonical.source === 'workspace.plan'
-        ? workspacePlan === normalizedRequestedPlan
-        : userPlan === normalizedRequestedPlan;
+        ? workspacePlan === normalizedRequestedPlanForCompare
+        : userPlan === normalizedRequestedPlanForCompare;
 
     await sql.unsafe(
       `
@@ -393,11 +414,16 @@ export async function POST(req: Request) {
 
     const message = error instanceof Error ? error.message : 'Unexpected reconcile failure';
     return jsonFailure({
-      status: 500,
-      code: 'RECONCILE_INTERNAL_ERROR',
-      message,
+      status: 409,
+      code: 'RECONCILE_FAILED',
+      message: 'Reconcile failed before plan sync could be completed.',
       build,
-      debug: error instanceof Error ? { stack: error.stack ?? null } : { error: String(error) },
+      debug:
+        process.env.NODE_ENV === 'development'
+          ? error instanceof Error
+            ? { message, stack: error.stack ?? null }
+            : { error: String(error) }
+          : undefined,
     });
   }
 }
