@@ -24,6 +24,9 @@ export default function PublicFooter() {
           <Link href="/terms" className={footerLinkClasses}>
             Terms
           </Link>
+          <Link href="/security" className={footerLinkClasses}>
+            Security
+          </Link>
           <a href={`mailto:${SUPPORT_EMAIL}`} className={footerLinkClasses}>
             Contact
           </a>

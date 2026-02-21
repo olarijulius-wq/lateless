@@ -27,6 +27,9 @@ export default function TopNav() {
           <Link href="/terms" className={`${navAnchorClasses} hidden lg:inline`}>
             Terms
           </Link>
+          <Link href="/security" className={`${navAnchorClasses} hidden lg:inline`}>
+            Security
+          </Link>
         </nav>
 
         <div className="flex items-center gap-2">

@@ -137,6 +137,40 @@ function parseMaybeUrl(input: string) {
   }
 }
 
+function normalizePathnameForCompare(pathname: string) {
+  if (!pathname) return '/';
+  return pathname !== '/' && pathname.endsWith('/') ? pathname.replace(/\/+$/, '') : pathname;
+}
+
+function normalizeUrlForCompare(input: string | null | undefined, resolvedSiteUrl: URL): string {
+  const trimmed = (input ?? '').trim();
+  if (!trimmed) return '';
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed, resolvedSiteUrl);
+  } catch {
+    return '';
+  }
+
+  if (parsed.hostname === 'lateless.org' && parsed.protocol === 'http:') {
+    parsed.protocol = 'https:';
+    parsed.port = '';
+  }
+
+  parsed.hash = '';
+  const normalizedPathname = normalizePathnameForCompare(parsed.pathname);
+  if (
+    (parsed.protocol === 'https:' && parsed.port === '443') ||
+    (parsed.protocol === 'http:' && parsed.port === '80')
+  ) {
+    parsed.port = '';
+  }
+
+  const pathnameForCompare = normalizedPathname === '/' ? '' : normalizedPathname;
+  return `${parsed.protocol}//${parsed.host}${pathnameForCompare}${parsed.search}`;
+}
+
 async function safeFetch(url: string) {
   try {
     const response = await fetch(url, {
@@ -390,7 +424,11 @@ async function checkNoindexHeaders(siteUrl: URL): Promise<{ check: CheckResult; 
   };
 }
 
-async function checkCanonical(siteUrl: URL, vercelEnv: string | null): Promise<{
+async function checkCanonical(
+  siteUrl: URL,
+  nodeEnv: string | null,
+  vercelEnv: string | null,
+): Promise<{
   check: CheckResult;
   raw: Record<string, unknown>;
 }> {
@@ -421,11 +459,20 @@ async function checkCanonical(siteUrl: URL, vercelEnv: string | null): Promise<{
     /<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["'][^>]*>/i,
   );
 
-  const canonicalIsProd = canonical?.startsWith('https://lateless.org/');
-  const ogIsProd = ogUrl ? ogUrl.startsWith('https://lateless.org/') : true;
+  const canonicalHrefNormalized = normalizeUrlForCompare(canonical, siteUrl);
+  const ogUrlNormalized = normalizeUrlForCompare(ogUrl, siteUrl);
+  const resolvedSiteUrlNormalized = normalizeUrlForCompare(siteUrl.toString(), siteUrl);
 
-  const canonicalForbidden = canonical ? isForbiddenCanonicalHost(canonical) : false;
-  const ogForbidden = ogUrl ? isForbiddenCanonicalHost(ogUrl) : false;
+  const canonicalIsProd = canonicalHrefNormalized.startsWith(resolvedSiteUrlNormalized);
+  const ogIsProd = ogUrl ? ogUrlNormalized.startsWith(resolvedSiteUrlNormalized) : true;
+  const inProduction = nodeEnv === 'production' || vercelEnv === 'production';
+
+  const canonicalForbidden =
+    (canonical ? isForbiddenCanonicalHost(canonical) : false) ||
+    (canonicalHrefNormalized ? isForbiddenCanonicalHost(canonicalHrefNormalized) : false);
+  const ogForbidden =
+    (ogUrl ? isForbiddenCanonicalHost(ogUrl) : false) ||
+    (ogUrlNormalized ? isForbiddenCanonicalHost(ogUrlNormalized) : false);
   const previewAllowed = vercelEnv === 'preview';
 
   let status: CheckStatus = 'pass';
@@ -437,23 +484,33 @@ async function checkCanonical(siteUrl: URL, vercelEnv: string | null): Promise<{
   }
 
   if (canonical && !canonicalIsProd) {
-    if (previewAllowed && canonicalForbidden) {
+    if (!inProduction && previewAllowed && canonicalForbidden) {
       status = status === 'fail' ? 'fail' : 'warn';
       notes.push('canonical uses preview/dev host in preview env');
     } else {
       status = 'fail';
-      notes.push(`canonical is not lateless.org (${canonical})`);
+      notes.push('canonical does not resolve to production site URL');
     }
   }
 
   if (ogUrl && !ogIsProd) {
-    if (previewAllowed && ogForbidden) {
+    if (!inProduction && previewAllowed && ogForbidden) {
       if (status === 'pass') status = 'warn';
-      notes.push(`og:url uses preview/dev host in preview env (${ogUrl})`);
+      notes.push('og:url uses preview/dev host in preview env');
     } else {
       status = 'fail';
-      notes.push(`og:url is not lateless.org (${ogUrl})`);
+      notes.push('og:url does not resolve to production site URL');
     }
+  }
+
+  if (inProduction && canonicalForbidden) {
+    status = 'fail';
+    notes.push('canonical uses forbidden host in production');
+  }
+
+  if (inProduction && ogForbidden) {
+    status = 'fail';
+    notes.push('og:url uses forbidden host in production');
   }
 
   return {
@@ -464,7 +521,7 @@ async function checkCanonical(siteUrl: URL, vercelEnv: string | null): Promise<{
       detail:
         notes.length > 0
           ? notes.join('; ')
-          : `canonical and og:url resolve to lateless.org (${canonical ?? 'missing canonical'}).`,
+          : 'canonical and og:url resolve to production site URL.',
       fixHint:
         'set NEXT_PUBLIC_SITE_URL/NEXT_PUBLIC_APP_URL and ensure site-url.ts resolves correctly in prod',
     },
@@ -473,7 +530,12 @@ async function checkCanonical(siteUrl: URL, vercelEnv: string | null): Promise<{
       status: response.status,
       canonical,
       ogUrl,
+      canonicalHrefNormalized,
+      ogUrlNormalized,
+      resolvedSiteUrlNormalized,
       previewAllowed,
+      inProduction,
+      notes,
     },
   };
 }
@@ -625,10 +687,17 @@ async function checkPublicIa(siteUrl: URL): Promise<{ check: CheckResult; raw: R
 
   const homepageHtml = await homeResponse.text();
   const hrefs = extractHrefs(homepageHtml);
+  const hrefPathnames = hrefs
+    .map((href) => {
+      const parsed = parseMaybeUrl(href);
+      if (parsed) return normalizePathnameForCompare(parsed.pathname);
+      if (href.startsWith('/')) return normalizePathnameForCompare(href);
+      return null;
+    })
+    .filter((value): value is string => !!value);
+  const hrefPathSet = new Set(hrefPathnames);
 
-  const missing = PUBLIC_IA_PATHS.filter(
-    (path) => !hrefs.includes(path) && !hrefs.includes(`${path}/`),
-  );
+  const missing = PUBLIC_IA_PATHS.filter((path) => !hrefPathSet.has(normalizePathnameForCompare(path)));
 
   const dashboardLinked = hrefs.some((href) => {
     const parsed = parseMaybeUrl(href);
@@ -681,6 +750,7 @@ async function checkPublicIa(siteUrl: URL): Promise<{ check: CheckResult; raw: R
     raw: {
       homeUrl,
       hrefCount: hrefs.length,
+      hrefPathnames,
       missing,
       broken,
       dashboardLinked,
@@ -859,7 +929,7 @@ export async function runLaunchReadinessChecks(actorEmail: string): Promise<Laun
     checkRobots(siteUrl),
     checkSitemap(siteUrl),
     checkNoindexHeaders(siteUrl),
-    checkCanonical(siteUrl, vercelEnv),
+    checkCanonical(siteUrl, nodeEnv, vercelEnv),
     checkOgImage(siteUrl),
     checkJsonLd(siteUrl),
     checkPublicIa(siteUrl),
