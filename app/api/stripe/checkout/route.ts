@@ -76,6 +76,7 @@ export async function POST(req: Request) {
 
   try {
     assertStripeConfig();
+    const allowPromotionCodes = process.env.STRIPE_ALLOW_PROMO_CODES === '1';
 
     await logFunnelEvent({
       userEmail: normalizedEmail,
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
 
       success_url: `${baseUrl}/dashboard/settings?success=1`,
       cancel_url: `${baseUrl}/dashboard/settings?canceled=1`,
+      ...(allowPromotionCodes ? { allow_promotion_codes: true } : {}),
     });
 
     return NextResponse.json({ url: checkoutSession.url });
