@@ -10,10 +10,12 @@ export default async function SettingsLayout({
 }) {
   let canViewFunnel = false;
   let currentUserEmail: string | null = null;
+  let currentUserRole: 'owner' | 'admin' | 'member' | null = null;
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
     currentUserEmail = context.userEmail;
+    currentUserRole = context.userRole;
     const hasWorkspaceAccess =
       context.userRole === 'owner' || context.userRole === 'admin';
     canViewFunnel =
@@ -21,6 +23,7 @@ export default async function SettingsLayout({
   } catch {
     canViewFunnel = false;
     currentUserEmail = null;
+    currentUserRole = null;
   }
 
   return (
@@ -33,6 +36,7 @@ export default async function SettingsLayout({
         <SettingsSectionsNav
           canViewFunnel={canViewFunnel}
           currentUserEmail={currentUserEmail}
+          currentUserRole={currentUserRole}
         />
       </SectionCard>
       {children}

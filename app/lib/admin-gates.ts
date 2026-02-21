@@ -9,3 +9,8 @@ export function isLaunchCheckAdminEmail(email: string | null | undefined): boole
   const normalized = (email ?? '').trim().toLowerCase();
   return normalized === PRIMARY_ADMIN_EMAIL;
 }
+
+export function isSmokeCheckAdminEmail(email: string | null | undefined): boolean {
+  const normalized = (email ?? '').trim().toLowerCase();
+  return normalized === PRIMARY_ADMIN_EMAIL;
+}

@@ -8,7 +8,11 @@ import {
   NEUTRAL_FOCUS_RING_CLASSES,
   NEUTRAL_INACTIVE_ITEM_CLASSES,
 } from '@/app/ui/dashboard/neutral-interaction';
-import { isLaunchCheckAdminEmail, isSettingsRemindersAdminEmail } from '@/app/lib/admin-gates';
+import {
+  isLaunchCheckAdminEmail,
+  isSettingsRemindersAdminEmail,
+  isSmokeCheckAdminEmail,
+} from '@/app/lib/admin-gates';
 
 const baseSections = [
   { name: 'Overview', href: '/dashboard/settings' },
@@ -33,13 +37,18 @@ const remindersSection = {
 export default function SettingsSectionsNav({
   canViewFunnel = false,
   currentUserEmail,
+  currentUserRole,
 }: {
   canViewFunnel?: boolean;
   currentUserEmail?: string | null;
+  currentUserRole?: 'owner' | 'admin' | 'member' | null;
 }) {
   const pathname = usePathname();
   const canViewSettingsReminders = isSettingsRemindersAdminEmail(currentUserEmail);
   const canViewLaunchCheck = isLaunchCheckAdminEmail(currentUserEmail);
+  const hasWorkspaceAdminRole = currentUserRole === 'owner' || currentUserRole === 'admin';
+  const canViewSmokeCheck =
+    hasWorkspaceAdminRole && isSmokeCheckAdminEmail(currentUserEmail);
 
   const sections = canViewSettingsReminders
     ? [...baseSections, remindersSection]
@@ -49,9 +58,13 @@ export default function SettingsSectionsNav({
     ? [...sections, { name: 'Launch readiness', href: '/dashboard/settings/launch-check' }]
     : sections;
 
-  const resolvedSections = canViewFunnel
-    ? [...withLaunchCheck, { name: 'Funnel', href: '/dashboard/settings/funnel' }]
+  const withSmokeCheck = canViewSmokeCheck
+    ? [...withLaunchCheck, { name: 'Smoke check', href: '/dashboard/settings/smoke-check' }]
     : withLaunchCheck;
+
+  const resolvedSections = canViewFunnel
+    ? [...withSmokeCheck, { name: 'Funnel', href: '/dashboard/settings/funnel' }]
+    : withSmokeCheck;
 
   return (
     <div className="flex flex-wrap gap-2">

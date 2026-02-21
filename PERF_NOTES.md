@@ -179,3 +179,20 @@ How to confirm throttling:
   - `select date_trunc('day', created_at at time zone 'Europe/Tallinn')::date as day, count(*) from public.invoices where lower(user_email)=lower('<email>') and created_at >= now() - interval '7 days' group by 1 order by 1 desc;`
 - Quick 7-day created counts (workspace scope):
   - `select date_trunc('day', created_at at time zone 'Europe/Tallinn')::date as day, count(*) from public.invoices where workspace_id = '<workspace_id>' and created_at >= now() - interval '7 days' group by 1 order by 1 desc;`
+
+## How To Test In Production (Smoke Check)
+
+- Sign in as `olarijulius@gmail.com` with owner/admin role in the target workspace.
+- Open `/dashboard/settings/smoke-check` and click **Run checks**.
+- Confirm table renders pass/warn/fail/manual items for Stripe config/API, webhook dedupe, email primitives, schema sanity, and observability.
+- Click **Send test email**:
+  - Recipient must be your own account email.
+  - Subject contains `[Lateless Test]`.
+  - Re-clicking inside 10 minutes should return a rate-limit message.
+- Confirm latest run timestamp updates in Europe/Tallinn and **Copy report** copies JSON payload.
+- Verify persistence in DB:
+  - `select ran_at, actor_email, workspace_id, ok, payload->>'kind' as kind from public.smoke_checks order by ran_at desc limit 20;`
+- Complete manual checklist items:
+  - Stripe event replay (replay same event twice and verify dedupe row behavior).
+  - SPF/DKIM/DMARC DNS verification.
+  - Migration completeness verification from deploy/migration logs.

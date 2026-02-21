@@ -1,0 +1,1027 @@
+import 'server-only';
+
+import postgres from 'postgres';
+import Stripe from 'stripe';
+import {
+  ensureWorkspaceContextForCurrentUser,
+  type WorkspaceContext,
+} from '@/app/lib/workspaces';
+import { isSmokeCheckAdminEmail } from '@/app/lib/admin-gates';
+import {
+  SMTP_MIGRATION_REQUIRED_CODE,
+  fetchWorkspaceEmailSettings,
+  sendWorkspaceEmail,
+} from '@/app/lib/smtp-settings';
+import { resolveSiteUrlDebug } from '@/app/lib/seo/site-url';
+
+const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+const TEST_EMAIL_WINDOW_MS = 10 * 60 * 1000;
+
+type CheckStatus = 'pass' | 'warn' | 'fail' | 'manual';
+
+export type SmokeCheckResult = {
+  id: string;
+  title: string;
+  status: CheckStatus;
+  detail: string;
+  fixHint: string;
+  actionLabel?: string;
+  actionUrl?: string;
+};
+
+export type SmokeCheckPayload = {
+  kind: 'smoke_run';
+  ok: boolean;
+  env: {
+    nodeEnv: string | null;
+    vercelEnv: string | null;
+    siteUrl: string;
+  };
+  checks: SmokeCheckResult[];
+  raw: Record<string, unknown>;
+};
+
+type SmokeCheckRunRow = {
+  ran_at: Date;
+  actor_email: string;
+  workspace_id: string | null;
+  env: {
+    node_env: string | null;
+    vercel_env: string | null;
+    site_url: string;
+  };
+  payload: SmokeCheckPayload;
+  ok: boolean;
+};
+
+export type SmokeCheckRunRecord = {
+  ranAt: string;
+  actorEmail: string;
+  workspaceId: string | null;
+  env: {
+    node_env: string | null;
+    vercel_env: string | null;
+    site_url: string;
+  };
+  payload: SmokeCheckPayload;
+  ok: boolean;
+};
+
+type TestEmailActionPayload = {
+  kind: 'test_email';
+  workspaceId: string;
+  actorEmail: string;
+  recipient: string;
+  sentAt: string;
+  success: boolean;
+  rateLimited: boolean;
+  error: string | null;
+};
+
+type StripeErrorClassification =
+  | 'invalid_api_key'
+  | 'revoked'
+  | 'network'
+  | 'permissions'
+  | 'unknown';
+
+function normalizeEmail(email: string | null | undefined) {
+  return (email ?? '').trim().toLowerCase();
+}
+
+function resolveExpectedStripeMode(nodeEnv: string | null, vercelEnv: string | null): 'live' | 'test' {
+  return nodeEnv === 'production' || vercelEnv === 'production' ? 'live' : 'test';
+}
+
+function suffixLast4(value: string | null | undefined) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(-4);
+}
+
+function checkPrefix(value: string | null | undefined, prefix: string) {
+  if (!value) return false;
+  return value.trim().startsWith(prefix);
+}
+
+function classifyStripeError(error: unknown): StripeErrorClassification {
+  const stripeError = error as {
+    code?: string;
+    type?: string;
+    statusCode?: number;
+    message?: string;
+  };
+  const code = (stripeError?.code ?? '').toLowerCase();
+  const message = (stripeError?.message ?? '').toLowerCase();
+
+  if (
+    code === 'api_key_expired' ||
+    code === 'invalid_api_key' ||
+    message.includes('invalid api key') ||
+    message.includes('no api key provided')
+  ) {
+    return 'invalid_api_key';
+  }
+  if (message.includes('revoked') || message.includes('expired key')) {
+    return 'revoked';
+  }
+  if (
+    stripeError?.type === 'StripePermissionError' ||
+    stripeError?.statusCode === 403 ||
+    message.includes('does not have access')
+  ) {
+    return 'permissions';
+  }
+  if (
+    code === 'ecconnreset' ||
+    code === 'etimedout' ||
+    code === 'enotfound' ||
+    message.includes('network') ||
+    message.includes('timed out') ||
+    message.includes('failed to fetch')
+  ) {
+    return 'network';
+  }
+  return 'unknown';
+}
+
+function summarizeOk(checks: SmokeCheckResult[]) {
+  return checks.every((check) => check.status !== 'fail');
+}
+
+async function safeFetch(url: string) {
+  try {
+    return await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      redirect: 'manual',
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function getSmokeCheckAccessContext(): Promise<WorkspaceContext | null> {
+  try {
+    const context = await ensureWorkspaceContextForCurrentUser();
+    const hasWorkspaceAccess = context.userRole === 'owner' || context.userRole === 'admin';
+    const allowlistedEmail = isSmokeCheckAdminEmail(context.userEmail);
+    if (!hasWorkspaceAccess || !allowlistedEmail) {
+      return null;
+    }
+    return context;
+  } catch {
+    return null;
+  }
+}
+
+async function persistSmokeCheckRow(input: {
+  actorEmail: string;
+  workspaceId: string | null;
+  env: {
+    node_env: string | null;
+    vercel_env: string | null;
+    site_url: string;
+  };
+  payload: Record<string, unknown>;
+  ok: boolean;
+}) {
+  try {
+    await sql`
+      insert into public.smoke_checks (actor_email, workspace_id, env, payload, ok)
+      values (
+        ${normalizeEmail(input.actorEmail)},
+        ${input.workspaceId},
+        ${sql.json(input.env as unknown as postgres.JSONValue)},
+        ${sql.json(input.payload as unknown as postgres.JSONValue)},
+        ${input.ok}
+      )
+    `;
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code === '42P01'
+    ) {
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function getLatestSmokeCheckRun(): Promise<SmokeCheckRunRecord | null> {
+  try {
+    const [row] = await sql<SmokeCheckRunRow[]>`
+      select ran_at, actor_email, workspace_id, env, payload, ok
+      from public.smoke_checks
+      where payload->>'kind' = 'smoke_run'
+      order by ran_at desc
+      limit 1
+    `;
+    if (!row) return null;
+
+    return {
+      ranAt: row.ran_at.toISOString(),
+      actorEmail: row.actor_email,
+      workspaceId: row.workspace_id,
+      env: row.env,
+      payload: row.payload,
+      ok: row.ok,
+    };
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code === '42P01'
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function getLatestTestEmailAction(input: {
+  workspaceId: string;
+  actorEmail: string;
+}): Promise<{ ranAt: string; payload: TestEmailActionPayload } | null> {
+  try {
+    const [row] = await sql<{
+      ran_at: Date;
+      payload: TestEmailActionPayload;
+    }[]>`
+      select ran_at, payload
+      from public.smoke_checks
+      where workspace_id = ${input.workspaceId}
+        and actor_email = ${normalizeEmail(input.actorEmail)}
+        and payload->>'kind' = 'test_email'
+      order by ran_at desc
+      limit 1
+    `;
+    if (!row) return null;
+    return {
+      ranAt: row.ran_at.toISOString(),
+      payload: row.payload,
+    };
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code === '42P01'
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function checkStripeConfiguration(nodeEnv: string | null, vercelEnv: string | null): Promise<{
+  check: SmokeCheckResult;
+  raw: Record<string, unknown>;
+  expectedMode: 'live' | 'test';
+}> {
+  const expectedMode = resolveExpectedStripeMode(nodeEnv, vercelEnv);
+  const secretKey = process.env.STRIPE_SECRET_KEY ?? null;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? null;
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY ?? null;
+  const connectClientId = process.env.STRIPE_CONNECT_CLIENT_ID ?? null;
+  const requiredSecretPrefix = expectedMode === 'live' ? 'sk_live_' : 'sk_test_';
+  const requiredPublicPrefix = expectedMode === 'live' ? 'pk_live_' : 'pk_test_';
+
+  const failures: string[] = [];
+  const warnings: string[] = [];
+
+  if (!checkPrefix(secretKey, requiredSecretPrefix)) {
+    failures.push(
+      `STRIPE_SECRET_KEY must start with ${requiredSecretPrefix} for ${expectedMode} mode.`,
+    );
+  }
+  if (!checkPrefix(webhookSecret, 'whsec_')) {
+    failures.push('STRIPE_WEBHOOK_SECRET must start with whsec_.');
+  }
+  if (!connectClientId?.trim()) {
+    failures.push('STRIPE_CONNECT_CLIENT_ID is required when Stripe Connect is enabled.');
+  }
+  if (publishableKey) {
+    if (!checkPrefix(publishableKey, requiredPublicPrefix)) {
+      failures.push(
+        `STRIPE_PUBLISHABLE_KEY must start with ${requiredPublicPrefix} for ${expectedMode} mode.`,
+      );
+    }
+  } else {
+    warnings.push('STRIPE_PUBLISHABLE_KEY is not set.');
+  }
+
+  const status: CheckStatus =
+    failures.length > 0 ? 'fail' : warnings.length > 0 ? 'warn' : 'pass';
+
+  const detail =
+    failures.length > 0
+      ? failures.join(' ')
+      : warnings.length > 0
+        ? `Config warnings: ${warnings.join(' ')}`
+        : `Stripe env prefixes look correct for ${expectedMode} mode.`;
+
+  return {
+    check: {
+      id: 'stripe-config-sanity',
+      title: 'Stripe live/test configuration sanity',
+      status,
+      detail,
+      fixHint:
+        failures[0] ??
+        'Set Stripe keys in Vercel Project Settings -> Environment Variables and redeploy.',
+    },
+    raw: {
+      modeDetected: expectedMode,
+      keysPresent: {
+        stripeSecretKey: Boolean(secretKey),
+        stripeWebhookSecret: Boolean(webhookSecret),
+        stripePublishableKey: Boolean(publishableKey),
+        stripeConnectClientId: Boolean(connectClientId),
+      },
+      suffixesLast4: {
+        stripeSecretKey: suffixLast4(secretKey),
+        stripeWebhookSecret: suffixLast4(webhookSecret),
+        stripePublishableKey: suffixLast4(publishableKey),
+        stripeConnectClientId: suffixLast4(connectClientId),
+      },
+      warnings,
+      requiredSecretPrefix,
+      requiredPublicPrefix,
+    },
+    expectedMode,
+  };
+}
+
+async function checkStripeApiReachability(expectedMode: 'live' | 'test'): Promise<{
+  check: SmokeCheckResult;
+  raw: Record<string, unknown>;
+}> {
+  const secretKey = process.env.STRIPE_SECRET_KEY?.trim() ?? '';
+  if (!secretKey) {
+    return {
+      check: {
+        id: 'stripe-api-read',
+        title: 'Stripe API reachability + account mode',
+        status: 'fail',
+        detail: 'Stripe API read check failed: STRIPE_SECRET_KEY is missing.',
+        fixHint: 'Set STRIPE_SECRET_KEY and redeploy.',
+      },
+      raw: {
+        classification: 'invalid_api_key',
+        message: 'STRIPE_SECRET_KEY missing',
+      },
+    };
+  }
+
+  try {
+    const stripe = new Stripe(secretKey);
+    const balance = await stripe.balance.retrieve();
+    const livemode = Boolean(balance.livemode);
+    const expectedLivemode = expectedMode === 'live';
+    const mismatch = livemode !== expectedLivemode;
+
+    return {
+      check: {
+        id: 'stripe-api-read',
+        title: 'Stripe API reachability + account mode',
+        status: mismatch ? 'fail' : 'pass',
+        detail: mismatch
+          ? `Stripe account livemode=${livemode} does not match expected ${expectedLivemode}.`
+          : `Stripe API read succeeded; account livemode=${livemode}.`,
+        fixHint: mismatch
+          ? 'Use matching Stripe key mode for this environment and redeploy.'
+          : 'None.',
+      },
+      raw: {
+        object: balance.object,
+        livemode,
+        expectedLivemode,
+      },
+    };
+  } catch (error) {
+    const classification = classifyStripeError(error);
+    const message = error instanceof Error ? error.message : 'Unknown Stripe API failure.';
+
+    return {
+      check: {
+        id: 'stripe-api-read',
+        title: 'Stripe API reachability + account mode',
+        status: 'fail',
+        detail: `Stripe API read failed (${classification}): ${message}`,
+        fixHint:
+          classification === 'invalid_api_key'
+            ? 'Set a valid STRIPE_SECRET_KEY.'
+            : classification === 'revoked'
+              ? 'Rotate and redeploy STRIPE_SECRET_KEY (old key revoked/expired).'
+              : classification === 'permissions'
+                ? 'Check Stripe key permissions and account access.'
+                : classification === 'network'
+                  ? 'Check outbound network connectivity from runtime to api.stripe.com.'
+                  : 'Inspect Stripe logs and runtime logs for the failure.',
+      },
+      raw: {
+        classification,
+        message,
+      },
+    };
+  }
+}
+
+async function checkWebhookDedupeSafety(): Promise<{
+  check: SmokeCheckResult;
+  manual: SmokeCheckResult;
+  raw: Record<string, unknown>;
+}> {
+  const [exists] = await sql<{
+    has_billing_events: boolean;
+    has_webhook_events: boolean;
+  }[]>`
+    select
+      to_regclass('public.billing_events') is not null as has_billing_events,
+      to_regclass('public.stripe_webhook_events') is not null as has_webhook_events
+  `;
+
+  const table = exists?.has_billing_events
+    ? 'billing_events'
+    : exists?.has_webhook_events
+      ? 'stripe_webhook_events'
+      : null;
+  const eventIdColumn = table === 'billing_events' ? 'stripe_event_id' : 'event_id';
+  const timeColumn = table === 'billing_events' ? 'created_at' : 'received_at';
+
+  const manual: SmokeCheckResult = {
+    id: 'stripe-webhook-replay-manual',
+    title: 'Stripe webhook replay idempotency (manual)',
+    status: 'manual',
+    detail:
+      'Replay the same Stripe event twice from Stripe Dashboard -> Events. Expected: only one DB row for that event id; second delivery should be deduped.',
+    fixHint:
+      'Use Stripe Dashboard event replay and verify dedupe in webhook ledger table.',
+    actionLabel: 'Open Stripe events',
+    actionUrl: 'https://dashboard.stripe.com/events',
+  };
+
+  if (!table) {
+    return {
+      check: {
+        id: 'webhook-dedupe',
+        title: 'Webhook ledger + unique dedupe safety',
+        status: 'fail',
+        detail: 'No webhook ledger table found (expected billing_events or stripe_webhook_events).',
+        fixHint: 'Create a webhook ledger table with unique event id index for idempotency.',
+      },
+      manual,
+      raw: {
+        hasBillingEvents: Boolean(exists?.has_billing_events),
+        hasStripeWebhookEvents: Boolean(exists?.has_webhook_events),
+      },
+    };
+  }
+
+  const indexes = await sql<{ indexname: string; indexdef: string }[]>`
+    select indexname, indexdef
+    from pg_indexes
+    where schemaname = 'public'
+      and tablename = ${table}
+  `;
+
+  const uniqueIndex = indexes.find((idx) => {
+    const def = idx.indexdef.toLowerCase();
+    if (!def.includes('unique')) return false;
+    if (table === 'billing_events') {
+      return def.includes('(stripe_event_id)');
+    }
+    return def.includes('(event_id)');
+  });
+
+  const duplicateRows = await sql.unsafe<{ event_id: string; count: number }[]>(
+    `
+      select event_id, count(*)::int as count
+      from (
+        select ${eventIdColumn} as event_id
+        from public.${table}
+        where ${eventIdColumn} is not null
+        order by ${timeColumn} desc
+        limit 50
+      ) recent
+      group by event_id
+      having count(*) > 1
+      order by count(*) desc, event_id asc
+    `,
+  );
+
+  const duplicatesCount = duplicateRows.length;
+  const failures: string[] = [];
+  if (!uniqueIndex) failures.push(`Unique dedupe index missing on ${table}.${eventIdColumn}.`);
+  if (duplicatesCount > 0) failures.push(`Found ${duplicatesCount} duplicate event ids in last 50 rows.`);
+
+  return {
+    check: {
+      id: 'webhook-dedupe',
+      title: 'Webhook ledger + unique dedupe safety',
+      status: failures.length > 0 ? 'fail' : 'pass',
+      detail:
+        failures.length > 0
+          ? failures.join(' ')
+          : `${table} has unique event id dedupe and no duplicates in last 50 rows.`,
+      fixHint:
+        failures[0] ??
+        `Keep unique index on ${table}.${eventIdColumn} and guard replays with idempotent handling.`,
+    },
+    manual,
+    raw: {
+      table,
+      eventIdColumn,
+      uniqueIndex: uniqueIndex?.indexname ?? null,
+      indexes: indexes.map((idx) => idx.indexname),
+      duplicatesCount,
+      duplicateEventIds: duplicateRows.map((row) => row.event_id),
+    },
+  };
+}
+
+async function checkEmailPrimitives(workspaceId: string, actorEmail: string): Promise<{
+  check: SmokeCheckResult;
+  manualChecks: SmokeCheckResult[];
+  raw: Record<string, unknown>;
+}> {
+  const manualChecks: SmokeCheckResult[] = [
+    {
+      id: 'email-spf-manual',
+      title: 'SPF record check (manual)',
+      status: 'manual',
+      detail: 'Confirm your sender domain has a valid SPF TXT record authorizing your mail provider.',
+      fixHint: 'Add/verify SPF record in DNS for your sending domain.',
+      actionLabel: 'Open help',
+      actionUrl: '/help',
+    },
+    {
+      id: 'email-dkim-manual',
+      title: 'DKIM record check (manual)',
+      status: 'manual',
+      detail: 'Confirm DKIM selector records are published and signing is enabled in your email provider.',
+      fixHint: 'Publish DKIM DNS records and enable signing.',
+      actionLabel: 'SMTP settings',
+      actionUrl: '/dashboard/settings/smtp',
+    },
+    {
+      id: 'email-dmarc-manual',
+      title: 'DMARC policy check (manual)',
+      status: 'manual',
+      detail: 'Confirm _dmarc TXT record exists with policy and reporting addresses.',
+      fixHint: 'Publish a DMARC TXT record (start with p=none, then tighten).',
+      actionLabel: 'Open help',
+      actionUrl: '/help',
+    },
+  ];
+
+  try {
+    const settings = await fetchWorkspaceEmailSettings(workspaceId);
+    const latestTest = await getLatestTestEmailAction({ workspaceId, actorEmail });
+
+    const requiredIssues: string[] = [];
+    if (settings.provider === 'smtp') {
+      if (!settings.smtpHost.trim()) requiredIssues.push('smtpHost missing');
+      if (!settings.smtpPort) requiredIssues.push('smtpPort missing');
+      if (!settings.smtpUsername.trim()) requiredIssues.push('smtpUsername missing');
+      if (!settings.fromEmail.trim()) requiredIssues.push('fromEmail missing');
+      if (!settings.smtpPasswordPresent) requiredIssues.push('smtpPassword missing');
+    } else {
+      if (!process.env.RESEND_API_KEY?.trim()) requiredIssues.push('RESEND_API_KEY missing');
+      if (!process.env.REMINDER_FROM_EMAIL?.trim()) requiredIssues.push('REMINDER_FROM_EMAIL missing');
+    }
+
+    const detailParts = [
+      `Provider: ${settings.provider}.`,
+      requiredIssues.length > 0
+        ? `Missing: ${requiredIssues.join(', ')}.`
+        : 'Provider settings look sane.',
+    ];
+
+    if (latestTest?.payload?.sentAt) {
+      detailParts.push(`Last test email attempt: ${latestTest.payload.sentAt}.`);
+    }
+
+    return {
+      check: {
+        id: 'email-primitives',
+        title: 'Email deliverability primitives + safe test path',
+        status: requiredIssues.length > 0 ? 'warn' : 'pass',
+        detail: detailParts.join(' '),
+        fixHint:
+          requiredIssues.length > 0
+            ? 'Configure missing SMTP/Resend settings in Settings -> SMTP.'
+            : 'Use "Send test email" to validate mailbox delivery safely.',
+      },
+      manualChecks,
+      raw: {
+        provider: settings.provider,
+        smtpHost: settings.smtpHost ? 'set' : 'missing',
+        smtpPort: settings.smtpPort,
+        smtpUsername: settings.smtpUsername ? 'set' : 'missing',
+        smtpPasswordPresent: settings.smtpPasswordPresent,
+        fromEmail: settings.fromEmail ? 'set' : 'missing',
+        resendApiKeyPresent: Boolean(process.env.RESEND_API_KEY?.trim()),
+        reminderFromEmailPresent: Boolean(process.env.REMINDER_FROM_EMAIL?.trim()),
+        latestTestEmail: latestTest,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to read email settings.';
+    const missingMigration = message === SMTP_MIGRATION_REQUIRED_CODE;
+
+    return {
+      check: {
+        id: 'email-primitives',
+        title: 'Email deliverability primitives + safe test path',
+        status: 'warn',
+        detail: missingMigration
+          ? 'SMTP schema migration is required before this check can validate settings.'
+          : `Could not verify email settings: ${message}`,
+        fixHint: missingMigration
+          ? 'Run SMTP migrations (008 and 021) and retry.'
+          : 'Open Settings -> SMTP and verify provider configuration.',
+      },
+      manualChecks,
+      raw: {
+        error: message,
+      },
+    };
+  }
+}
+
+async function checkDbSchemaSanity(): Promise<{
+  check: SmokeCheckResult;
+  manual: SmokeCheckResult;
+  raw: Record<string, unknown>;
+}> {
+  const [row] = await sql<{
+    has_invoices_created_at: boolean;
+    has_invoice_email_logs: boolean;
+    has_reminder_runs: boolean;
+    has_job_locks: boolean;
+    has_dunning_state: boolean;
+    has_billing_events: boolean;
+    has_schema_migrations: boolean;
+    has_knex_migrations: boolean;
+    has_prisma_migrations: boolean;
+  }[]>`
+    select
+      exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'invoices'
+          and column_name = 'created_at'
+      ) as has_invoices_created_at,
+      to_regclass('public.invoice_email_logs') is not null as has_invoice_email_logs,
+      to_regclass('public.reminder_runs') is not null as has_reminder_runs,
+      to_regclass('public.job_locks') is not null as has_job_locks,
+      to_regclass('public.dunning_state') is not null as has_dunning_state,
+      to_regclass('public.billing_events') is not null as has_billing_events,
+      to_regclass('public.schema_migrations') is not null as has_schema_migrations,
+      to_regclass('public.knex_migrations') is not null as has_knex_migrations,
+      to_regclass('public._prisma_migrations') is not null as has_prisma_migrations
+  `;
+
+  const mustHaveMissing: string[] = [];
+  if (!row?.has_invoices_created_at) mustHaveMissing.push('invoices.created_at');
+  if (!row?.has_invoice_email_logs) mustHaveMissing.push('invoice_email_logs');
+  if (!row?.has_reminder_runs) mustHaveMissing.push('reminder_runs');
+  if (!row?.has_job_locks) mustHaveMissing.push('job_locks');
+
+  const recoveryTablesPresent = Boolean(row?.has_dunning_state || row?.has_billing_events);
+
+  const detailParts = [];
+  if (mustHaveMissing.length > 0) {
+    detailParts.push(`Missing required schema: ${mustHaveMissing.join(', ')}.`);
+  } else {
+    detailParts.push('Required launch schema objects are present.');
+  }
+  if (!recoveryTablesPresent) {
+    detailParts.push('Recovery tables (dunning_state/billing_events) not found.');
+  }
+
+  const migrationTableDetected = Boolean(
+    row?.has_schema_migrations || row?.has_knex_migrations || row?.has_prisma_migrations,
+  );
+
+  return {
+    check: {
+      id: 'db-schema-sanity',
+      title: 'DB migrations/schema sanity',
+      status: mustHaveMissing.length > 0 ? 'fail' : recoveryTablesPresent ? 'pass' : 'warn',
+      detail: detailParts.join(' '),
+      fixHint:
+        mustHaveMissing[0] ??
+        (recoveryTablesPresent
+          ? 'Keep migrations applied in all production environments.'
+          : 'If failed-payment recovery is enabled, apply billing/dunning migrations.'),
+    },
+    manual: {
+      id: 'db-pending-migrations-manual',
+      title: 'Pending migrations check (manual)',
+      status: 'manual',
+      detail: migrationTableDetected
+        ? 'Migration table detected. Compare applied migration versions against repository migration files before launch.'
+        : 'No migration tracking table detected. Verify deployment migration logs manually.',
+      fixHint: 'Confirm all migration files were applied in production before launch.',
+    },
+    raw: {
+      hasInvoicesCreatedAt: Boolean(row?.has_invoices_created_at),
+      hasInvoiceEmailLogs: Boolean(row?.has_invoice_email_logs),
+      hasReminderRuns: Boolean(row?.has_reminder_runs),
+      hasJobLocks: Boolean(row?.has_job_locks),
+      hasDunningState: Boolean(row?.has_dunning_state),
+      hasBillingEvents: Boolean(row?.has_billing_events),
+      migrationTableDetected,
+    },
+  };
+}
+
+async function checkObservability(nodeEnv: string | null, vercelEnv: string | null): Promise<{
+  checks: SmokeCheckResult[];
+  raw: Record<string, unknown>;
+}> {
+  const inProduction = nodeEnv === 'production' || vercelEnv === 'production';
+  const sentryDsn = process.env.SENTRY_DSN?.trim() ?? '';
+  const sentryCheck: SmokeCheckResult = {
+    id: 'observability-sentry-dsn',
+    title: 'Sentry DSN configured',
+    status: inProduction && !sentryDsn ? 'warn' : 'pass',
+    detail:
+      inProduction && !sentryDsn
+        ? 'SENTRY_DSN is not set in production.'
+        : sentryDsn
+          ? 'SENTRY_DSN is configured.'
+          : 'SENTRY_DSN not set (non-production).',
+    fixHint:
+      inProduction && !sentryDsn
+        ? 'Set SENTRY_DSN in production environment variables.'
+        : 'None.',
+  };
+
+  const resolved = resolveSiteUrlDebug();
+  const healthUrl = new URL('/api/health', resolved.url).toString();
+  const response = await safeFetch(healthUrl);
+
+  const healthCheck: SmokeCheckResult = {
+    id: 'observability-health-endpoint',
+    title: '/api/health reachable',
+    status: !response
+      ? 'fail'
+      : response.status === 200
+        ? 'pass'
+        : 'fail',
+    detail: !response
+      ? `Could not reach ${healthUrl}.`
+      : response.status === 200
+        ? '/api/health returned HTTP 200.'
+        : `/api/health returned HTTP ${response.status}.`,
+    fixHint: !response || response.status !== 200 ? 'Ensure /api/health route is deployed and publicly reachable.' : 'None.',
+    actionLabel: 'Open health',
+    actionUrl: healthUrl,
+  };
+
+  return {
+    checks: [sentryCheck, healthCheck],
+    raw: {
+      inProduction,
+      sentryDsnPresent: Boolean(sentryDsn),
+      healthUrl,
+      healthStatus: response?.status ?? null,
+    },
+  };
+}
+
+export async function runProductionSmokeChecks(context: WorkspaceContext): Promise<SmokeCheckPayload> {
+  const nodeEnv = process.env.NODE_ENV ?? null;
+  const vercelEnv = process.env.VERCEL_ENV ?? null;
+  const resolved = resolveSiteUrlDebug();
+
+  const stripeConfig = await checkStripeConfiguration(nodeEnv, vercelEnv);
+  const stripeApi = await checkStripeApiReachability(stripeConfig.expectedMode);
+  const webhook = await checkWebhookDedupeSafety();
+  const email = await checkEmailPrimitives(context.workspaceId, context.userEmail);
+  const dbSchema = await checkDbSchemaSanity();
+  const observability = await checkObservability(nodeEnv, vercelEnv);
+
+  const checks = [
+    stripeConfig.check,
+    stripeApi.check,
+    webhook.check,
+    webhook.manual,
+    email.check,
+    ...email.manualChecks,
+    dbSchema.check,
+    dbSchema.manual,
+    ...observability.checks,
+  ];
+
+  const payload: SmokeCheckPayload = {
+    kind: 'smoke_run',
+    ok: summarizeOk(checks),
+    env: {
+      nodeEnv,
+      vercelEnv,
+      siteUrl: resolved.url.toString(),
+    },
+    checks,
+    raw: {
+      stripeConfig: stripeConfig.raw,
+      stripeApi: stripeApi.raw,
+      webhook: webhook.raw,
+      email: email.raw,
+      dbSchema: dbSchema.raw,
+      observability: observability.raw,
+      resolver: {
+        source: resolved.source,
+        usedEnvKey: resolved.usedEnvKey,
+        envValues: resolved.envValues,
+      },
+      safety: {
+        stripeWrites: false,
+        paymentChargesAttempted: false,
+        webhookWritesAttempted: false,
+        redirectMode: 'manual',
+      },
+    },
+  };
+
+  await persistSmokeCheckRow({
+    actorEmail: context.userEmail,
+    workspaceId: context.workspaceId,
+    env: {
+      node_env: nodeEnv,
+      vercel_env: vercelEnv,
+      site_url: resolved.url.toString(),
+    },
+    payload: payload as unknown as Record<string, unknown>,
+    ok: payload.ok,
+  });
+
+  return payload;
+}
+
+export async function getSmokeCheckPingPayload() {
+  const resolved = resolveSiteUrlDebug();
+  return {
+    env: {
+      nodeEnv: process.env.NODE_ENV ?? null,
+      vercelEnv: process.env.VERCEL_ENV ?? null,
+      siteUrl: resolved.url.toString(),
+    },
+    lastRun: await getLatestSmokeCheckRun(),
+  };
+}
+
+export async function sendSmokeCheckTestEmail(context: WorkspaceContext): Promise<{
+  ok: boolean;
+  rateLimited: boolean;
+  retryAfterSec: number | null;
+  message: string;
+  sentAt: string | null;
+}> {
+  const now = new Date();
+  const recipient = normalizeEmail(context.userEmail);
+  const actorEmail = normalizeEmail(context.userEmail);
+  const workspaceId = context.workspaceId;
+  const resolved = resolveSiteUrlDebug();
+  const earliestAllowed = new Date(now.getTime() - TEST_EMAIL_WINDOW_MS);
+
+  let recent: { ran_at: Date } | undefined;
+  try {
+    [recent] = await sql<{ ran_at: Date }[]>`
+      select ran_at
+      from public.smoke_checks
+      where workspace_id = ${workspaceId}
+        and actor_email = ${actorEmail}
+        and payload->>'kind' = 'test_email'
+        and ran_at > ${earliestAllowed.toISOString()}
+      order by ran_at desc
+      limit 1
+    `;
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: string }).code !== '42P01'
+    ) {
+      throw error;
+    }
+  }
+
+  if (recent?.ran_at) {
+    const retryAfterMs = TEST_EMAIL_WINDOW_MS - (now.getTime() - recent.ran_at.getTime());
+    const retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1000));
+    const payload: TestEmailActionPayload = {
+      kind: 'test_email',
+      workspaceId,
+      actorEmail,
+      recipient,
+      sentAt: now.toISOString(),
+      success: false,
+      rateLimited: true,
+      error: `Rate limited. Retry in ${retryAfterSec}s.`,
+    };
+
+    await persistSmokeCheckRow({
+      actorEmail,
+      workspaceId,
+      env: {
+        node_env: process.env.NODE_ENV ?? null,
+        vercel_env: process.env.VERCEL_ENV ?? null,
+        site_url: resolved.url.toString(),
+      },
+      payload: payload as unknown as Record<string, unknown>,
+      ok: false,
+    });
+
+    return {
+      ok: false,
+      rateLimited: true,
+      retryAfterSec,
+      message: `Rate limited. Retry in ${retryAfterSec}s.`,
+      sentAt: null,
+    };
+  }
+
+  const subject = `[Lateless Test] Smoke check email (${process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown'})`;
+  const bodyText = [
+    'Lateless smoke check test email.',
+    `Timestamp: ${now.toISOString()}`,
+    `Environment: ${process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown'}`,
+    `Workspace ID: ${workspaceId}`,
+    `Actor: ${actorEmail}`,
+  ].join('\n');
+  const bodyHtml = `
+    <p><strong>Lateless smoke check test email.</strong></p>
+    <p>Timestamp: ${now.toISOString()}</p>
+    <p>Environment: ${process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? 'unknown'}</p>
+    <p>Workspace ID: ${workspaceId}</p>
+    <p>Actor: ${actorEmail}</p>
+  `;
+
+  let success = false;
+  let errorMessage: string | null = null;
+
+  try {
+    await sendWorkspaceEmail({
+      workspaceId,
+      toEmail: recipient,
+      subject,
+      bodyHtml,
+      bodyText,
+    });
+    success = true;
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message : 'Failed to send test email.';
+  }
+
+  const actionPayload: TestEmailActionPayload = {
+    kind: 'test_email',
+    workspaceId,
+    actorEmail,
+    recipient,
+    sentAt: now.toISOString(),
+    success,
+    rateLimited: false,
+    error: errorMessage,
+  };
+
+  await persistSmokeCheckRow({
+    actorEmail,
+    workspaceId,
+    env: {
+      node_env: process.env.NODE_ENV ?? null,
+      vercel_env: process.env.VERCEL_ENV ?? null,
+      site_url: resolved.url.toString(),
+    },
+    payload: actionPayload as unknown as Record<string, unknown>,
+    ok: success,
+  });
+
+  if (!success) {
+    return {
+      ok: false,
+      rateLimited: false,
+      retryAfterSec: null,
+      message: errorMessage ?? 'Failed to send test email.',
+      sentAt: null,
+    };
+  }
+
+  return {
+    ok: true,
+    rateLimited: false,
+    retryAfterSec: null,
+    message: `Test email sent to ${recipient}.`,
+    sentAt: now.toISOString(),
+  };
+}
