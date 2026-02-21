@@ -196,3 +196,12 @@ How to confirm throttling:
   - Stripe event replay (replay same event twice and verify dedupe row behavior).
   - SPF/DKIM/DMARC DNS verification.
   - Migration completeness verification from deploy/migration logs.
+
+## Stripe Connect Smoke-Check Mode Detection
+
+- `stripe-config-sanity` now determines Connect mode in this order:
+  - Explicit env override: `STRIPE_CONNECT_MODE=oauth|account_links`.
+  - Code scan fallback: OAuth indicators (`connect.stripe.com/oauth/authorize`, `stripe.oauth.token`, OAuth callback `code`/token exchange) vs Account Links indicators (`stripe.accountLinks.create`, `stripe.accounts.create`, `account_onboarding`, `stripe.accounts.createLoginLink`).
+- `STRIPE_CONNECT_CLIENT_ID` is required only when detected mode is `oauth`.
+- If mode is `account_links`, check reports pass for that requirement with detail: `OAuth not used; Client ID not required.`
+- If mode is `unknown`, check reports `warn` (not fail for client ID) and recommends setting `STRIPE_CONNECT_MODE` for deterministic behavior.

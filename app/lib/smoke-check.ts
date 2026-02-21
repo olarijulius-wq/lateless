@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import postgres from 'postgres';
 import Stripe from 'stripe';
 import {
@@ -85,6 +87,16 @@ type StripeErrorClassification =
   | 'permissions'
   | 'unknown';
 
+type StripeConnectMode = 'oauth' | 'account_links' | 'unknown';
+
+type StripeConnectDetection = {
+  mode: StripeConnectMode;
+  source: 'env' | 'code_scan';
+  oauthIndicators: string[];
+  accountLinksIndicators: string[];
+  scannedFilesCount: number;
+};
+
 function normalizeEmail(email: string | null | undefined) {
   return (email ?? '').trim().toLowerCase();
 }
@@ -103,6 +115,103 @@ function suffixLast4(value: string | null | undefined) {
 function checkPrefix(value: string | null | undefined, prefix: string) {
   if (!value) return false;
   return value.trim().startsWith(prefix);
+}
+
+function normalizeStripeConnectMode(value: string | null | undefined): StripeConnectMode | null {
+  const normalized = (value ?? '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'oauth') return 'oauth';
+  if (normalized === 'account_links' || normalized === 'account-links') return 'account_links';
+  return null;
+}
+
+function listSourceFiles(root: string): string[] {
+  try {
+    const entries = readdirSync(root, { withFileTypes: true });
+    const out: string[] = [];
+    for (const entry of entries) {
+      const fullPath = resolve(root, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.next') continue;
+        out.push(...listSourceFiles(fullPath));
+        continue;
+      }
+      if (/\.(ts|tsx|js|jsx)$/.test(entry.name)) {
+        out.push(fullPath);
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function detectStripeConnectModeDetails(): StripeConnectDetection {
+  const explicitMode = normalizeStripeConnectMode(process.env.STRIPE_CONNECT_MODE);
+  if (explicitMode) {
+    return {
+      mode: explicitMode,
+      source: 'env',
+      oauthIndicators: [],
+      accountLinksIndicators: [],
+      scannedFilesCount: 0,
+    };
+  }
+
+  const scanRoots = [resolve(process.cwd(), 'app/api/stripe'), resolve(process.cwd(), 'app/lib')];
+  const files = scanRoots.flatMap((root) => listSourceFiles(root));
+
+  const oauthPatterns: Array<{ id: string; regex: RegExp }> = [
+    { id: 'connect.stripe.com/oauth/authorize', regex: /connect\.stripe\.com\/oauth\/authorize/ },
+    { id: 'stripe.oauth.token', regex: /stripe\.oauth\.token\s*\(/ },
+    { id: 'oauth.token', regex: /\.oauth\.token\s*\(/ },
+    { id: 'oauth callback code', regex: /searchParams\.get\(['"]code['"]\)/ },
+    { id: 'authorization_code exchange', regex: /authorization_code/ },
+  ];
+  const accountLinksPatterns: Array<{ id: string; regex: RegExp }> = [
+    { id: 'stripe.accountLinks.create', regex: /\.accountLinks\.create\s*\(/ },
+    { id: 'stripe.accounts.create', regex: /\.accounts\.create\s*\(/ },
+    { id: 'account_onboarding', regex: /account_onboarding/ },
+    { id: 'stripe.accounts.createLoginLink', regex: /\.accounts\.createLoginLink\s*\(/ },
+  ];
+
+  const oauthIndicators = new Set<string>();
+  const accountLinksIndicators = new Set<string>();
+
+  for (const filePath of files) {
+    if (/[/\\]smoke-check\.(ts|tsx|js|jsx)$/.test(filePath)) {
+      continue;
+    }
+    let content = '';
+    try {
+      content = readFileSync(filePath, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const pattern of oauthPatterns) {
+      if (pattern.regex.test(content)) oauthIndicators.add(pattern.id);
+    }
+    for (const pattern of accountLinksPatterns) {
+      if (pattern.regex.test(content)) accountLinksIndicators.add(pattern.id);
+    }
+  }
+
+  const oauthHits = Array.from(oauthIndicators);
+  const accountLinksHits = Array.from(accountLinksIndicators);
+  const mode: StripeConnectMode =
+    oauthHits.length > 0 ? 'oauth' : accountLinksHits.length > 0 ? 'account_links' : 'unknown';
+
+  return {
+    mode,
+    source: 'code_scan',
+    oauthIndicators: oauthHits,
+    accountLinksIndicators: accountLinksHits,
+    scannedFilesCount: files.length,
+  };
+}
+
+export function detectStripeConnectMode(): StripeConnectMode {
+  return detectStripeConnectModeDetails().mode;
 }
 
 function classifyStripeError(error: unknown): StripeErrorClassification {
@@ -288,6 +397,8 @@ async function checkStripeConfiguration(nodeEnv: string | null, vercelEnv: strin
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? null;
   const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY ?? null;
   const connectClientId = process.env.STRIPE_CONNECT_CLIENT_ID ?? null;
+  const connectDetection = detectStripeConnectModeDetails();
+  const connectClientIdRequired = connectDetection.mode === 'oauth';
   const requiredSecretPrefix = expectedMode === 'live' ? 'sk_live_' : 'sk_test_';
   const requiredPublicPrefix = expectedMode === 'live' ? 'pk_live_' : 'pk_test_';
 
@@ -302,8 +413,13 @@ async function checkStripeConfiguration(nodeEnv: string | null, vercelEnv: strin
   if (!checkPrefix(webhookSecret, 'whsec_')) {
     failures.push('STRIPE_WEBHOOK_SECRET must start with whsec_.');
   }
-  if (!connectClientId?.trim()) {
+  if (connectClientIdRequired && !connectClientId?.trim()) {
     failures.push('STRIPE_CONNECT_CLIENT_ID is required when Stripe Connect is enabled.');
+  }
+  if (connectDetection.mode === 'unknown') {
+    warnings.push(
+      'Stripe Connect mode could not be detected. Set STRIPE_CONNECT_MODE=oauth|account_links for deterministic checks.',
+    );
   }
   if (publishableKey) {
     if (!checkPrefix(publishableKey, requiredPublicPrefix)) {
@@ -323,6 +439,10 @@ async function checkStripeConfiguration(nodeEnv: string | null, vercelEnv: strin
       ? failures.join(' ')
       : warnings.length > 0
         ? `Config warnings: ${warnings.join(' ')}`
+        : connectDetection.mode === 'account_links'
+          ? `OAuth not used; Client ID not required. Stripe env prefixes look correct for ${expectedMode} mode.`
+          : connectDetection.mode === 'oauth'
+            ? `OAuth mode detected; Stripe env prefixes look correct for ${expectedMode} mode.`
         : `Stripe env prefixes look correct for ${expectedMode} mode.`;
 
   return {
@@ -337,6 +457,16 @@ async function checkStripeConfiguration(nodeEnv: string | null, vercelEnv: strin
     },
     raw: {
       modeDetected: expectedMode,
+      connectModeDetected: connectDetection.mode,
+      connectClientIdRequired,
+      connectModeSource: connectDetection.source,
+      connectModeIndicators: {
+        oauth: connectDetection.oauthIndicators,
+        accountLinks: connectDetection.accountLinksIndicators,
+      },
+      connectModeScan: {
+        scannedFilesCount: connectDetection.scannedFilesCount,
+      },
       keysPresent: {
         stripeSecretKey: Boolean(secretKey),
         stripeWebhookSecret: Boolean(webhookSecret),
