@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import type Stripe from "stripe";
+import * as Sentry from "@sentry/nextjs";
 import postgres from "postgres";
 import {
   normalizePlan,
@@ -2114,6 +2115,17 @@ export async function POST(req: Request) {
     }
   } catch (error) {
     const normalized = normalizeStripeConfigError(error);
+    Sentry.captureException(error, {
+      tags: {
+        route: "stripe_webhook",
+        phase: "config_guard",
+        stripe_event_type: event.type,
+      },
+      extra: {
+        eventId: event.id,
+        code: normalized.code,
+      },
+    });
     console.error("[stripe webhook] outcome=error", {
       id: event.id,
       type: event.type,
@@ -2161,6 +2173,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err: unknown) {
     const message = stringifyErrorMessage(err);
+    Sentry.captureException(err, {
+      tags: {
+        route: "stripe_webhook",
+        phase: "process_event",
+        stripe_event_type: event.type,
+      },
+      extra: {
+        eventId: event.id,
+      },
+    });
 
     try {
       await sql`

@@ -40,11 +40,7 @@ Steps:
 4. Run database migrations:
 
 ```bash
-psql "$POSTGRES_URL" -f migrations/001_initial_schema.sql
-psql "$POSTGRES_URL" -f migrations/002_login_rate_limit.sql
-psql "$POSTGRES_URL" -f migrations/002_add_is_verified_to_users.sql
-psql "$POSTGRES_URL" -f migrations/002_add_invoices_customer_fk.sql
-psql "$POSTGRES_URL" -f migrations/003_add_stripe_connect_to_users.sql
+pnpm db:migrate
 ```
 
 5. Start the dev server: `pnpm dev` or `npm run dev`
@@ -61,8 +57,13 @@ psql "$POSTGRES_URL" -f migrations/003_add_stripe_connect_to_users.sql
 - `STRIPE_PRICE_PRO`
 - `STRIPE_PRICE_STUDIO`
 - `RESEND_API_KEY`
+- `EMAIL_PROVIDER` (`resend` or `smtp`)
+- `MAIL_FROM_EMAIL`
+- `MAIL_FROM_NAME`
+- `SUPPORT_EMAIL`
 - `REMINDER_FROM_EMAIL`
 - `SMTP_ENCRYPTION_KEY_BASE64` (base64-encoded 32-byte key for SMTP password encryption)
+- `SENTRY_DSN` (optional in production; recommended)
 - `REMINDER_CRON_TOKEN`
 - `PAY_LINK_SECRET`
 - `NEXT_PUBLIC_APP_URL`

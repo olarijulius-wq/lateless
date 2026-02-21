@@ -2,6 +2,11 @@ import postgres from 'postgres';
 import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import {
+  buildMailFromHeader,
+  buildResendFromHeader,
+  getEffectiveMailConfig,
+} from '@/app/lib/email';
+import {
   decryptString,
   encryptString,
   isEncryptionKeyConfigured,
@@ -415,16 +420,32 @@ async function sendWithResend(input: {
   subject: string;
   bodyHtml: string;
   bodyText: string;
-}) {
+  workspaceSettings?: WorkspaceEmailSettingsRow | null;
+}): Promise<{ messageId: string | null }> {
   const apiKey = process.env.RESEND_API_KEY;
 
   if (!apiKey) {
     console.log('[smtp test resend stub]', input.to);
-    return;
+    return { messageId: null };
   }
 
-  const from =
-    process.env.REMINDER_FROM_EMAIL ?? 'Lateless <noreply@lateless.app>';
+  const config = getEffectiveMailConfig({
+    workspaceSettings: input.workspaceSettings
+      ? {
+          provider: input.workspaceSettings.provider,
+          fromName: input.workspaceSettings.from_name,
+          fromEmail: input.workspaceSettings.from_email,
+          replyTo: input.workspaceSettings.reply_to,
+          smtpHost: input.workspaceSettings.smtp_host,
+          smtpPort: input.workspaceSettings.smtp_port,
+          smtpUsername: input.workspaceSettings.smtp_username,
+          smtpPasswordPresent: Boolean(
+            input.workspaceSettings.smtp_password_enc || input.workspaceSettings.smtp_password,
+          ),
+        }
+      : null,
+  });
+  const from = buildResendFromHeader(config.fromEmail);
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -438,6 +459,7 @@ async function sendWithResend(input: {
       subject: input.subject,
       html: input.bodyHtml,
       text: input.bodyText,
+      reply_to: config.replyTo ?? undefined,
     }),
   });
 
@@ -445,6 +467,9 @@ async function sendWithResend(input: {
     const detail = await response.text();
     throw new Error(`Resend failed: ${detail}`);
   }
+
+  const body = (await response.json().catch(() => null)) as { id?: unknown } | null;
+  return { messageId: typeof body?.id === 'string' ? body.id : null };
 }
 
 function ensureResendConfigured() {
@@ -462,7 +487,7 @@ async function sendWithSmtp(
   subject: string,
   bodyHtml: string,
   bodyText: string,
-) {
+) : Promise<{ messageId: string | null }> {
   const smtpHost = settings.smtp_host;
   const smtpPort = settings.smtp_port;
   const smtpUsername = settings.smtp_username;
@@ -481,30 +506,41 @@ async function sendWithSmtp(
     },
   };
   const transporter = nodemailer.createTransport(transportOptions);
-  const fallbackEmail = (
-    settings.from_email ??
-    settings.smtp_username ??
-    to
-  ).trim();
-  const fromHeader = settings.from_name?.trim()
-    ? `${settings.from_name.trim()} <${fallbackEmail}>`
-    : fallbackEmail;
-
-  await transporter.sendMail({
-    from: fromHeader,
+  const config = getEffectiveMailConfig({
+    workspaceSettings: {
+      provider: settings.provider,
+      fromName: settings.from_name,
+      fromEmail: settings.from_email,
+      replyTo: settings.reply_to,
+      smtpHost: settings.smtp_host,
+      smtpPort: settings.smtp_port,
+      smtpUsername: settings.smtp_username,
+      smtpPasswordPresent: Boolean(settings.smtp_password_enc || settings.smtp_password),
+    },
+  });
+  const info = await transporter.sendMail({
+    from: buildMailFromHeader(config.fromEmail, config.fromName),
+    replyTo: config.replyTo ?? undefined,
     to,
-    replyTo: settings.reply_to ?? undefined,
     subject,
     html: bodyHtml,
     text: bodyText,
   });
+  return { messageId: info.messageId ?? null };
 }
 
 export async function sendWorkspaceTestEmail(input: {
   workspaceId: string;
   toEmail: string;
-}) {
+}): Promise<{ provider: EmailProviderMode; messageId: string | null }> {
   const settings = await fetchWorkspaceEmailSettingsWithSecret(input.workspaceId);
+  const envProvider = process.env.EMAIL_PROVIDER?.trim().toLowerCase();
+  const forceResend = envProvider === 'resend';
+  const forceSmtp = envProvider === 'smtp';
+  const provider: EmailProviderMode =
+    forceResend || (!forceSmtp && (!settings || settings.provider === 'resend'))
+      ? 'resend'
+      : 'smtp';
 
   const subject = 'Lateless SMTP test email';
   const bodyText =
@@ -512,18 +548,20 @@ export async function sendWorkspaceTestEmail(input: {
   const bodyHtml =
     '<p>This is a test email from your <strong>Lateless SMTP integration</strong> settings.</p>';
 
-  if (!settings || settings.provider === 'resend') {
+  if (provider === 'resend') {
     ensureResendConfigured();
-    await sendWithResend({
+    const result = await sendWithResend({
       to: input.toEmail,
       subject,
       bodyHtml,
       bodyText,
+      workspaceSettings: settings,
     });
-    return;
+    return { provider: 'resend', messageId: result.messageId };
   }
 
   if (
+    !settings ||
     !settings.smtp_host ||
     !settings.smtp_port ||
     !settings.smtp_username
@@ -536,7 +574,15 @@ export async function sendWorkspaceTestEmail(input: {
     throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
   }
 
-  await sendWithSmtp(settings, smtpPassword, input.toEmail, subject, bodyHtml, bodyText);
+  const result = await sendWithSmtp(
+    settings,
+    smtpPassword,
+    input.toEmail,
+    subject,
+    bodyHtml,
+    bodyText,
+  );
+  return { provider: 'smtp', messageId: result.messageId };
 }
 
 export async function sendWorkspaceEmail(input: {
@@ -545,21 +591,29 @@ export async function sendWorkspaceEmail(input: {
   subject: string;
   bodyHtml: string;
   bodyText: string;
-}): Promise<{ provider: EmailProviderMode }> {
+}): Promise<{ provider: EmailProviderMode; messageId: string | null }> {
   const settings = await fetchWorkspaceEmailSettingsWithSecret(input.workspaceId);
+  const envProvider = process.env.EMAIL_PROVIDER?.trim().toLowerCase();
+  const forceResend = envProvider === 'resend';
+  const forceSmtp = envProvider === 'smtp';
+  const provider: EmailProviderMode =
+    forceResend || (!forceSmtp && (!settings || settings.provider === 'resend'))
+      ? 'resend'
+      : 'smtp';
 
-  if (!settings || settings.provider === 'resend') {
+  if (provider === 'resend') {
     ensureResendConfigured();
-    await sendWithResend({
+    const result = await sendWithResend({
       to: input.toEmail,
       subject: input.subject,
       bodyHtml: input.bodyHtml,
       bodyText: input.bodyText,
+      workspaceSettings: settings,
     });
-    return { provider: 'resend' };
+    return { provider: 'resend', messageId: result.messageId };
   }
 
-  if (!settings.smtp_host || !settings.smtp_port || !settings.smtp_username) {
+  if (!settings || !settings.smtp_host || !settings.smtp_port || !settings.smtp_username) {
     throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
   }
 
@@ -568,7 +622,7 @@ export async function sendWorkspaceEmail(input: {
     throw new Error('SMTP settings are incomplete. Save valid SMTP settings first.');
   }
 
-  await sendWithSmtp(
+  const result = await sendWithSmtp(
     settings,
     smtpPassword,
     input.toEmail,
@@ -576,5 +630,5 @@ export async function sendWorkspaceEmail(input: {
     input.bodyHtml,
     input.bodyText,
   );
-  return { provider: 'smtp' };
+  return { provider: 'smtp', messageId: result.messageId };
 }

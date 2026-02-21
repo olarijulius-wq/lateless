@@ -2,8 +2,9 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, secondaryButtonClasses } from '@/app/ui/button';
+import { Button } from '@/app/ui/button';
 import type { EmailProviderMode, WorkspaceEmailSettings } from '@/app/lib/smtp-settings';
+import type { EffectiveMailConfig } from '@/app/lib/email';
 import {
   SETTINGS_CHECKBOX_CLASSES,
   SETTINGS_INPUT_CLASSES,
@@ -30,6 +31,7 @@ const defaultSettings: WorkspaceEmailSettings = {
 
 type SmtpSettingsPanelProps = {
   initialSettings?: WorkspaceEmailSettings;
+  mailConfig?: EffectiveMailConfig;
   canEdit?: boolean;
   userRole?: 'owner' | 'admin' | 'member';
   migrationMessage?: string | null;
@@ -37,6 +39,7 @@ type SmtpSettingsPanelProps = {
 
 export default function SmtpSettingsPanel({
   initialSettings,
+  mailConfig,
   canEdit: initialCanEdit = false,
   userRole: initialUserRole = 'member',
   migrationMessage = null,
@@ -69,9 +72,46 @@ export default function SmtpSettingsPanel({
   const [smtpPasswordPresent, setSmtpPasswordPresent] = useState(
     baseSettings.smtpPasswordPresent,
   );
-  const [testEmail, setTestEmail] = useState('');
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const [testMessage, setTestMessage] = useState<string | null>(null);
 
   const canEdit = data?.canEdit ?? false;
+  const status = useMemo(() => {
+    if (!mailConfig) return { label: 'WARN', className: 'border-amber-300 bg-amber-50 text-amber-900', hint: 'Reload page to refresh checks.' };
+    const inProduction = process.env.NODE_ENV === 'production';
+    const fail =
+      (inProduction && mailConfig.problems.includes('MAIL_FROM_EMAIL missing')) ||
+      (mailConfig.provider === 'resend' && mailConfig.problems.includes('RESEND_API_KEY missing')) ||
+      (mailConfig.provider === 'smtp' && mailConfig.problems.some((problem) => problem.startsWith('smtp')));
+    if (fail) {
+      return {
+        label: 'FAIL',
+        className: 'border-red-300 bg-red-50 text-red-900 dark:border-red-500/35 dark:bg-red-500/10 dark:text-red-200',
+        hint: `Fix ${mailConfig.problems[0] ?? 'mail configuration'} and retry.`,
+      };
+    }
+    if (mailConfig.problems.length > 0) {
+      return {
+        label: 'WARN',
+        className: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-200',
+        hint: `Fix ${mailConfig.problems[0]} when promoting to production.`,
+      };
+    }
+    return {
+      label: 'PASS',
+      className: 'border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/35 dark:bg-emerald-500/10 dark:text-emerald-200',
+      hint: 'Verify domain in Resend dashboard and run test email.',
+    };
+  }, [mailConfig]);
+
+  const maskedFrom = useMemo(() => {
+    const email = (mailConfig?.fromEmail ?? '').trim();
+    if (!email) return 'Not set';
+    const [local, domain] = email.split('@');
+    if (!domain) return email;
+    const lead = local.slice(0, 2);
+    return `${lead}${'*'.repeat(Math.max(1, local.length - 2))}@${domain}`;
+  }, [mailConfig?.fromEmail]);
 
   function syncForm(settings: WorkspaceEmailSettings) {
     setProvider(settings.provider);
@@ -149,33 +189,29 @@ export default function SmtpSettingsPanel({
     });
   }
 
-  async function handleSendTest() {
-    if (!canEdit) return;
+  async function handleSendSmokeTest() {
     setMessage(null);
-
-    startTransition(async () => {
-      const res = await fetch('/api/settings/smtp/test', {
+    setTestStatus('sending');
+    setTestMessage(null);
+    try {
+      const res = await fetch('/api/settings/smoke-check/test-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toEmail: testEmail }),
       });
       const body = (await res.json().catch(() => null)) as
-        | { ok?: boolean; message?: string }
+        | { ok?: boolean; message?: string; error?: string }
         | null;
 
       if (!res.ok || !body?.ok) {
-        setMessage({
-          ok: false,
-          text: body?.message ?? 'Failed to send test email.',
-        });
-        return;
+        setTestStatus('failed');
+        setTestMessage(body?.message ?? body?.error ?? 'Failed.');
+      } else {
+        setTestStatus('sent');
+        setTestMessage(body?.message ?? 'Sent.');
       }
-
-      setMessage({
-        ok: true,
-        text: body.message ?? 'Test email sent.',
-      });
-    });
+    } catch {
+      setTestStatus('failed');
+      setTestMessage('Failed.');
+    }
   }
 
   if (migrationMessage) {
@@ -192,9 +228,7 @@ export default function SmtpSettingsPanel({
   if (!data) {
     return (
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          SMTP Integrations
-        </h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Email setup</h2>
         <p className="mt-2 text-sm text-red-700 dark:text-red-300">
           Failed to load SMTP settings.
         </p>
@@ -203,13 +237,87 @@ export default function SmtpSettingsPanel({
   }
 
   return (
-    <form
-      onSubmit={handleSave}
-      className="space-y-5 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
-    >
+    <div className="space-y-5">
+      <section className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Email setup</h2>
+            <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+              Verify sender identity and run a safe mailbox test.
+            </p>
+          </div>
+          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${status.className}`}>
+            {status.label}
+          </span>
+        </div>
+
+        <div className="grid gap-3 text-sm md:grid-cols-3">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Provider</p>
+            <p className="font-medium text-slate-900 dark:text-slate-100">
+              {mailConfig?.provider === 'smtp' ? 'SMTP' : 'Resend'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">From address</p>
+            <p className="font-medium text-slate-900 dark:text-slate-100">{maskedFrom}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Reply-to</p>
+            <p className="font-medium text-slate-900 dark:text-slate-100">{mailConfig?.replyTo ?? 'Not set'}</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-slate-600 dark:text-slate-400">{status.hint}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Verify domain in Resend dashboard; publish SPF/DKIM/DMARC in DNS; then run test email.
+        </p>
+        <div className="flex items-center gap-3">
+          <Button type="button" onClick={handleSendSmokeTest} disabled={testStatus === 'sending'}>
+            {testStatus === 'sending' ? 'Sending...' : 'Send test email'}
+          </Button>
+          {testMessage ? (
+            <p className={`text-sm ${testStatus === 'failed' ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+              {testMessage}
+            </p>
+          ) : null}
+        </div>
+
+        <details className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-900/50">
+          <summary className="cursor-pointer text-sm font-medium text-slate-800 dark:text-slate-200">
+            Deliverability checklist
+          </summary>
+          <div className="mt-3 space-y-3 text-sm text-slate-700 dark:text-slate-300">
+            <p>
+              SPF (MANUAL): publish TXT at your root domain.
+              <code className="ml-1 rounded bg-black/10 px-1 py-0.5 dark:bg-white/10">v=spf1 include:&lt;provider&gt; ~all</code>
+            </p>
+            <p>
+              DKIM (MANUAL): publish provider DKIM selector TXT/CNAME records from your provider dashboard.
+            </p>
+            <p>
+              DMARC (MANUAL): publish TXT at <code>_dmarc.yourdomain.com</code>
+              <code className="ml-1 rounded bg-black/10 px-1 py-0.5 dark:bg-white/10">v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code>
+            </p>
+            <a
+              href="https://resend.com/docs/knowledge-base/what-records-do-i-need-in-my-dns"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex h-8 items-center rounded-lg border border-neutral-300 px-2 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            >
+              Open Resend docs
+            </a>
+          </div>
+        </details>
+      </section>
+
+      <form
+        onSubmit={handleSave}
+        className="space-y-5 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]"
+      >
       <div>
         <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-          SMTP Integrations
+          Provider configuration
         </h2>
         <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
           Configure your workspace email provider for reminder and transactional integrations.
@@ -356,26 +464,8 @@ export default function SmtpSettingsPanel({
         <Button type="submit" disabled={!canEdit || isPending}>
           {isPending ? 'Saving...' : 'Save settings'}
         </Button>
-        <input
-          type="email"
-          value={testEmail}
-          onChange={(event) => setTestEmail(event.target.value)}
-          disabled={!canEdit || isPending}
-          className={`${SETTINGS_INPUT_CLASSES} max-w-xs`}
-          placeholder="optional-recipient@company.com"
-        />
-        <button
-          type="button"
-          onClick={handleSendTest}
-          disabled={!canEdit || isPending}
-          className={`${secondaryButtonClasses} ${!canEdit || isPending ? 'opacity-60 cursor-not-allowed' : ''}`}
-        >
-          Send marketing test email
-        </button>
       </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        Test email is treated as marketing and is blocked for unsubscribed recipients.
-      </p>
-    </form>
+      </form>
+    </div>
   );
 }

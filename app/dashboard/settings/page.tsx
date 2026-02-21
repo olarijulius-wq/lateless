@@ -5,7 +5,8 @@ import {
   fetchStripeConnectStatusForUser,
   requireUserEmail,
 } from '@/app/lib/data';
-import { isLaunchCheckAdminEmail } from '@/app/lib/admin-gates';
+import { isLaunchCheckAdminEmail, isSmokeCheckAdminEmail } from '@/app/lib/admin-gates';
+import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { primaryButtonClasses } from '@/app/ui/button';
 import { RevealOnScroll } from '@/app/ui/motion/reveal';
 import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
@@ -42,9 +43,9 @@ const settingCards = [
     description: 'Manage team billing identity, logo, and invoice footer.',
   },
   {
-    title: 'SMTP',
+    title: 'Email setup',
     href: '/dashboard/settings/smtp',
-    description: 'Configure custom email provider integrations.',
+    description: 'Configure deliverability-safe sender identity and provider.',
   },
   {
     title: 'Unsubscribe',
@@ -94,6 +95,15 @@ export default async function SettingsPage(props: {
 
   const userEmail = await requireUserEmail();
   const canViewLaunchCheck = isLaunchCheckAdminEmail(userEmail);
+  let canViewSmokeDiagnostics = false;
+  try {
+    const context = await ensureWorkspaceContextForCurrentUser();
+    canViewSmokeDiagnostics =
+      (context.userRole === 'owner' || context.userRole === 'admin') &&
+      isSmokeCheckAdminEmail(context.userEmail);
+  } catch {
+    canViewSmokeDiagnostics = false;
+  }
   const connectStatus = await fetchStripeConnectStatusForUser(userEmail);
   const payoutsBadge = connectStatus.isReadyForTransfers
     ? {
@@ -142,13 +152,23 @@ export default async function SettingsPage(props: {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-      {[...settingCards, ...(canViewLaunchCheck
-        ? [{
-            title: 'Launch readiness',
-            href: '/dashboard/settings/launch-check',
-            description: 'Run SEO, robots, and metadata launch checks.',
-          }]
-        : [])].map((card, index) => (
+      {[
+        ...settingCards,
+        ...(canViewLaunchCheck
+          ? [{
+              title: 'Launch readiness',
+              href: '/dashboard/settings/launch-check',
+              description: 'Run SEO, robots, and metadata launch checks.',
+            }]
+          : []),
+        ...(canViewSmokeDiagnostics
+          ? [{
+              title: 'Migrations',
+              href: '/dashboard/settings/migrations',
+              description: 'Read-only migration tracking report for deploy safety.',
+            }]
+          : []),
+      ].map((card, index) => (
         <RevealOnScroll key={card.href} delay={index * 0.04}>
           <Link
             href={card.href}

@@ -205,3 +205,36 @@ How to confirm throttling:
 - `STRIPE_CONNECT_CLIENT_ID` is required only when detected mode is `oauth`.
 - If mode is `account_links`, check reports pass for that requirement with detail: `OAuth not used; Client ID not required.`
 - If mode is `unknown`, check reports `warn` (not fail for client ID) and recommends setting `STRIPE_CONNECT_MODE` for deterministic behavior.
+
+## P0 Migration Tracking
+
+- Apply pending repository SQL migrations and record them in `public.schema_migrations`:
+  - `pnpm db:migrate`
+- Optional dry run:
+  - `DRY_RUN=1 pnpm db:migrate`
+- Verify latest tracking rows:
+  - `select filename, applied_at, checksum from public.schema_migrations order by applied_at desc limit 20;`
+- Open `/dashboard/settings/migrations` (owner/admin + allowlist) and confirm:
+  - `Last applied` is populated.
+  - `Pending migrations` is `0` for a fully deployed environment.
+
+## P0 Email Deliverability
+
+- Set minimum env:
+  - `EMAIL_PROVIDER=resend|smtp`
+  - `MAIL_FROM_EMAIL=billing@yourdomain.com`
+  - `MAIL_FROM_NAME=Lateless`
+  - `RESEND_API_KEY=...` (when provider is `resend`)
+- Open `/dashboard/settings/smtp` and confirm **Email setup** status is `PASS`.
+- Click **Send test email**:
+  - Recipient is always the signed-in actor email.
+  - Repeated click inside 10 minutes returns rate-limit response.
+- Verify smoke check persistence:
+  - `select ran_at, payload->>'kind' as kind, payload->>'success' as success, payload->>'messageId' as message_id from public.smoke_checks order by ran_at desc limit 20;`
+
+## P0 Sentry Quick Verification
+
+- Leave `SENTRY_DSN` unset: app should boot without runtime crashes.
+- Set `SENTRY_DSN` and restart.
+- Trigger a controlled server error in development (temporary throw in a test route), then hit the route once.
+- Confirm event appears in Sentry project and that payloads avoid raw customer/invoice objects.

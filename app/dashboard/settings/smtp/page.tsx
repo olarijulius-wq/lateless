@@ -8,9 +8,10 @@ import {
   fetchWorkspaceEmailSettings,
   isSmtpMigrationRequiredError,
 } from '@/app/lib/smtp-settings';
+import { getEffectiveMailConfig } from '@/app/lib/email';
 
 export const metadata: Metadata = {
-  title: 'SMTP Settings',
+  title: 'Email Setup',
 };
 
 const migrationMessage =
@@ -20,6 +21,7 @@ export default async function SmtpSettingsPage() {
   let panelProps:
     | {
         initialSettings: Awaited<ReturnType<typeof fetchWorkspaceEmailSettings>>;
+        mailConfig: ReturnType<typeof getEffectiveMailConfig>;
         canEdit: boolean;
         userRole: 'owner' | 'admin' | 'member';
       }
@@ -30,6 +32,18 @@ export default async function SmtpSettingsPage() {
     const settings = await fetchWorkspaceEmailSettings(context.workspaceId);
     panelProps = {
       initialSettings: settings,
+      mailConfig: getEffectiveMailConfig({
+        workspaceSettings: {
+          provider: settings.provider,
+          fromName: settings.fromName,
+          fromEmail: settings.fromEmail,
+          replyTo: settings.replyTo,
+          smtpHost: settings.smtpHost,
+          smtpPort: settings.smtpPort,
+          smtpUsername: settings.smtpUsername,
+          smtpPasswordPresent: settings.smtpPasswordPresent,
+        },
+      }),
       canEdit: context.userRole === 'owner',
       userRole: context.userRole,
     };

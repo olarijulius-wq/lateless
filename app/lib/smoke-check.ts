@@ -14,6 +14,8 @@ import {
   fetchWorkspaceEmailSettings,
   sendWorkspaceEmail,
 } from '@/app/lib/smtp-settings';
+import { getEffectiveMailConfig } from '@/app/lib/email';
+import { getMigrationReport } from '@/app/lib/migration-tracker';
 import { resolveSiteUrlDebug } from '@/app/lib/seo/site-url';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
@@ -77,6 +79,9 @@ type TestEmailActionPayload = {
   sentAt: string;
   success: boolean;
   rateLimited: boolean;
+  retryAfterSec?: number | null;
+  provider: 'resend' | 'smtp' | null;
+  messageId: string | null;
   error: string | null;
 };
 
@@ -269,6 +274,52 @@ async function safeFetch(url: string) {
   } catch {
     return null;
   }
+}
+
+function resolveHealthUrlForChecks(input: {
+  nodeEnv: string | null;
+  resolvedSiteUrl: URL;
+}): { healthUrlResolved: string; healthUrlReason: 'dev_http_override' | 'resolver' } {
+  const healthUrl = new URL('/api/health', input.resolvedSiteUrl);
+  const devLocalHost =
+    input.nodeEnv === 'development' &&
+    (healthUrl.hostname === 'localhost' || healthUrl.hostname === '127.0.0.1');
+  if (devLocalHost) {
+    healthUrl.protocol = 'http:';
+    return {
+      healthUrlResolved: healthUrl.toString(),
+      healthUrlReason: 'dev_http_override',
+    };
+  }
+  return {
+    healthUrlResolved: healthUrl.toString(),
+    healthUrlReason: 'resolver',
+  };
+}
+
+function resolveSiteUrlForSmokeChecks(input: {
+  nodeEnv: string | null;
+  resolvedSiteUrl: URL;
+}): URL {
+  const siteUrl = new URL(input.resolvedSiteUrl.toString());
+  const devLocalHost =
+    input.nodeEnv === 'development' &&
+    (siteUrl.hostname === 'localhost' || siteUrl.hostname === '127.0.0.1');
+  if (devLocalHost) {
+    siteUrl.protocol = 'http:';
+  }
+  return siteUrl;
+}
+
+function getRetryAfterSecondsFromTestEmail(testEmail: TestEmailActionPayload | undefined): number | null {
+  if (!testEmail) return null;
+  if (typeof testEmail.retryAfterSec === 'number' && Number.isFinite(testEmail.retryAfterSec)) {
+    return Math.max(1, Math.ceil(testEmail.retryAfterSec));
+  }
+  const match = (testEmail.error ?? '').match(/(\d+)s/);
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
 }
 
 export async function getSmokeCheckAccessContext(): Promise<WorkspaceContext | null> {
@@ -675,7 +726,12 @@ async function checkWebhookDedupeSafety(): Promise<{
   };
 }
 
-async function checkEmailPrimitives(workspaceId: string, actorEmail: string): Promise<{
+async function checkEmailPrimitives(input: {
+  workspaceId: string;
+  actorEmail: string;
+  nodeEnv: string | null;
+  vercelEnv: string | null;
+}): Promise<{
   check: SmokeCheckResult;
   manualChecks: SmokeCheckResult[];
   raw: Record<string, unknown>;
@@ -686,16 +742,16 @@ async function checkEmailPrimitives(workspaceId: string, actorEmail: string): Pr
       title: 'SPF record check (manual)',
       status: 'manual',
       detail: 'Confirm your sender domain has a valid SPF TXT record authorizing your mail provider.',
-      fixHint: 'Add/verify SPF record in DNS for your sending domain.',
-      actionLabel: 'Open help',
-      actionUrl: '/help',
+      fixHint: 'Publish SPF TXT in your DNS host.',
+      actionLabel: 'Resend DNS docs',
+      actionUrl: 'https://resend.com/docs/knowledge-base/what-records-do-i-need-in-my-dns',
     },
     {
       id: 'email-dkim-manual',
       title: 'DKIM record check (manual)',
       status: 'manual',
       detail: 'Confirm DKIM selector records are published and signing is enabled in your email provider.',
-      fixHint: 'Publish DKIM DNS records and enable signing.',
+      fixHint: 'Publish provider DKIM records exactly as given in dashboard.',
       actionLabel: 'SMTP settings',
       actionUrl: '/dashboard/settings/smtp',
     },
@@ -704,60 +760,76 @@ async function checkEmailPrimitives(workspaceId: string, actorEmail: string): Pr
       title: 'DMARC policy check (manual)',
       status: 'manual',
       detail: 'Confirm _dmarc TXT record exists with policy and reporting addresses.',
-      fixHint: 'Publish a DMARC TXT record (start with p=none, then tighten).',
+      fixHint: 'Publish DMARC TXT (start with p=none, tighten later).',
       actionLabel: 'Open help',
       actionUrl: '/help',
     },
   ];
+  const inProduction = input.nodeEnv === 'production' || input.vercelEnv === 'production';
 
   try {
-    const settings = await fetchWorkspaceEmailSettings(workspaceId);
-    const latestTest = await getLatestTestEmailAction({ workspaceId, actorEmail });
-
-    const requiredIssues: string[] = [];
-    if (settings.provider === 'smtp') {
-      if (!settings.smtpHost.trim()) requiredIssues.push('smtpHost missing');
-      if (!settings.smtpPort) requiredIssues.push('smtpPort missing');
-      if (!settings.smtpUsername.trim()) requiredIssues.push('smtpUsername missing');
-      if (!settings.fromEmail.trim()) requiredIssues.push('fromEmail missing');
-      if (!settings.smtpPasswordPresent) requiredIssues.push('smtpPassword missing');
-    } else {
-      if (!process.env.RESEND_API_KEY?.trim()) requiredIssues.push('RESEND_API_KEY missing');
-      if (!process.env.REMINDER_FROM_EMAIL?.trim()) requiredIssues.push('REMINDER_FROM_EMAIL missing');
-    }
+    const settings = await fetchWorkspaceEmailSettings(input.workspaceId);
+    const latestTest = await getLatestTestEmailAction({
+      workspaceId: input.workspaceId,
+      actorEmail: input.actorEmail,
+    });
+    const latestRateLimited = latestTest?.payload?.rateLimited === true;
+    const latestRetryAfterSec = getRetryAfterSecondsFromTestEmail(latestTest?.payload);
+    const config = getEffectiveMailConfig({
+      workspaceSettings: {
+        provider: settings.provider,
+        fromName: settings.fromName,
+        fromEmail: settings.fromEmail,
+        replyTo: settings.replyTo,
+        smtpHost: settings.smtpHost,
+        smtpPort: settings.smtpPort,
+        smtpUsername: settings.smtpUsername,
+        smtpPasswordPresent: settings.smtpPasswordPresent,
+      },
+    });
+    const mailFromMissing = config.problems.includes('MAIL_FROM_EMAIL missing');
+    const smtpProblem = config.problems.find((problem) => problem.startsWith('smtp'));
+    const resendProblem = config.problems.includes('RESEND_API_KEY missing');
+    const failInProd = inProduction && (mailFromMissing || smtpProblem || resendProblem);
+    const warn = !failInProd && (config.problems.length > 0 || latestRateLimited);
 
     const detailParts = [
-      `Provider: ${settings.provider}.`,
-      requiredIssues.length > 0
-        ? `Missing: ${requiredIssues.join(', ')}.`
-        : 'Provider settings look sane.',
+      `Provider: ${config.provider}.`,
+      config.problems.length > 0 ? `Missing: ${config.problems.join(', ')}.` : 'Provider settings look sane.',
+      'Verify domain in Resend dashboard; publish SPF/DKIM/DMARC in DNS; then run test email.',
     ];
 
     if (latestTest?.payload?.sentAt) {
       detailParts.push(`Last test email attempt: ${latestTest.payload.sentAt}.`);
+    }
+    if (latestRateLimited) {
+      detailParts.push(
+        `Rate limited — retry in ${latestRetryAfterSec ?? 1}s.`,
+      );
     }
 
     return {
       check: {
         id: 'email-primitives',
         title: 'Email deliverability primitives + safe test path',
-        status: requiredIssues.length > 0 ? 'warn' : 'pass',
+        status: failInProd ? 'fail' : warn ? 'warn' : 'pass',
         detail: detailParts.join(' '),
-        fixHint:
-          requiredIssues.length > 0
-            ? 'Configure missing SMTP/Resend settings in Settings -> SMTP.'
-            : 'Use "Send test email" to validate mailbox delivery safely.',
+        fixHint: config.problems[0]
+          ? `Fix ${config.problems[0]} in Settings -> SMTP.`
+          : 'Use "Send test email" to validate mailbox delivery safely.',
       },
       manualChecks,
       raw: {
-        provider: settings.provider,
-        smtpHost: settings.smtpHost ? 'set' : 'missing',
-        smtpPort: settings.smtpPort,
+        provider: config.provider,
+        smtpHost: config.smtpHost ? 'set' : 'missing',
+        smtpPort: config.smtpPort,
         smtpUsername: settings.smtpUsername ? 'set' : 'missing',
         smtpPasswordPresent: settings.smtpPasswordPresent,
-        fromEmail: settings.fromEmail ? 'set' : 'missing',
-        resendApiKeyPresent: Boolean(process.env.RESEND_API_KEY?.trim()),
+        fromEmail: config.fromEmail ? 'set' : 'missing',
+        resendApiKeyPresent: config.resendKeyPresent,
         reminderFromEmailPresent: Boolean(process.env.REMINDER_FROM_EMAIL?.trim()),
+        mailFromEmailPresent: Boolean(process.env.MAIL_FROM_EMAIL?.trim()),
+        problems: config.problems,
         latestTestEmail: latestTest,
       },
     };
@@ -769,7 +841,7 @@ async function checkEmailPrimitives(workspaceId: string, actorEmail: string): Pr
       check: {
         id: 'email-primitives',
         title: 'Email deliverability primitives + safe test path',
-        status: 'warn',
+        status: inProduction ? 'fail' : 'warn',
         detail: missingMigration
           ? 'SMTP schema migration is required before this check can validate settings.'
           : `Could not verify email settings: ${message}`,
@@ -785,7 +857,7 @@ async function checkEmailPrimitives(workspaceId: string, actorEmail: string): Pr
   }
 }
 
-async function checkDbSchemaSanity(): Promise<{
+async function checkDbSchemaSanity(nodeEnv: string | null, vercelEnv: string | null): Promise<{
   check: SmokeCheckResult;
   manual: SmokeCheckResult;
   raw: Record<string, unknown>;
@@ -797,9 +869,6 @@ async function checkDbSchemaSanity(): Promise<{
     has_job_locks: boolean;
     has_dunning_state: boolean;
     has_billing_events: boolean;
-    has_schema_migrations: boolean;
-    has_knex_migrations: boolean;
-    has_prisma_migrations: boolean;
   }[]>`
     select
       exists (
@@ -813,10 +882,7 @@ async function checkDbSchemaSanity(): Promise<{
       to_regclass('public.reminder_runs') is not null as has_reminder_runs,
       to_regclass('public.job_locks') is not null as has_job_locks,
       to_regclass('public.dunning_state') is not null as has_dunning_state,
-      to_regclass('public.billing_events') is not null as has_billing_events,
-      to_regclass('public.schema_migrations') is not null as has_schema_migrations,
-      to_regclass('public.knex_migrations') is not null as has_knex_migrations,
-      to_regclass('public._prisma_migrations') is not null as has_prisma_migrations
+      to_regclass('public.billing_events') is not null as has_billing_events
   `;
 
   const mustHaveMissing: string[] = [];
@@ -837,28 +903,55 @@ async function checkDbSchemaSanity(): Promise<{
     detailParts.push('Recovery tables (dunning_state/billing_events) not found.');
   }
 
-  const migrationTableDetected = Boolean(
-    row?.has_schema_migrations || row?.has_knex_migrations || row?.has_prisma_migrations,
-  );
+  const migrationReport = await getMigrationReport();
+  const migrationTableDetected = migrationReport.migrationTableDetected;
+  const hasPendingMigrations = migrationReport.pending > 0;
+  const inProduction = nodeEnv === 'production' || vercelEnv === 'production';
+  const isLocalDev = nodeEnv === 'development';
+  if (hasPendingMigrations) {
+    if (isLocalDev) {
+      detailParts.push('Local DB not migrated yet.');
+    }
+    detailParts.push(
+      `Pending migrations: ${migrationReport.pending}.`,
+    );
+  }
+  if (migrationTableDetected && !migrationReport.lastApplied) {
+    detailParts.push('No migrations applied yet.');
+  }
 
   return {
     check: {
       id: 'db-schema-sanity',
       title: 'DB migrations/schema sanity',
-      status: mustHaveMissing.length > 0 ? 'fail' : recoveryTablesPresent ? 'pass' : 'warn',
+      status:
+        mustHaveMissing.length > 0
+          ? 'fail'
+          : inProduction && hasPendingMigrations
+            ? 'fail'
+            : isLocalDev && hasPendingMigrations
+              ? 'warn'
+            : hasPendingMigrations || !recoveryTablesPresent
+              ? 'warn'
+              : 'pass',
       detail: detailParts.join(' '),
       fixHint:
         mustHaveMissing[0] ??
+        (hasPendingMigrations && isLocalDev
+          ? 'Local DB not migrated yet.\npnpm db:migrate\nDRY_RUN=1 pnpm db:migrate'
+          : hasPendingMigrations
+          ? 'Run db:migrate and redeploy.'
+          :
         (recoveryTablesPresent
           ? 'Keep migrations applied in all production environments.'
-          : 'If failed-payment recovery is enabled, apply billing/dunning migrations.'),
+          : 'If failed-payment recovery is enabled, apply billing/dunning migrations.')),
     },
     manual: {
       id: 'db-pending-migrations-manual',
       title: 'Pending migrations check (manual)',
       status: 'manual',
       detail: migrationTableDetected
-        ? 'Migration table detected. Compare applied migration versions against repository migration files before launch.'
+        ? `Migration table detected. Pending migrations: ${migrationReport.pending}.`
         : 'No migration tracking table detected. Verify deployment migration logs manually.',
       fixHint: 'Confirm all migration files were applied in production before launch.',
     },
@@ -870,6 +963,9 @@ async function checkDbSchemaSanity(): Promise<{
       hasDunningState: Boolean(row?.has_dunning_state),
       hasBillingEvents: Boolean(row?.has_billing_events),
       migrationTableDetected,
+      pendingMigrations: migrationReport.pending,
+      pendingFilenames: migrationReport.pendingFilenames,
+      lastAppliedMigration: migrationReport.lastApplied,
     },
   };
 }
@@ -880,6 +976,7 @@ async function checkObservability(nodeEnv: string | null, vercelEnv: string | nu
 }> {
   const inProduction = nodeEnv === 'production' || vercelEnv === 'production';
   const sentryDsn = process.env.SENTRY_DSN?.trim() ?? '';
+  const sentryProjectUrl = process.env.SENTRY_PROJECT_URL?.trim() ?? '';
   const sentryCheck: SmokeCheckResult = {
     id: 'observability-sentry-dsn',
     title: 'Sentry DSN configured',
@@ -894,11 +991,16 @@ async function checkObservability(nodeEnv: string | null, vercelEnv: string | nu
       inProduction && !sentryDsn
         ? 'Set SENTRY_DSN in production environment variables.'
         : 'None.',
+    actionLabel: sentryProjectUrl ? 'Open Sentry project' : undefined,
+    actionUrl: sentryProjectUrl || undefined,
   };
 
   const resolved = resolveSiteUrlDebug();
-  const healthUrl = new URL('/api/health', resolved.url).toString();
-  const response = await safeFetch(healthUrl);
+  const { healthUrlResolved, healthUrlReason } = resolveHealthUrlForChecks({
+    nodeEnv,
+    resolvedSiteUrl: resolved.url,
+  });
+  const response = await safeFetch(healthUrlResolved);
 
   const healthCheck: SmokeCheckResult = {
     id: 'observability-health-endpoint',
@@ -909,13 +1011,13 @@ async function checkObservability(nodeEnv: string | null, vercelEnv: string | nu
         ? 'pass'
         : 'fail',
     detail: !response
-      ? `Could not reach ${healthUrl}.`
+      ? `Could not reach ${healthUrlResolved}.`
       : response.status === 200
         ? '/api/health returned HTTP 200.'
         : `/api/health returned HTTP ${response.status}.`,
     fixHint: !response || response.status !== 200 ? 'Ensure /api/health route is deployed and publicly reachable.' : 'None.',
     actionLabel: 'Open health',
-    actionUrl: healthUrl,
+    actionUrl: healthUrlResolved,
   };
 
   return {
@@ -923,7 +1025,10 @@ async function checkObservability(nodeEnv: string | null, vercelEnv: string | nu
     raw: {
       inProduction,
       sentryDsnPresent: Boolean(sentryDsn),
-      healthUrl,
+      sentryProjectUrlPresent: Boolean(sentryProjectUrl),
+      healthUrl: healthUrlResolved,
+      healthUrlResolved,
+      healthUrlReason,
       healthStatus: response?.status ?? null,
     },
   };
@@ -933,12 +1038,21 @@ export async function runProductionSmokeChecks(context: WorkspaceContext): Promi
   const nodeEnv = process.env.NODE_ENV ?? null;
   const vercelEnv = process.env.VERCEL_ENV ?? null;
   const resolved = resolveSiteUrlDebug();
+  const siteUrlForChecks = resolveSiteUrlForSmokeChecks({
+    nodeEnv,
+    resolvedSiteUrl: resolved.url,
+  });
 
   const stripeConfig = await checkStripeConfiguration(nodeEnv, vercelEnv);
   const stripeApi = await checkStripeApiReachability(stripeConfig.expectedMode);
   const webhook = await checkWebhookDedupeSafety();
-  const email = await checkEmailPrimitives(context.workspaceId, context.userEmail);
-  const dbSchema = await checkDbSchemaSanity();
+  const email = await checkEmailPrimitives({
+    workspaceId: context.workspaceId,
+    actorEmail: context.userEmail,
+    nodeEnv,
+    vercelEnv,
+  });
+  const dbSchema = await checkDbSchemaSanity(nodeEnv, vercelEnv);
   const observability = await checkObservability(nodeEnv, vercelEnv);
 
   const checks = [
@@ -959,7 +1073,7 @@ export async function runProductionSmokeChecks(context: WorkspaceContext): Promi
     env: {
       nodeEnv,
       vercelEnv,
-      siteUrl: resolved.url.toString(),
+      siteUrl: siteUrlForChecks.toString(),
     },
     checks,
     raw: {
@@ -989,7 +1103,7 @@ export async function runProductionSmokeChecks(context: WorkspaceContext): Promi
     env: {
       node_env: nodeEnv,
       vercel_env: vercelEnv,
-      site_url: resolved.url.toString(),
+      site_url: siteUrlForChecks.toString(),
     },
     payload: payload as unknown as Record<string, unknown>,
     ok: payload.ok,
@@ -1000,11 +1114,16 @@ export async function runProductionSmokeChecks(context: WorkspaceContext): Promi
 
 export async function getSmokeCheckPingPayload() {
   const resolved = resolveSiteUrlDebug();
+  const nodeEnv = process.env.NODE_ENV ?? null;
+  const siteUrlForChecks = resolveSiteUrlForSmokeChecks({
+    nodeEnv,
+    resolvedSiteUrl: resolved.url,
+  });
   return {
     env: {
-      nodeEnv: process.env.NODE_ENV ?? null,
+      nodeEnv,
       vercelEnv: process.env.VERCEL_ENV ?? null,
-      siteUrl: resolved.url.toString(),
+      siteUrl: siteUrlForChecks.toString(),
     },
     lastRun: await getLatestSmokeCheckRun(),
   };
@@ -1022,6 +1141,11 @@ export async function sendSmokeCheckTestEmail(context: WorkspaceContext): Promis
   const actorEmail = normalizeEmail(context.userEmail);
   const workspaceId = context.workspaceId;
   const resolved = resolveSiteUrlDebug();
+  const nodeEnv = process.env.NODE_ENV ?? null;
+  const siteUrlForChecks = resolveSiteUrlForSmokeChecks({
+    nodeEnv,
+    resolvedSiteUrl: resolved.url,
+  });
   const earliestAllowed = new Date(now.getTime() - TEST_EMAIL_WINDOW_MS);
 
   let recent: { ran_at: Date } | undefined;
@@ -1058,16 +1182,19 @@ export async function sendSmokeCheckTestEmail(context: WorkspaceContext): Promis
       sentAt: now.toISOString(),
       success: false,
       rateLimited: true,
-      error: `Rate limited. Retry in ${retryAfterSec}s.`,
+      retryAfterSec,
+      provider: null,
+      messageId: null,
+      error: `Rate limited — retry in ${retryAfterSec}s.`,
     };
 
     await persistSmokeCheckRow({
       actorEmail,
       workspaceId,
       env: {
-        node_env: process.env.NODE_ENV ?? null,
+        node_env: nodeEnv,
         vercel_env: process.env.VERCEL_ENV ?? null,
-        site_url: resolved.url.toString(),
+        site_url: siteUrlForChecks.toString(),
       },
       payload: payload as unknown as Record<string, unknown>,
       ok: false,
@@ -1077,7 +1204,7 @@ export async function sendSmokeCheckTestEmail(context: WorkspaceContext): Promis
       ok: false,
       rateLimited: true,
       retryAfterSec,
-      message: `Rate limited. Retry in ${retryAfterSec}s.`,
+      message: `Rate limited — retry in ${retryAfterSec}s.`,
       sentAt: null,
     };
   }
@@ -1100,9 +1227,11 @@ export async function sendSmokeCheckTestEmail(context: WorkspaceContext): Promis
 
   let success = false;
   let errorMessage: string | null = null;
+  let provider: 'resend' | 'smtp' | null = null;
+  let messageId: string | null = null;
 
   try {
-    await sendWorkspaceEmail({
+    const sendResult = await sendWorkspaceEmail({
       workspaceId,
       toEmail: recipient,
       subject,
@@ -1110,6 +1239,8 @@ export async function sendSmokeCheckTestEmail(context: WorkspaceContext): Promis
       bodyText,
     });
     success = true;
+    provider = sendResult.provider;
+    messageId = sendResult.messageId;
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : 'Failed to send test email.';
   }
@@ -1122,6 +1253,8 @@ export async function sendSmokeCheckTestEmail(context: WorkspaceContext): Promis
     sentAt: now.toISOString(),
     success,
     rateLimited: false,
+    provider,
+    messageId,
     error: errorMessage,
   };
 
@@ -1129,9 +1262,9 @@ export async function sendSmokeCheckTestEmail(context: WorkspaceContext): Promis
     actorEmail,
     workspaceId,
     env: {
-      node_env: process.env.NODE_ENV ?? null,
+      node_env: nodeEnv,
       vercel_env: process.env.VERCEL_ENV ?? null,
-      site_url: resolved.url.toString(),
+      site_url: siteUrlForChecks.toString(),
     },
     payload: actionPayload as unknown as Record<string, unknown>,
     ok: success,

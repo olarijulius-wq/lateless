@@ -81,6 +81,7 @@ export default function SmokeCheckPanel({
   const [result, setResult] = useState<SmokeCheckPayload | null>(initialLastRun?.payload ?? null);
   const [lastRun, setLastRun] = useState<SmokeCheckRunRecord | null>(initialLastRun);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
   const summary = useMemo(() => {
@@ -104,6 +105,7 @@ export default function SmokeCheckPanel({
   async function runChecks() {
     setRunning(true);
     setError(null);
+    setWarning(null);
     setNote(null);
     try {
       const runRes = await fetch('/api/settings/smoke-check/run', { method: 'POST' });
@@ -124,13 +126,14 @@ export default function SmokeCheckPanel({
   async function sendTestEmail() {
     setSendingTestEmail(true);
     setError(null);
+    setWarning(null);
     setNote(null);
     try {
       const response = await fetch('/api/settings/smoke-check/test-email', {
         method: 'POST',
       });
       const payload = (await response.json().catch(() => null)) as
-        | { ok?: boolean; message?: string; retryAfterSec?: number; error?: string }
+        | { ok?: boolean; rateLimited?: boolean; message?: string; retryAfterSec?: number; error?: string }
         | null;
 
       if (!response.ok && !payload) {
@@ -138,8 +141,10 @@ export default function SmokeCheckPanel({
         return;
       }
 
-      if (response.status === 429) {
-        setError(payload?.message ?? 'Rate limited. Retry later.');
+      if (response.status === 429 || payload?.rateLimited) {
+        const retryAfterSec = payload?.retryAfterSec;
+        setWarning(payload?.message ?? `Rate limited — retry in ${retryAfterSec ?? 1}s.`);
+        await refreshLastRun();
         return;
       }
 
@@ -162,6 +167,7 @@ export default function SmokeCheckPanel({
     try {
       await navigator.clipboard.writeText(JSON.stringify(result, null, 2));
       setNote('Report copied.');
+      setWarning(null);
     } catch {
       setError('Copy failed.');
     }
@@ -213,6 +219,17 @@ export default function SmokeCheckPanel({
       {error ? (
         <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-500/35 dark:bg-red-500/10 dark:text-red-200">
           {error}
+        </div>
+      ) : null}
+
+      {warning ? (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-200">
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${statusChip('warn')}`}
+          >
+            WARN
+          </span>
+          <span>{warning}</span>
         </div>
       ) : null}
 

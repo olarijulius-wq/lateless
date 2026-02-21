@@ -24,7 +24,7 @@ const baseSections = [
   { name: 'Refunds', href: '/dashboard/settings/refunds' },
   { name: 'Team', href: '/dashboard/settings/team' },
   { name: 'Company', href: '/dashboard/settings/company-profile' },
-  { name: 'SMTP', href: '/dashboard/settings/smtp' },
+  { name: 'Email setup', href: '/dashboard/settings/smtp' },
   { name: 'Unsubscribe', href: '/dashboard/settings/unsubscribe' },
   { name: 'Documents', href: '/dashboard/settings/documents' },
 ];
@@ -62,9 +62,13 @@ export default function SettingsSectionsNav({
     ? [...withLaunchCheck, { name: 'Smoke check', href: '/dashboard/settings/smoke-check' }]
     : withLaunchCheck;
 
-  const resolvedSections = canViewFunnel
-    ? [...withSmokeCheck, { name: 'Funnel', href: '/dashboard/settings/funnel' }]
+  const withMigrations = canViewSmokeCheck
+    ? [...withSmokeCheck, { name: 'Migrations', href: '/dashboard/settings/migrations' }]
     : withSmokeCheck;
+
+  const resolvedSections = canViewFunnel
+    ? [...withMigrations, { name: 'Funnel', href: '/dashboard/settings/funnel' }]
+    : withMigrations;
 
   return (
     <div className="flex flex-wrap gap-2">
