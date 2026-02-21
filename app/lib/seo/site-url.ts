@@ -25,6 +25,10 @@ function toHttpsUrl(value: string): URL | null {
 }
 
 export function getSiteUrl(): URL {
+  if (process.env.NODE_ENV === 'production') {
+    return new URL('https://lateless.org');
+  }
+
   for (const key of SITE_URL_ENV_KEYS) {
     const value = process.env[key];
     if (!value) continue;

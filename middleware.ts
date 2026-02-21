@@ -32,16 +32,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
-    '/login',
-    '/signup',
-    '/onboarding/:path*',
-    '/pay/:path*',
-    '/invite/:path*',
-    '/verify/:path*',
-    '/unsubscribe/:path*',
-    '/forgot-password',
-    '/reset-password/:path*',
-    '/auth/:path*',
+    '/((?!_next/static|_next/image|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|favicon\\.ico|opengraph-image\\.png).*)',
   ],
 };

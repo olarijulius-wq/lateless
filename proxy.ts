@@ -5,5 +5,7 @@ export default NextAuth(authConfig).auth;
  
 export const config = {
   // https://nextjs.org/docs/app/api-reference/file-conventions/proxy#matcher
-  matcher: ['/((?!api|_next/static|_next/image|.*\\.png$).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|favicon\\.ico|opengraph-image\\.png|.*\\.png$).*)',
+  ],
 };
