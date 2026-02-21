@@ -1,6 +1,8 @@
 export const PLAN_IDS = ['free', 'solo', 'pro', 'studio'] as const;
 
 export type PlanId = (typeof PLAN_IDS)[number];
+export const PAID_PLAN_IDS = ['solo', 'pro', 'studio'] as const;
+export type PaidPlanId = (typeof PAID_PLAN_IDS)[number];
 export const BILLING_INTERVALS = ['monthly', 'annual'] as const;
 export type BillingInterval = (typeof BILLING_INTERVALS)[number];
 export const SOLO_ANNUAL_MONTHS = 11;
@@ -99,9 +101,21 @@ export const STRIPE_PRICE_ID_BY_PLAN_AND_INTERVAL: Record<
   },
 };
 
+export const STRIPE_PRODUCT_ID_BY_PLAN: Record<PaidPlanId, string | undefined> = {
+  solo: process.env.STRIPE_PRODUCT_SOLO,
+  pro: process.env.STRIPE_PRODUCT_PRO,
+  studio: process.env.STRIPE_PRODUCT_STUDIO,
+};
+
 export function normalizePlan(plan: string | null | undefined): PlanId {
   if (!plan) return 'free';
   return PLAN_IDS.includes(plan as PlanId) ? (plan as PlanId) : 'free';
+}
+
+export function normalizePaidPlan(plan: string | null | undefined): PaidPlanId | null {
+  if (!plan) return null;
+  const normalized = normalizePlan(plan);
+  return normalized === 'free' ? null : normalized;
 }
 
 export function isActiveSubscription(status: string | null | undefined) {
@@ -131,6 +145,36 @@ export function planFromStripePriceId(
   );
 
   return match ? match[0] : null;
+}
+
+export function planFromStripeProductId(
+  productId: string | null | undefined,
+): PaidPlanId | null {
+  if (!productId) return null;
+
+  const match = (Object.entries(STRIPE_PRODUCT_ID_BY_PLAN) as Array<
+    [PaidPlanId, string | undefined]
+  >).find(([, configuredProductId]) => configuredProductId && configuredProductId === productId);
+
+  return match ? match[0] : null;
+}
+
+export function resolvePaidPlanFromStripe(input: {
+  metadataPlan?: string | null;
+  priceId?: string | null;
+  productId?: string | null;
+  productMetadataPlan?: string | null;
+}): PaidPlanId | null {
+  const metadataPlan = normalizePaidPlan(input.metadataPlan);
+  if (metadataPlan) return metadataPlan;
+
+  const planFromProductMetadata = normalizePaidPlan(input.productMetadataPlan);
+  if (planFromProductMetadata) return planFromProductMetadata;
+
+  const planFromPrice = planFromStripePriceId(input.priceId);
+  if (planFromPrice && planFromPrice !== 'free') return planFromPrice;
+
+  return planFromStripeProductId(input.productId);
 }
 
 export function getAnnualPriceDisplay(planId: PlanId): number {

@@ -8,8 +8,7 @@ import type Stripe from "stripe";
 import * as Sentry from "@sentry/nextjs";
 import postgres from "postgres";
 import {
-  normalizePlan,
-  planFromStripePriceId,
+  resolvePaidPlanFromStripe,
   isActiveSubscription,
 } from "@/app/lib/config";
 import { allowedPayStatuses, canPayInvoiceStatus } from "@/app/lib/invoice-status";
@@ -37,6 +36,7 @@ const BILLING_EVENTS_DEDUPE_TYPES = new Set([
   "checkout.session.completed",
   "invoice.payment_succeeded",
   "invoice.paid",
+  "customer.subscription.created",
   "customer.subscription.updated",
 ]);
 
@@ -100,46 +100,6 @@ async function resolveBillingWorkspaceContext(
     }
   }
 
-  const userIdHint = hints.userId?.trim() || null;
-  if (userIdHint) {
-    const rows = await sql<{ workspace_id: string | null; user_email: string | null }[]>`
-      select
-        coalesce(u.active_workspace_id, w.id) as workspace_id,
-        u.email as user_email
-      from public.users u
-      left join public.workspaces w on w.owner_user_id = u.id
-      where u.id = ${userIdHint}
-      limit 1
-    `;
-    const row = rows[0];
-    if (row?.workspace_id) {
-      return {
-        workspaceId: row.workspace_id,
-        userEmail: row.user_email ? normalizeEmail(row.user_email) : null,
-      };
-    }
-  }
-
-  const bySubscription = hints.subscriptionId?.trim() || null;
-  if (bySubscription) {
-    const rows = await sql<{ workspace_id: string | null; user_email: string | null }[]>`
-      select
-        coalesce(u.active_workspace_id, w.id) as workspace_id,
-        u.email as user_email
-      from public.users u
-      left join public.workspaces w on w.owner_user_id = u.id
-      where u.stripe_subscription_id = ${bySubscription}
-      limit 1
-    `;
-    const row = rows[0];
-    if (row?.workspace_id) {
-      return {
-        workspaceId: row.workspace_id,
-        userEmail: row.user_email ? normalizeEmail(row.user_email) : null,
-      };
-    }
-  }
-
   const byCustomer = hints.customerId?.trim() || null;
   if (byCustomer) {
     const rows = await sql<{ workspace_id: string | null; user_email: string | null }[]>`
@@ -160,15 +120,15 @@ async function resolveBillingWorkspaceContext(
     }
   }
 
-  const byEmail = hints.userEmail?.trim().toLowerCase() || null;
-  if (byEmail) {
+  const userIdHint = hints.userId?.trim() || null;
+  if (userIdHint) {
     const rows = await sql<{ workspace_id: string | null; user_email: string | null }[]>`
       select
         coalesce(u.active_workspace_id, w.id) as workspace_id,
         u.email as user_email
       from public.users u
       left join public.workspaces w on w.owner_user_id = u.id
-      where lower(u.email) = ${byEmail}
+      where u.id = ${userIdHint}
       limit 1
     `;
     const row = rows[0];
@@ -256,6 +216,14 @@ function parseCustomerId(
   return parseStripeId(customer);
 }
 
+function readProductMetadataPlan(
+  product: Stripe.Price["product"] | null | undefined,
+): string | null {
+  if (!product || typeof product === "string") return null;
+  if ("deleted" in product && product.deleted) return null;
+  return product.metadata?.plan ?? null;
+}
+
 function readInvoiceReferenceId(
   invoice:
     | Stripe.Checkout.Session["invoice"]
@@ -286,6 +254,26 @@ async function resolveWorkspaceContextFromCheckoutSession(
       return {
         workspaceId: row.workspace_id,
         userEmail: row.user_email ? normalizeEmail(row.user_email) : null,
+      };
+    }
+  }
+
+  const customerId = parseCustomerId(session.customer);
+  if (customerId) {
+    const customerRows = await sql<{ workspace_id: string | null; user_email: string | null }[]>`
+      select
+        coalesce(u.active_workspace_id, w.id) as workspace_id,
+        u.email as user_email
+      from public.users u
+      left join public.workspaces w on w.owner_user_id = u.id
+      where u.stripe_customer_id = ${customerId}
+      limit 1
+    `;
+    const customer = customerRows[0];
+    if (customer?.workspace_id) {
+      return {
+        workspaceId: customer.workspace_id,
+        userEmail: customer.user_email ? normalizeEmail(customer.user_email) : null,
       };
     }
   }
@@ -381,37 +369,57 @@ async function upsertWorkspaceSubscriptionSnapshot(input: {
   livemode: boolean;
 }): Promise<boolean> {
   const isPro = input.plan ? input.plan !== "free" : true;
-  const updated = await sql<{ id: string; email: string }[]>`
-    update public.users u
-    set
-      plan = coalesce(${input.plan}, u.plan),
-      is_pro = ${isPro},
-      stripe_subscription_id = ${input.subscriptionId},
-      stripe_customer_id = coalesce(${input.customerId}, u.stripe_customer_id),
-      subscription_status = ${input.status}
-    from public.workspaces w
-    where w.id = ${input.workspaceId}
-      and u.id = w.owner_user_id
-    returning u.id, u.email
-  `;
+  return sql.begin(async (tx) => {
+    const updated = (await tx.unsafe(
+      `
+        update public.users u
+        set
+          plan = coalesce($1, u.plan),
+          is_pro = $2,
+          stripe_subscription_id = $3,
+          stripe_customer_id = coalesce($4, u.stripe_customer_id),
+          subscription_status = $5
+        from public.workspaces w
+        where w.id = $6
+          and u.id = w.owner_user_id
+        returning u.id, u.email
+      `,
+      [
+        input.plan,
+        isPro,
+        input.subscriptionId,
+        input.customerId,
+        input.status,
+        input.workspaceId,
+      ],
+    )) as Array<{ id: string; email: string }>;
 
-  await sql`
-    update public.billing_events
-    set
-      workspace_id = ${input.workspaceId},
-      status = ${input.status},
-      meta = coalesce(meta, '{}'::jsonb) || ${sql.json({
-        plan: input.plan,
-        interval: input.interval,
-        stripeSubscriptionId: input.subscriptionId,
-        stripeCustomerId: input.customerId,
-        latestInvoiceId: input.latestInvoiceId,
-        livemode: input.livemode,
-      } as any)}
-    where stripe_event_id = ${input.eventId}
-  `;
+    await tx.unsafe(
+      `
+        update public.billing_events
+        set
+          workspace_id = $1,
+          status = $2,
+          meta = coalesce(meta, '{}'::jsonb) || $3::jsonb
+        where stripe_event_id = $4
+      `,
+      [
+        input.workspaceId,
+        input.status,
+        JSON.stringify({
+          plan: input.plan,
+          interval: input.interval,
+          stripeSubscriptionId: input.subscriptionId,
+          stripeCustomerId: input.customerId,
+          latestInvoiceId: input.latestInvoiceId,
+          livemode: input.livemode,
+        }),
+        input.eventId,
+      ],
+    );
 
-  return updated.length > 0;
+    return updated.length > 0;
+  });
 }
 
 function isStripeResourceMissing404(err: any): boolean {
@@ -1235,6 +1243,15 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       try {
         const workspace = await resolveWorkspaceContextFromCheckoutSession(session);
         if (!workspace?.workspaceId) {
+          console.warn("[stripe webhook] workspace resolution failed", {
+            eventType: event.type,
+            sessionId: session.id ?? null,
+            subscriptionId: session.subscription,
+            strategy: "metadata.workspaceId|customer|metadata.userId",
+            metadataWorkspaceId: session.metadata?.workspaceId ?? null,
+            customerId: parseCustomerId(session.customer),
+            metadataUserId: session.metadata?.userId ?? null,
+          });
           captureBillingBusinessException(
             new Error("Unable to resolve workspace for checkout.session.completed"),
             {
@@ -1248,13 +1265,19 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           return;
         }
 
-        const metadataPlan = session.metadata?.plan ?? null;
-        const normalizedPlan =
-          metadataPlan && normalizePlan(metadataPlan) !== "free"
-            ? normalizePlan(metadataPlan)
-            : null;
+        const stripeSubscription = await stripe.subscriptions.retrieve(
+          session.subscription,
+          { expand: ["items.data.price.product", "customer"] },
+        );
+        const checkoutPrice = stripeSubscription.items?.data?.[0]?.price;
+        const normalizedPlan = resolvePaidPlanFromStripe({
+          metadataPlan: session.metadata?.plan ?? stripeSubscription.metadata?.plan ?? null,
+          priceId: checkoutPrice?.id ?? null,
+          productId: parseStripeId(checkoutPrice?.product),
+          productMetadataPlan: readProductMetadataPlan(checkoutPrice?.product),
+        });
         const interval = toStoredBillingInterval(session.metadata?.interval ?? null);
-        const customerId = parseCustomerId(session.customer);
+        const customerId = parseCustomerId(stripeSubscription.customer ?? session.customer);
         const latestInvoiceId = readInvoiceReferenceId(session.invoice);
 
         const inserted = await insertBillingEvent({
@@ -1271,7 +1294,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
             interval,
             userId: session.metadata?.userId ?? null,
             workspaceId: workspace.workspaceId,
-            stripeSubscriptionId: session.subscription,
+            stripeSubscriptionId: stripeSubscription.id,
             stripeCustomerId: customerId,
             latestInvoiceId,
           },
@@ -1285,7 +1308,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           workspaceId: workspace.workspaceId,
           plan: normalizedPlan,
           interval,
-          subscriptionId: session.subscription,
+          subscriptionId: stripeSubscription.id,
           customerId,
           latestInvoiceId,
           status: "active",
@@ -1411,73 +1434,84 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       typeof currentPeriodEndUnix === "number"
         ? new Date(currentPeriodEndUnix * 1000)
         : null;
-    const priceId = sub.items?.data?.[0]?.price?.id ?? null;
-    const planFromPrice = planFromStripePriceId(priceId);
-    const planFromMetadata = sub.metadata?.plan
-      ? normalizePlan(sub.metadata.plan)
-      : null;
-    const plan = planFromPrice ?? planFromMetadata;
-    const isPro = isActiveSubscription(status) && (plan ? plan !== "free" : true);
+    const subscriptionPrice = sub.items?.data?.[0]?.price;
+    const plan = resolvePaidPlanFromStripe({
+      metadataPlan: sub.metadata?.plan ?? null,
+      priceId: subscriptionPrice?.id ?? null,
+      productId: parseStripeId(subscriptionPrice?.product),
+      productMetadataPlan: readProductMetadataPlan(subscriptionPrice?.product),
+    });
+    const isPro = isActiveSubscription(status) && Boolean(plan);
 
-    if (event.type === "customer.subscription.updated") {
-      try {
-        const workspace = await resolveBillingWorkspaceContext({
-          workspaceId: sub.metadata?.workspaceId ?? null,
-          userId: sub.metadata?.userId ?? null,
-          userEmail: sub.metadata?.userEmail ?? null,
-          customerId,
-          subscriptionId,
-        });
+    try {
+      const workspace = await resolveBillingWorkspaceContext({
+        workspaceId: sub.metadata?.workspaceId ?? null,
+        userId: sub.metadata?.userId ?? null,
+        userEmail: sub.metadata?.userEmail ?? null,
+        customerId,
+        subscriptionId,
+      });
 
-        const inserted = await insertBillingEvent({
-          workspaceId: workspace?.workspaceId ?? null,
-          userEmail: sub.metadata?.userEmail ?? workspace?.userEmail ?? null,
+      if (!workspace?.workspaceId) {
+        console.warn("[stripe webhook] workspace resolution failed", {
           eventType: event.type,
-          stripeEventId: event.id,
-          stripeObjectId: sub.id,
-          status,
-          meta: {
-            account: event.account ?? null,
-            livemode: event.livemode,
-            workspaceId: workspace?.workspaceId ?? null,
-            userId: sub.metadata?.userId ?? null,
-            stripeSubscriptionId: subscriptionId,
-            stripeCustomerId: customerId,
-            latestInvoiceId: readInvoiceReferenceId(sub.latest_invoice),
-            plan: plan ?? null,
-            interval: toStoredBillingInterval(
-              sub.items?.data?.[0]?.price?.recurring?.interval ?? null,
-            ),
-          },
+          sessionId: null,
+          subscriptionId,
+          strategy: "metadata.workspaceId|customer|metadata.userId",
+          metadataWorkspaceId: sub.metadata?.workspaceId ?? null,
+          customerId,
+          metadataUserId: sub.metadata?.userId ?? null,
         });
-        if (!inserted) {
-          return;
-        }
+      }
 
-        if (workspace?.workspaceId) {
-          await upsertWorkspaceSubscriptionSnapshot({
-            eventId: event.id,
-            workspaceId: workspace.workspaceId,
-            plan: plan ?? null,
-            interval: toStoredBillingInterval(
-              sub.items?.data?.[0]?.price?.recurring?.interval ?? null,
-            ),
-            subscriptionId,
-            customerId,
-            latestInvoiceId: readInvoiceReferenceId(sub.latest_invoice),
-            status,
-            livemode: event.livemode,
-          });
-        }
-      } catch (error) {
-        captureBillingBusinessException(error, {
-          event,
-          subscriptionId: sub.id,
+      const inserted = await insertBillingEvent({
+        workspaceId: workspace?.workspaceId ?? null,
+        userEmail: sub.metadata?.userEmail ?? workspace?.userEmail ?? null,
+        eventType: event.type,
+        stripeEventId: event.id,
+        stripeObjectId: sub.id,
+        status,
+        meta: {
+          account: event.account ?? null,
+          livemode: event.livemode,
+          workspaceId: workspace?.workspaceId ?? null,
           userId: sub.metadata?.userId ?? null,
-          workspaceId: sub.metadata?.workspaceId ?? null,
-        });
+          stripeSubscriptionId: subscriptionId,
+          stripeCustomerId: customerId,
+          latestInvoiceId: readInvoiceReferenceId(sub.latest_invoice),
+          plan: plan ?? null,
+          interval: toStoredBillingInterval(
+            sub.items?.data?.[0]?.price?.recurring?.interval ?? null,
+          ),
+        },
+      });
+      if (!inserted) {
         return;
       }
+
+      if (workspace?.workspaceId) {
+        await upsertWorkspaceSubscriptionSnapshot({
+          eventId: event.id,
+          workspaceId: workspace.workspaceId,
+          plan: plan ?? null,
+          interval: toStoredBillingInterval(
+            sub.items?.data?.[0]?.price?.recurring?.interval ?? null,
+          ),
+          subscriptionId,
+          customerId,
+          latestInvoiceId: readInvoiceReferenceId(sub.latest_invoice),
+          status,
+          livemode: event.livemode,
+        });
+      }
+    } catch (error) {
+      captureBillingBusinessException(error, {
+        event,
+        subscriptionId: sub.id,
+        userId: sub.metadata?.userId ?? null,
+        workspaceId: sub.metadata?.workspaceId ?? null,
+      });
+      return;
     }
 
     const updated = await sql`
@@ -1651,6 +1685,21 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         subscriptionId,
       });
 
+      if (!workspace?.workspaceId) {
+        console.warn("[stripe webhook] workspace resolution failed", {
+          eventType: event.type,
+          sessionId: null,
+          subscriptionId: subscriptionId ?? null,
+          strategy: "metadata.workspaceId|customer|metadata.userId",
+          metadataWorkspaceId: billingContextHints.workspaceId ?? null,
+          customerId,
+          metadataUserId:
+            invoiceAny.parent?.subscription_details?.metadata?.userId ??
+            invoiceAny.subscription_details?.metadata?.userId ??
+            null,
+        });
+      }
+
       const inserted = await insertBillingEvent({
         workspaceId: workspace?.workspaceId ?? null,
         userEmail: billingContextHints.userEmail ?? workspace?.userEmail ?? null,
@@ -1672,19 +1721,19 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       }
 
       if (workspace?.workspaceId && subscriptionId) {
-        const priceId = invoiceAny.lines?.data?.[0]?.price?.id ?? null;
-        const planFromPrice = planFromStripePriceId(priceId);
+        const linePrice = invoiceAny.lines?.data?.[0]?.price;
         const metadataPlan =
           invoiceAny.parent?.subscription_details?.metadata?.plan ??
           invoiceAny.subscription_details?.metadata?.plan ??
           null;
-        const plan =
-          planFromPrice ??
-          (metadataPlan && normalizePlan(metadataPlan) !== "free"
-            ? normalizePlan(metadataPlan)
-            : null);
+        const plan = resolvePaidPlanFromStripe({
+          metadataPlan,
+          priceId: linePrice?.id ?? null,
+          productId: parseStripeId(linePrice?.product),
+          productMetadataPlan: readProductMetadataPlan(linePrice?.product),
+        });
         const stripeInterval =
-          invoiceAny.lines?.data?.[0]?.price?.recurring?.interval ?? null;
+          linePrice?.recurring?.interval ?? null;
         const interval = toStoredBillingInterval(stripeInterval);
 
         await upsertWorkspaceSubscriptionSnapshot({

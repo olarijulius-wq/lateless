@@ -32,6 +32,7 @@ import {
   normalizeBillingStatus,
 } from '@/app/lib/billing-dunning';
 import SendRecoveryEmailButton from './send-recovery-email-button';
+import BillingSyncToast from './billing-sync-toast';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -79,6 +80,7 @@ export default async function BillingSettingsPage(props: {
   searchParams?: Promise<{
     success?: string;
     canceled?: string;
+    session_id?: string;
     interval?: string;
     plan?: string;
   }>;
@@ -86,6 +88,7 @@ export default async function BillingSettingsPage(props: {
   const searchParams = await props.searchParams;
   const success = searchParams?.success === '1';
   const canceled = searchParams?.canceled === '1';
+  const sessionId = searchParams?.session_id?.trim() || null;
   const requestedInterval = searchParams?.interval?.trim().toLowerCase();
   const interval: BillingInterval = BILLING_INTERVALS.includes(
     requestedInterval as BillingInterval,
@@ -209,9 +212,10 @@ export default async function BillingSettingsPage(props: {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
+      <BillingSyncToast enabled={success && !!sessionId} sessionId={sessionId} />
       {success && (
         <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-500/35 dark:bg-emerald-500/10 dark:text-emerald-200">
-          Payment successful. Your plan is updated.
+          Payment successful. {sessionId ? 'Syncing plan...' : 'Your plan is updated.'}
         </div>
       )}
 

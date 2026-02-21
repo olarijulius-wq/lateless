@@ -6,8 +6,8 @@ import { auth } from '@/auth';
 import {
   STRIPE_PRICE_ID_BY_PLAN_AND_INTERVAL,
   type BillingInterval,
-  normalizePlan,
-  type PlanId,
+  normalizePaidPlan,
+  type PaidPlanId,
 } from '@/app/lib/config';
 import { logFunnelEvent } from '@/app/lib/funnel-events';
 import {
@@ -62,14 +62,9 @@ export async function POST(req: Request) {
   const requestedWorkspaceId = parsed.data.workspaceId?.trim() || null;
   const userId = (session.user as { id?: string }).id ?? '';
 
-  const normalizedPlan = normalizePlan(requestedPlan);
-  const plan: PlanId = requestedPlan ? normalizedPlan : 'pro';
-
-  if (requestedPlan && normalizedPlan === 'free') {
-    return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
-  }
-
-  if (plan === 'free') {
+  const normalizedPlan = normalizePaidPlan(requestedPlan);
+  const plan: PaidPlanId = normalizedPlan ?? 'pro';
+  if (requestedPlan && !normalizedPlan) {
     return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
   }
 
@@ -88,19 +83,14 @@ export async function POST(req: Request) {
       : 'http://localhost:3000');
 
   try {
-    let workspaceId = '';
-    try {
-      const workspaceContext = await ensureWorkspaceContextForCurrentUser();
-      workspaceId = workspaceContext.workspaceId;
+    const workspaceContext = await ensureWorkspaceContextForCurrentUser();
+    let workspaceId = workspaceContext.workspaceId;
 
-      if (requestedWorkspaceId) {
-        const memberships = await fetchWorkspaceMembershipsForCurrentUser();
-        if (memberships.some((membership) => membership.workspaceId === requestedWorkspaceId)) {
-          workspaceId = requestedWorkspaceId;
-        }
+    if (requestedWorkspaceId) {
+      const memberships = await fetchWorkspaceMembershipsForCurrentUser();
+      if (memberships.some((membership) => membership.workspaceId === requestedWorkspaceId)) {
+        workspaceId = requestedWorkspaceId;
       }
-    } catch {
-      workspaceId = '';
     }
 
     assertStripeConfig();
@@ -136,7 +126,7 @@ export async function POST(req: Request) {
         },
       },
 
-      success_url: `${baseUrl}/dashboard/settings?success=1`,
+      success_url: `${baseUrl}/dashboard/settings/billing?success=1&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/dashboard/settings?canceled=1`,
       ...(allowPromotionCodes ? { allow_promotion_codes: true } : {}),
     });
