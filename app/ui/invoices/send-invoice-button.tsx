@@ -102,7 +102,7 @@ export default function SendInvoiceButton({
         type="button"
         onClick={handleSend}
         disabled={isSending}
-        className={compact ? `${primaryButtonClasses} h-9 px-2 text-xs` : `${primaryButtonClasses} h-9 px-3`}
+        className={compact ? `${primaryButtonClasses} h-9 px-2 text-xs w-24 md:w-auto justify-center text-center whitespace-nowrap` : `${primaryButtonClasses} h-9 px-3`}
       >
         {isSending
           ? 'Sending…'

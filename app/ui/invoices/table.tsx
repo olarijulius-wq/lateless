@@ -196,7 +196,7 @@ export default function InvoicesTable({
                       </p>
                     </div>
                     <div
-                      className="flex shrink-0 justify-end gap-2"
+                      className="flex flex-wrap shrink-0 justify-end gap-2"
                       onClickCapture={stopRowNavigation}
                       onKeyDownCapture={stopRowNavigation}
                     >

@@ -157,7 +157,14 @@ export default function MobileDrawer({
 
           <div className="mt-10 space-y-1">
             <p className="text-xs uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-500">Navigation</p>
-            <nav className="mt-4 space-y-1 [&>a]:justify-start [&>a>p]:!block">
+            <nav
+              className="mt-4 space-y-1 [&>a]:justify-start [&>a>p]:!block"
+              onClick={(event: React.MouseEvent<HTMLElement>) => {
+                if ((event.target as HTMLElement).closest('a')) {
+                  onOpenChange(false);
+                }
+              }}
+            >
               <NavLinks
                 userEmail={userEmail}
                 showBillingRecoveryWarning={showBillingRecoveryWarning}
