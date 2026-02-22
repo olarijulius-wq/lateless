@@ -180,19 +180,21 @@ export default function InvoicesTable({
                           </span>
                         )}
                         <div className="flex items-center justify-end gap-2">
-                          <SendInvoiceButton
-                            invoiceId={invoice.id}
-                            compact
-                            returnTo={returnToPath}
-                            onSent={handleInvoiceSent}
-                            initialStatus={
-                              sendStateByInvoiceId[invoice.id]?.status ?? invoice.last_email_status
-                            }
-                            initialSentAt={
-                              sendStateByInvoiceId[invoice.id]?.sentAt ?? invoice.last_email_sent_at
-                            }
-                            initialError={invoice.last_email_error}
-                          />
+                          <div className="[&>div>p]:hidden">
+                            <SendInvoiceButton
+                              invoiceId={invoice.id}
+                              compact
+                              returnTo={returnToPath}
+                              onSent={handleInvoiceSent}
+                              initialStatus={
+                                sendStateByInvoiceId[invoice.id]?.status ?? invoice.last_email_status
+                              }
+                              initialSentAt={
+                                sendStateByInvoiceId[invoice.id]?.sentAt ?? invoice.last_email_sent_at
+                              }
+                              initialError={invoice.last_email_error}
+                            />
+                          </div>
                           {canPayInvoiceStatus(invoice.status) &&
                             (hasStripeConnect ? (
                               <PayInvoiceButton
