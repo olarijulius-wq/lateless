@@ -196,39 +196,43 @@ export default function InvoicesTable({
                       </p>
                     </div>
                     <div
-                      className="flex flex-wrap shrink-0 justify-end gap-2"
+                      className="flex shrink-0 flex-col items-end gap-2"
                       onClickCapture={stopRowNavigation}
                       onKeyDownCapture={stopRowNavigation}
                     >
-                      <SendInvoiceButton
-                        invoiceId={invoice.id}
-                        compact
-                        returnTo={returnToPath}
-                        onSent={handleInvoiceSent}
-                        initialStatus={
-                          sendStateByInvoiceId[invoice.id]?.status ?? invoice.last_email_status
-                        }
-                        initialSentAt={
-                          sendStateByInvoiceId[invoice.id]?.sentAt ?? invoice.last_email_sent_at
-                        }
-                        initialError={invoice.last_email_error}
-                      />
-                      {canPayInvoiceStatus(invoice.status) &&
-                        (hasStripeConnect ? (
-                          <PayInvoiceButton
-                            invoiceId={invoice.id}
-                            className="rounded-md px-2 py-1 text-xs"
-                          />
-                        ) : (
-                          <Link
-                            href="/dashboard/settings/payouts"
-                            className="inline-flex items-center justify-center rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
-                          >
-                            Connect Stripe
-                          </Link>
-                        ))}
-                      <UpdateInvoice id={invoice.id} returnTo={returnToPath} />
-                      <DeleteInvoice id={invoice.id} />
+                      <div className="flex items-center justify-end gap-2">
+                        <SendInvoiceButton
+                          invoiceId={invoice.id}
+                          compact
+                          returnTo={returnToPath}
+                          onSent={handleInvoiceSent}
+                          initialStatus={
+                            sendStateByInvoiceId[invoice.id]?.status ?? invoice.last_email_status
+                          }
+                          initialSentAt={
+                            sendStateByInvoiceId[invoice.id]?.sentAt ?? invoice.last_email_sent_at
+                          }
+                          initialError={invoice.last_email_error}
+                        />
+                        {canPayInvoiceStatus(invoice.status) &&
+                          (hasStripeConnect ? (
+                            <PayInvoiceButton
+                              invoiceId={invoice.id}
+                              className="rounded-md px-2 py-1 text-xs"
+                            />
+                          ) : (
+                            <Link
+                              href="/dashboard/settings/payouts"
+                              className="inline-flex items-center justify-center rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+                            >
+                              Connect Stripe
+                            </Link>
+                          ))}
+                      </div>
+                      <div className="flex items-center justify-end gap-2">
+                        <UpdateInvoice id={invoice.id} returnTo={returnToPath} />
+                        <DeleteInvoice id={invoice.id} />
+                      </div>
                     </div>
                   </div>
                 </div>
