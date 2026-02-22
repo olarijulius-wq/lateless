@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { createInvoiceCheckoutSession } from '@/app/lib/invoice-checkout';
 import { canPayInvoiceStatus } from '@/app/lib/invoice-status';
 import { verifyPayToken } from '@/app/lib/pay-link';
@@ -18,10 +18,13 @@ import {
   assertStripeConfig,
   normalizeStripeConfigError,
 } from '@/app/lib/stripe-guard';
+import {
+  enforceRateLimit,
+  parseRouteParams,
+  routeTokenParamsSchema,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -31,7 +34,24 @@ export async function POST(
   req: Request,
   props: { params: Promise<{ token: string }> },
 ) {
-  const params = await props.params;
+  const rateLimitResponse = await enforceRateLimit(
+    req,
+    {
+      bucket: 'public_invoice_pay',
+      windowSec: 60,
+      ipLimit: 20,
+    },
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(routeTokenParamsSchema, rawParams);
+  if (!parsedParams.ok) {
+    return parsedParams.response;
+  }
+  const params = parsedParams.data;
   const verification = verifyPayToken(params.token);
 
   if (!verification.ok) {

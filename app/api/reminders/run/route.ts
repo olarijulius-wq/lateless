@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
 import { sendInvoiceReminderEmail } from '@/app/lib/email';
 import { generatePayLink } from '@/app/lib/pay-link';
 import { sendWithThrottle } from '@/app/lib/throttled-batch-sender';
@@ -32,10 +31,10 @@ import {
   isJobLocksMigrationRequiredError,
   releaseJobLock,
 } from '@/app/lib/job-locks';
+import { sql } from '@/app/lib/db';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 const DEFAULT_EMAIL_THROTTLE_MS = 6000;
 const DEFAULT_EMAIL_BATCH_SIZE = 25;
 const DEFAULT_EMAIL_MAX_RUN_MS = 480000;
@@ -136,7 +135,7 @@ async function authorizeRunRequest(req: Request) {
   const expectedCronToken = process.env.REMINDER_CRON_TOKEN?.trim() || '';
   const providedCronToken = getCronAuthToken(req)?.trim() || '';
   if (expectedCronToken && providedCronToken === expectedCronToken) {
-    return { ok: true as const, source: 'cron' as const };
+    return { ok: true as const, source: 'cron' as const, userEmail: null };
   }
 
   const session = await auth();
@@ -165,7 +164,11 @@ async function authorizeRunRequest(req: Request) {
     throw error;
   }
 
-  return { ok: true as const, source: 'manual' as const };
+  return {
+    ok: true as const,
+    source: 'manual' as const,
+    userEmail: session.user.email.trim().toLowerCase(),
+  };
 }
 
 function formatAmount(amount: number) {
@@ -464,6 +467,26 @@ async function runReminderJob(req: Request) {
   const authorization = await authorizeRunRequest(req);
   if (!authorization.ok) {
     return authorization.response;
+  }
+
+  const rateLimitResponse = await enforceRateLimit(
+    req,
+    authorization.source === 'cron'
+      ? {
+          bucket: 'reminders_run_cron',
+          windowSec: 60,
+          ipLimit: 30,
+        }
+      : {
+          bucket: 'reminders_run_manual',
+          windowSec: 300,
+          ipLimit: 20,
+          userLimit: 6,
+        },
+    { userKey: authorization.userEmail },
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
   }
 
   const startedAt = Date.now();
@@ -963,5 +986,11 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  return POST(req);
+  if (process.env.ALLOW_REMINDERS_RUN_GET === '1') {
+    return POST(req);
+  }
+  return NextResponse.json(
+    { ok: false, error: 'Method Not Allowed. Use POST.' },
+    { status: 405 },
+  );
 }

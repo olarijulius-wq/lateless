@@ -1,5 +1,3 @@
-const PRIMARY_ADMIN_EMAIL = 'olarijulius@gmail.com';
-
 type AdminGateDecision = {
   allowed: boolean;
   reason: string;
@@ -85,7 +83,6 @@ export function getSettingsRemindersAdminEmailDecision(
       'REMINDER_MANUAL_ADMIN_EMAILS',
       'REMINDER_MANUAL_ADMIN_EMAIL',
     ],
-    fallbackEmails: [PRIMARY_ADMIN_EMAIL],
   });
 }
 
@@ -107,7 +104,6 @@ export function getLaunchCheckAdminEmailDecision(
       'REMINDER_MANUAL_ADMIN_EMAILS',
       'REMINDER_MANUAL_ADMIN_EMAIL',
     ],
-    fallbackEmails: [PRIMARY_ADMIN_EMAIL],
   });
 }
 
@@ -129,7 +125,6 @@ export function getSmokeCheckAdminEmailDecision(
       'REMINDER_MANUAL_ADMIN_EMAILS',
       'REMINDER_MANUAL_ADMIN_EMAIL',
     ],
-    fallbackEmails: [PRIMARY_ADMIN_EMAIL],
   });
 }
 

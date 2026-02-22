@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { z } from 'zod';
+import { sql } from '@/app/lib/db';
 import { verifyPayToken } from '@/app/lib/pay-link';
 import {
   assertRefundRequestsSchemaReady,
@@ -9,11 +10,23 @@ import {
   normalizeOptionalEmail,
 } from '@/app/lib/refund-requests';
 import { sendRefundRequestNotificationEmail } from '@/app/lib/email';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+  parseRouteParams,
+  routeTokenParamsSchema,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 const DEBUG = process.env.DEBUG_REFUNDS === 'true';
+
+const refundRequestBodySchema = z
+  .object({
+    reason: z.string().trim().min(10).max(2000),
+    payer_email: z.string().trim().email().max(254).optional(),
+  })
+  .strict();
 
 function debugLog(...args: unknown[]) {
   if (DEBUG) {
@@ -35,7 +48,24 @@ export async function POST(
   request: NextRequest,
   props: { params: Promise<{ token: string }> },
 ) {
-  const params = await props.params;
+  const rateLimitResponse = await enforceRateLimit(
+    request,
+    {
+      bucket: 'public_refund_request',
+      windowSec: 600,
+      ipLimit: 10,
+    },
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(routeTokenParamsSchema, rawParams);
+  if (!parsedParams.ok) {
+    return parsedParams.response;
+  }
+  const params = parsedParams.data;
   const verification = verifyPayToken(params.token);
 
   if (!verification.ok) {
@@ -49,26 +79,13 @@ export async function POST(
     );
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid request payload.' },
-      { status: 400 },
-    );
+  const parsedBody = await parseJsonBody(request, refundRequestBodySchema);
+  if (!parsedBody.ok) {
+    return parsedBody.response;
   }
 
-  const reasonRaw = (body as { reason?: unknown })?.reason;
-  const payerEmail = normalizeOptionalEmail((body as { payer_email?: unknown })?.payer_email);
-  const reason = typeof reasonRaw === 'string' ? reasonRaw.trim() : '';
-
-  if (reason.length < 10) {
-    return NextResponse.json(
-      { ok: false, message: 'Please provide at least 10 characters for the reason.' },
-      { status: 400 },
-    );
-  }
+  const reason = parsedBody.data.reason;
+  const payerEmail = normalizeOptionalEmail(parsedBody.data.payer_email);
 
   try {
     await assertRefundRequestsSchemaReady();

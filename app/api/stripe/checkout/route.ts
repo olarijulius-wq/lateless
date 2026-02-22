@@ -18,12 +18,35 @@ import {
   ensureWorkspaceContextForCurrentUser,
   fetchWorkspaceMembershipsForCurrentUser,
 } from '@/app/lib/workspaces';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+  parseQuery,
+} from '@/app/lib/security/api-guard';
 
-const checkoutParamsSchema = z.object({
+const checkoutParamsSchema = z
+  .object({
+    plan: z.string().trim().toLowerCase().optional(),
+    interval: z.enum(['monthly', 'annual']).default('monthly'),
+    workspaceId: z.string().trim().uuid().optional(),
+  })
+  .strict();
+
+const checkoutBodySchema = z
+  .object({
+    plan: z.string().trim().toLowerCase().optional(),
+    interval: z.enum(['monthly', 'annual']).optional(),
+    workspaceId: z.string().trim().uuid().optional(),
+  })
+  .strict();
+
+const checkoutQuerySchema = z
+  .object({
   plan: z.string().trim().toLowerCase().optional(),
-  interval: z.enum(['monthly', 'annual']).default('monthly'),
-  workspaceId: z.string().trim().optional(),
-});
+  interval: z.enum(['monthly', 'annual']).optional(),
+  workspaceId: z.string().trim().uuid().optional(),
+})
+  .strict();
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -34,24 +57,39 @@ export async function POST(req: Request) {
 
   const normalizedEmail = session.user.email.trim().toLowerCase();
 
-  const url = new URL(req.url);
-  const queryPlan = url.searchParams.get('plan') ?? undefined;
-  const queryInterval = url.searchParams.get('interval') ?? undefined;
-  const queryWorkspaceId = url.searchParams.get('workspaceId') ?? undefined;
-  let body: { plan?: string; interval?: BillingInterval; workspaceId?: string } = {};
-  try {
-    body = (await req.json()) as {
-      plan?: string;
-      interval?: BillingInterval;
-      workspaceId?: string;
-    };
-  } catch {
-    body = {};
+  const rateLimitResponse = await enforceRateLimit(
+    req,
+    {
+      bucket: 'stripe_checkout',
+      windowSec: 300,
+      ipLimit: 30,
+      userLimit: 10,
+    },
+    { userKey: normalizedEmail },
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
   }
+
+  const url = new URL(req.url);
+  const parsedQuery = parseQuery(checkoutQuerySchema, url);
+  if (!parsedQuery.ok) {
+    return parsedQuery.response;
+  }
+
+  let body: { plan?: string; interval?: BillingInterval; workspaceId?: string } = {};
+  if ((req.headers.get('content-type') ?? '').toLowerCase().includes('application/json')) {
+    const parsedBody = await parseJsonBody(req, checkoutBodySchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
+    }
+    body = parsedBody.data;
+  }
+
   const parsed = checkoutParamsSchema.safeParse({
-    plan: queryPlan ?? body.plan,
-    interval: queryInterval ?? body.interval,
-    workspaceId: queryWorkspaceId ?? body.workspaceId,
+    plan: parsedQuery.data.plan ?? body.plan,
+    interval: parsedQuery.data.interval ?? body.interval,
+    workspaceId: parsedQuery.data.workspaceId ?? body.workspaceId,
   });
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid interval' }, { status: 400 });

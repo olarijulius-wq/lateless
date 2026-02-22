@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import type Stripe from "stripe";
 import * as Sentry from "@sentry/nextjs";
-import postgres from "postgres";
+import { sql } from "@/app/lib/db";
 import {
   resolvePaidPlanFromStripe,
 } from "@/app/lib/config";
@@ -29,10 +29,9 @@ import {
   applyPlanSync,
   readCanonicalWorkspacePlanSource,
 } from "@/app/lib/billing-sync";
+import { enforceRateLimit } from "@/app/lib/security/api-guard";
 
 export const runtime = "nodejs";
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: "require" });
 
 const DEBUG = process.env.DEBUG_STRIPE_WEBHOOK === "true";
 const BILLING_EVENTS_DEDUPE_TYPES = new Set([
@@ -2407,6 +2406,18 @@ async function processEvent(event: Stripe.Event): Promise<void> {
 }
 
 export async function POST(req: Request) {
+  const rateLimitResponse = await enforceRateLimit(
+    req,
+    {
+      bucket: "stripe_webhook",
+      windowSec: 60,
+      ipLimit: 300,
+    },
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const sig = req.headers.get("stripe-signature");
   if (!sig) {
     return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 400 });
@@ -2552,8 +2563,8 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(
-      { ok: true, tolerated: true, error: "Webhook business logic failed" },
-      { status: 200 },
+      { ok: false, code: "WEBHOOK_PROCESSING_FAILED", error: "Webhook business logic failed" },
+      { status: 500 },
     );
   }
 }

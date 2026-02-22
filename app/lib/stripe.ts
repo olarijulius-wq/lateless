@@ -1,5 +1,10 @@
 // app/lib/stripe.ts
+import 'server-only';
 import Stripe from 'stripe';
 
-// Lihtne variant – apiVersion välja jätame, et TypeScript ei vinguks
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
+if (!stripeSecretKey) {
+  throw new Error('Missing STRIPE_SECRET_KEY');
+}
+
+export const stripe = new Stripe(stripeSecretKey);

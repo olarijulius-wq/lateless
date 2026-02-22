@@ -3,11 +3,15 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import type PDFDocumentType from 'pdfkit';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { verifyPayToken } from '@/app/lib/pay-link';
 import { formatDateToLocal } from '@/app/lib/utils';
+import {
+  enforceRateLimit,
+  parseRouteParams,
+  routeTokenParamsSchema,
+} from '@/app/lib/security/api-guard';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 const PDFDocument = require('pdfkit/js/pdfkit.standalone') as typeof PDFDocumentType;
 
 function formatAmountForPdf(amountCents: number) {
@@ -71,10 +75,27 @@ async function buildInvoicePdf(input: {
 }
 
 export async function GET(
-  _: Request,
+  req: Request,
   props: { params: Promise<{ token: string }> },
 ) {
-  const params = await props.params;
+  const rateLimitResponse = await enforceRateLimit(
+    req,
+    {
+      bucket: 'public_invoice_pdf',
+      windowSec: 60,
+      ipLimit: 30,
+    },
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(routeTokenParamsSchema, rawParams);
+  if (!parsedParams.ok) {
+    return parsedParams.response;
+  }
+  const params = parsedParams.data;
   const verification = verifyPayToken(params.token);
   if (!verification.ok) {
     return NextResponse.json({ error: 'Invalid payment link.' }, { status: 404 });

@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import postgres from 'postgres';
 import { z } from 'zod';
 import { auth } from '@/auth';
+import { sql } from '@/app/lib/db';
 import { stripe } from '@/app/lib/stripe';
 import { resolvePaidPlanFromStripe } from '@/app/lib/config';
 import { applyPlanSync, readCanonicalWorkspacePlanSource } from '@/app/lib/billing-sync';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 const reconcileSchema = z
   .object({
     sessionId: z.string().trim().min(1).optional(),
     subscriptionId: z.string().trim().min(1).optional(),
   })
+  .strict()
   .refine((value) => Boolean(value.sessionId || value.subscriptionId), {
     message: 'sessionId or subscriptionId is required',
   });
@@ -136,6 +136,7 @@ export async function POST(req: Request) {
   try {
     const session = await auth();
     const userId = (session?.user as { id?: string } | undefined)?.id ?? null;
+    const userEmail = session?.user?.email?.trim().toLowerCase() ?? null;
     if (!userId) {
       return jsonFailure({
         status: 401,
@@ -143,6 +144,20 @@ export async function POST(req: Request) {
         message: 'Unauthorized',
         build,
       });
+    }
+
+    const rateLimitResponse = await enforceRateLimit(
+      req,
+      {
+        bucket: 'stripe_reconcile',
+        windowSec: 300,
+        ipLimit: 30,
+        userLimit: 10,
+      },
+      { userKey: userEmail },
+    );
+    if (rateLimitResponse) {
+      return rateLimitResponse;
     }
 
     let body: unknown = {};
@@ -164,7 +179,6 @@ export async function POST(req: Request) {
     }
 
     const { sessionId, subscriptionId } = parsed.data;
-    const userEmail = session?.user?.email?.trim().toLowerCase() ?? null;
 
     let checkoutSession: Stripe.Checkout.Session | null = null;
     let subscription: Stripe.Subscription | null = null;
