@@ -1,24 +1,16 @@
 import Link from 'next/link';
 import NavLinks from '@/app/ui/dashboard/nav-links';
+import { AccountMenuItems } from '@/app/ui/dashboard/mobile-drawer';
 import AcmeLogo from '@/app/ui/acme-logo';
 import {
   ChevronUpIcon,
-  Cog6ToothIcon,
-  HomeIcon,
-  PowerIcon,
-  UserCircleIcon,
 } from '@heroicons/react/24/outline';
 import { signOut } from '@/auth';
 import { auth } from '@/auth';
-import ThemeToggleMenuItem from '@/app/ui/dashboard/theme-toggle-menu-item';
 import MobileNav from '@/app/ui/dashboard/mobile-nav';
 import FitTextEmail from '@/app/ui/dashboard/fit-text-email';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { fetchWorkspaceDunningState } from '@/app/lib/billing-dunning';
-import {
-  NEUTRAL_FOCUS_RING_CLASSES,
-  NEUTRAL_INACTIVE_ITEM_CLASSES,
-} from '@/app/ui/dashboard/neutral-interaction';
 
 function getInitial(value: string) {
   const initial = value.trim().charAt(0).toUpperCase();
@@ -42,7 +34,6 @@ export default async function SideNav() {
   } catch {
     showBillingRecoveryWarning = false;
   }
-  const accountMenuItemClasses = `flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-700 transition dark:text-neutral-300 ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`;
 
   return (
     <div className="flex h-full flex-col gap-2 px-3 py-4 md:px-2">
@@ -81,49 +72,7 @@ export default async function SideNav() {
                 <ChevronUpIcon className="h-4 w-4 text-neutral-500 transition group-open:rotate-180 dark:text-neutral-400" />
               </summary>
               <div className="absolute bottom-full left-0 right-0 z-20 mb-2 rounded-xl border border-neutral-200 bg-white p-2 shadow-xl backdrop-blur dark:border-neutral-900 dark:bg-black">
-                <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500 dark:text-neutral-500">
-                  Account
-                </p>
-                <Link
-                  href="/dashboard/profile"
-                  className={accountMenuItemClasses}
-                >
-                  <UserCircleIcon className="h-4 w-4" />
-                  My profile
-                </Link>
-                <Link
-                  href="/dashboard/settings"
-                  className={accountMenuItemClasses}
-                >
-                  <Cog6ToothIcon className="h-4 w-4" />
-                  Settings
-                </Link>
-                <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500 dark:text-neutral-500">
-                  Preferences
-                </p>
-                <ThemeToggleMenuItem />
-                <Link
-                  href="/"
-                  className={accountMenuItemClasses}
-                >
-                  <HomeIcon className="h-4 w-4" />
-                  Homepage
-                </Link>
-                <Link
-                  href="/dashboard/onboarding"
-                  className={accountMenuItemClasses}
-                >
-                  <UserCircleIcon className="h-4 w-4" />
-                  Onboarding
-                </Link>
-                <form
-                  action={logoutAction}
-                >
-                  <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-500/10">
-                    <PowerIcon className="h-4 w-4" />
-                    Logout
-                  </button>
-                </form>
+                <AccountMenuItems logoutAction={logoutAction} />
               </div>
             </details>
           </div>
