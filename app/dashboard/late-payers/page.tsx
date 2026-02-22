@@ -8,13 +8,13 @@ import {
   type LatePayerSortKey,
 } from '@/app/lib/data';
 import { PLAN_CONFIG } from '@/app/lib/config';
-import { lusitana } from '@/app/ui/fonts';
 import { toolbarButtonClasses } from '@/app/ui/button';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
 import LatePayersControls from '@/app/ui/dashboard/late-payers-controls';
 import Pagination from '@/app/ui/invoices/pagination';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { fetchWorkspaceDunningState } from '@/app/lib/billing-dunning';
+import DashboardPageTitle from '@/app/ui/dashboard/page-title';
 
 export const metadata: Metadata = {
   title: 'Late payers',
@@ -82,14 +82,11 @@ export default async function Page(props: {
   return (
     <div className="space-y-4">
       <RevealOnMount>
-        <div>
-          <h1 className={`${lusitana.className} mb-2 text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}>
-            Late payers
-          </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Customers who pay invoices after the due date.
-          </p>
-        </div>
+        <DashboardPageTitle
+          title="Late payers"
+          description="Customers who pay invoices after the due date."
+          className="mb-2"
+        />
         {showRecoveryWarning ? (
           <div className="rounded-xl border border-amber-300 bg-amber-100 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
             Billing warning: payment recovery is required. Some paid features may be limited until payment is fixed.

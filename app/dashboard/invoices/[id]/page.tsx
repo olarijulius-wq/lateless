@@ -353,7 +353,7 @@ export default async function Page(props: {
                   </span>
                 </div>
                 {hasStripeNet ? (
-                  <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-semibold text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200">
+                  <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-semibold text-zinc-900 dark:border-zinc-500/30 dark:bg-zinc-500/10 dark:text-zinc-200">
                     <span>Actual Stripe net</span>
                     <span>{formatCurrency(stripeNetAmount, actualNetCurrency)}</span>
                   </div>

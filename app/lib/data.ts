@@ -292,7 +292,7 @@ export async function fetchRevenue() {
 
   const data = await sql<{ month: string; revenue: number }[]>`
     SELECT
-      to_char(date_trunc('month', date::date), 'Mon YYYY') as month,
+      to_char(date_trunc('month', date::date), 'YYYY-MM') as month,
       SUM(amount) / 100 as revenue
     FROM invoices
     WHERE
@@ -312,18 +312,24 @@ export async function fetchRevenueDaily(days: number = 30): Promise<RevenueDay[]
 
   const normalizedEmail = normalizeEmail(userEmail);
 
+  const safeDays = Math.max(1, Math.floor(days || 30));
+
   const data = await sql<RevenueDay[]>`
+    WITH local_bounds AS (
+      SELECT
+        date_trunc('day', now() at time zone 'Europe/Tallinn') - (${safeDays}::int - 1) * interval '1 day' as start_day
+    )
     SELECT
-      to_char(date_trunc('day', paid_at), 'YYYY-MM-DD') as day,
+      to_char(date_trunc('day', paid_at at time zone 'Europe/Tallinn'), 'YYYY-MM-DD') as day,
       SUM(amount) / 100 as revenue
     FROM invoices
     WHERE
       status = 'paid'
       AND paid_at IS NOT NULL
-      AND paid_at >= now() - (${days}::int * interval '1 day')
+      AND (paid_at at time zone 'Europe/Tallinn') >= (SELECT start_day FROM local_bounds)
       AND lower(user_email) = ${normalizedEmail}
-    GROUP BY date_trunc('day', paid_at)
-    ORDER BY date_trunc('day', paid_at) ASC
+    GROUP BY date_trunc('day', paid_at at time zone 'Europe/Tallinn')
+    ORDER BY date_trunc('day', paid_at at time zone 'Europe/Tallinn') ASC
   `;
 
   return data;

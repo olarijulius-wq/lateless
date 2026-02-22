@@ -78,8 +78,9 @@ export default function InvoicesTable({
           Sent invoice {lastSentInvoice.invoice_number ?? `#${lastSentInvoice.id.slice(0, 8)}`}.
         </div>
       ) : null}
-      <div className="inline-block min-w-full align-middle">
-        <div className={`rounded-2xl border border-neutral-200 bg-white p-2 shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:pt-0 ${DARK_SURFACE_SUBTLE} dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>
+      <div className="overflow-x-auto overflow-y-visible">
+        <div className="inline-block min-w-full align-middle">
+          <div className={`overflow-hidden rounded-2xl border border-neutral-200 bg-white p-2 shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:pt-0 ${DARK_SURFACE_SUBTLE} dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>
           <div className="md:hidden">
             {invoices?.map((invoice) => {
               const isHighlighted = highlightedInvoiceId === invoice.id;
@@ -177,8 +178,8 @@ export default function InvoicesTable({
               );
             })}
           </div>
-          <table className="hidden min-w-full text-slate-900 dark:text-zinc-100 md:table">
-            <thead className="rounded-lg bg-black text-left text-xs font-semibold uppercase tracking-[0.12em] text-white dark:bg-black dark:text-zinc-100">
+            <table className="hidden min-w-full text-slate-900 dark:text-zinc-100 md:table">
+            <thead className="sticky top-0 z-10 rounded-lg border-b border-neutral-200 bg-white text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600 dark:border-zinc-800 dark:bg-black dark:text-zinc-100">
               <tr>
                 <th scope="col" className="px-4 py-5 font-medium sm:pl-6">
                   Customer
@@ -300,9 +301,10 @@ export default function InvoicesTable({
             </tbody>
           </table>
 
-          {invoices.length === 0 && (
-            <div className="p-6 text-sm text-slate-600 dark:text-zinc-300">No invoices yet.</div>
-          )}
+            {invoices.length === 0 && (
+              <div className="p-6 text-sm text-slate-600 dark:text-zinc-300">No invoices yet.</div>
+            )}
+          </div>
         </div>
       </div>
     </div>

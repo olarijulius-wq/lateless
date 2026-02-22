@@ -21,6 +21,7 @@ import {
 import { generatePayLink } from '@/app/lib/pay-link';
 import type { ReminderPanelItem } from './reminders-panel';
 import { fetchWorkspaceDunningState } from '@/app/lib/billing-dunning';
+import DashboardPageTitle from '@/app/ui/dashboard/page-title';
 
 export const metadata: Metadata = {
   title: 'Reminders',
@@ -447,17 +448,11 @@ export default async function RemindersPage() {
             Billing warning: payment recovery is required. Resolve billing to keep reminders running without interruption.
           </div>
         ) : null}
-        <div>
-          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
-            Reminders
-          </h1>
-          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-            Forecast upcoming reminder emails and preview content.
-          </p>
-          <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-500">
-            Workspace: {workspaceContext.workspaceName} · Role: {workspaceContext.userRole}
-          </p>
-        </div>
+        <DashboardPageTitle
+          title="Reminders"
+          description="Forecast upcoming reminder emails and preview content."
+          meta={`Workspace: ${workspaceContext.workspaceName} · Role: ${workspaceContext.userRole}`}
+        />
 
         <RemindersPanel
           items={items}

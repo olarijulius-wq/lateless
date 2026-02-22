@@ -1,12 +1,16 @@
 import Link from 'next/link';
 import { SUPPORT_EMAIL } from '@/app/legal/constants';
+import {
+  MARKETING_CONTAINER_WIDE,
+  MARKETING_SUBTLE_HOVER,
+} from '@/app/ui/marketing/tokens';
 
-const footerLinkClasses = 'transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60';
+const footerLinkClasses = `${MARKETING_SUBTLE_HOVER} text-[color:var(--mk-fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mk-focus)]`;
 
 export default function PublicFooter() {
   return (
-    <footer className="border-t border-neutral-900">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-8 text-sm text-neutral-400 md:flex-row md:items-center md:justify-between">
+    <footer className="relative z-10 border-t border-[color:var(--mk-border)]">
+      <div className={`${MARKETING_CONTAINER_WIDE} flex flex-col gap-4 py-8 text-sm text-[color:var(--mk-fg-muted)] md:flex-row md:items-center md:justify-between`}>
         <p>Lateless - payment links, reminders, and Stripe payouts.</p>
         <nav aria-label="Footer" className="flex flex-wrap items-center gap-4">
           <Link href="/pricing" className={footerLinkClasses}>

@@ -1,6 +1,15 @@
 import type { Metadata } from 'next';
-import TopNav from '@/app/ui/marketing/top-nav';
-import PublicFooter from '@/app/ui/marketing/public-footer';
+import { RevealOnScroll, StaggeredList } from '@/app/ui/motion/reveal';
+import MarketingPageShell from '@/app/ui/marketing/page-shell';
+import {
+  MARKETING_BODY,
+  MARKETING_CARD_SURFACE_SOFT,
+  MARKETING_CONTAINER_READING,
+  MARKETING_EYEBROW,
+  MARKETING_H1,
+  MARKETING_H3,
+  MARKETING_PAGE_PY,
+} from '@/app/ui/marketing/tokens';
 
 export const metadata: Metadata = {
   title: 'Help',
@@ -17,50 +26,41 @@ export const metadata: Metadata = {
   },
 };
 
+const helpSections = [
+  {
+    title: 'Invoice dates',
+    body: 'The created date is when the draft invoice record was made. The issued date is when you send it to a customer. Reminder scheduling uses the issued date and due date.',
+  },
+  {
+    title: 'Reminders',
+    body: 'Lateless can send overdue reminders on day 1, day 7, and day 21 after due date based on your settings.',
+  },
+  {
+    title: 'Stripe payouts',
+    body: 'Customers pay through Stripe Checkout. Funds settle to your connected Stripe account according to your Stripe payout schedule.',
+  },
+  {
+    title: 'Plan limits and history',
+    body: 'Plan invoice limits reset monthly. Invoice history remains available even after a monthly limit reset.',
+  },
+];
+
 export default function HelpPage() {
   return (
-    <div className="min-h-screen bg-black text-white">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:text-black"
-      >
-        Skip to content
-      </a>
-      <TopNav />
-      <main id="main-content" className="mx-auto w-full max-w-3xl px-6 py-16">
-        <h1 className="text-3xl font-semibold text-white">Help</h1>
-        <div className="mt-8 space-y-8 text-sm leading-relaxed text-neutral-300">
-          <section>
-            <h2 className="text-base font-medium text-white">Invoice dates</h2>
-            <p className="mt-2">
-              The created date is when the draft invoice record was made. The issued date is when you send it to a customer.
-              Reminder scheduling uses the issued date and due date.
-            </p>
-          </section>
+    <MarketingPageShell mainClassName={`${MARKETING_CONTAINER_READING} ${MARKETING_PAGE_PY}`}>
+      <RevealOnScroll>
+        <p className={MARKETING_EYEBROW}>Support</p>
+        <h1 className={`${MARKETING_H1} mt-2`}>Help</h1>
+      </RevealOnScroll>
 
-          <section>
-            <h2 className="text-base font-medium text-white">Reminders</h2>
-            <p className="mt-2">
-              Lateless can send overdue reminders on day 1, day 7, and day 21 after due date based on your settings.
-            </p>
+      <StaggeredList className="mt-8 space-y-4" stagger={0.05}>
+        {helpSections.map((section) => (
+          <section key={section.title} className={`${MARKETING_CARD_SURFACE_SOFT} p-5`}>
+            <h2 className={MARKETING_H3}>{section.title}</h2>
+            <p className={`${MARKETING_BODY} mt-2`}>{section.body}</p>
           </section>
-
-          <section>
-            <h2 className="text-base font-medium text-white">Stripe payouts</h2>
-            <p className="mt-2">
-              Customers pay through Stripe Checkout. Funds settle to your connected Stripe account according to your Stripe payout schedule.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-base font-medium text-white">Plan limits and history</h2>
-            <p className="mt-2">
-              Plan invoice limits reset monthly. Invoice history remains available even after a monthly limit reset.
-            </p>
-          </section>
-        </div>
-      </main>
-      <PublicFooter />
-    </div>
+        ))}
+      </StaggeredList>
+    </MarketingPageShell>
   );
 }

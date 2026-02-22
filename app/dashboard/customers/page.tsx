@@ -10,7 +10,6 @@ import {
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Button } from '@/app/ui/button';
-import { lusitana } from '@/app/ui/fonts';
 import ExportCustomersButton from './export-button';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
@@ -19,6 +18,7 @@ import { auth } from '@/auth';
 import CustomersListControls from '@/app/ui/customers/list-controls';
 import Pagination from '@/app/ui/invoices/pagination';
 import CustomersUpdatedToast from '@/app/ui/customers/updated-toast';
+import DashboardPageTitle from '@/app/ui/dashboard/page-title';
 
 export const metadata: Metadata = {
   title: 'Customers',
@@ -96,12 +96,7 @@ export default async function Page(props: {
   return (
     <div className="w-full">
       <RevealOnMount>
-        {/* Title */}
-        <h1
-          className={`${lusitana.className} mb-3 text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}
-        >
-          Customers
-        </h1>
+        <DashboardPageTitle title="Customers" className="mb-3" />
 
         <MobileExpandableSearchToolbar
           searchPlaceholder="Search customers..."

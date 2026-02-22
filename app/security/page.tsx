@@ -1,9 +1,18 @@
 import Link from 'next/link';
 import { SUPPORT_EMAIL } from '@/app/legal/constants';
-import { lusitana } from '@/app/ui/fonts';
 import type { Metadata } from 'next';
-import TopNav from '@/app/ui/marketing/top-nav';
-import PublicFooter from '@/app/ui/marketing/public-footer';
+import { RevealOnScroll } from '@/app/ui/motion/reveal';
+import MarketingPageShell from '@/app/ui/marketing/page-shell';
+import {
+  MARKETING_BODY,
+  MARKETING_BODY_MUTED,
+  MARKETING_CONTAINER_READING,
+  MARKETING_EYEBROW,
+  MARKETING_H1,
+  MARKETING_H3,
+  MARKETING_PAGE_PY,
+  MARKETING_SUBTLE_HOVER,
+} from '@/app/ui/marketing/tokens';
 
 export const metadata: Metadata = {
   title: 'Security',
@@ -20,87 +29,78 @@ export const metadata: Metadata = {
 
 export default function SecurityPage() {
   return (
-    <div className="min-h-screen bg-black text-white">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:text-black"
-      >
-        Skip to content
-      </a>
-      <TopNav />
-      <main id="main-content" className="mx-auto w-full max-w-3xl px-6 py-16">
+    <MarketingPageShell mainClassName={`${MARKETING_CONTAINER_READING} ${MARKETING_PAGE_PY}`}>
+      <RevealOnScroll>
         <div className="mb-8">
-          <p className="text-xs uppercase tracking-[0.16em] text-neutral-400">
-            Trust
-          </p>
-          <h1 className={`${lusitana.className} mt-2 text-4xl text-white sm:text-5xl`}>
-            Security
-          </h1>
-          <p className="mt-3 text-sm text-neutral-400">
+          <p className={MARKETING_EYEBROW}>Trust</p>
+          <h1 className={`${MARKETING_H1} mt-2`}>Security</h1>
+          <p className={`${MARKETING_BODY_MUTED} mt-3`}>
             Concrete controls currently implemented in this repository.
           </p>
         </div>
+      </RevealOnScroll>
 
-        <div className="space-y-8 text-sm leading-relaxed text-neutral-300">
-          <section>
-            <h2 className="text-base font-medium text-white">Authentication</h2>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              <li>Email/password accounts require email verification before login.</li>
-              <li>Passwords and one-time 2FA codes are hashed with bcrypt.</li>
-              <li>Optional 2FA is supported with emailed 6-digit OTP codes.</li>
-              <li>Google and GitHub OAuth are available when provider env vars are configured.</li>
-              <li>Login attempts are rate-limited and failed attempts are tracked.</li>
-            </ul>
-          </section>
+      <div className={`space-y-8 ${MARKETING_BODY}`}>
+        <section>
+          <h2 className={MARKETING_H3}>Authentication</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>Email/password accounts require email verification before login.</li>
+            <li>Passwords and one-time 2FA codes are hashed with bcrypt.</li>
+            <li>Optional 2FA is supported with emailed 6-digit OTP codes.</li>
+            <li>Google and GitHub OAuth are available when provider env vars are configured.</li>
+            <li>Login attempts are rate-limited and failed attempts are tracked.</li>
+          </ul>
+        </section>
 
-          <section>
-            <h2 className="text-base font-medium text-white">Payments</h2>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              <li>Public invoice payments use Stripe Checkout sessions.</li>
-              <li>Payouts run through Stripe Connect connected accounts.</li>
-              <li>Platform fees are applied as Stripe application fees when configured by plan.</li>
-              <li>Stripe webhooks validate the signature using `STRIPE_WEBHOOK_SECRET`.</li>
-              <li>Webhook events are deduplicated by unique Stripe event ID before processing.</li>
-            </ul>
-          </section>
+        <section>
+          <h2 className={MARKETING_H3}>Payments</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>Public invoice payments use Stripe Checkout sessions.</li>
+            <li>Payouts run through Stripe Connect connected accounts.</li>
+            <li>Platform fees are applied as Stripe application fees when configured by plan.</li>
+            <li>Stripe webhooks validate the signature using `STRIPE_WEBHOOK_SECRET`.</li>
+            <li>Webhook events are deduplicated by unique Stripe event ID before processing.</li>
+          </ul>
+        </section>
 
-          <section>
-            <h2 className="text-base font-medium text-white">Data handling</h2>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              <li>Application data is stored in Postgres.</li>
-              <li>Sensitive credentials are loaded from environment variables.</li>
-              <li>Workspace SMTP passwords are encrypted at rest (AES-256-GCM) when saved.</li>
-            </ul>
-          </section>
+        <section>
+          <h2 className={MARKETING_H3}>Data handling</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>Application data is stored in Postgres.</li>
+            <li>Sensitive credentials are loaded from environment variables.</li>
+            <li>Workspace SMTP passwords are encrypted at rest (AES-256-GCM) when saved.</li>
+          </ul>
+        </section>
 
-          <section>
-            <h2 className="text-base font-medium text-white">Operational safety</h2>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              <li>Webhook processing is idempotent via event-level deduplication.</li>
-              <li>Refund creation uses Stripe idempotency keys to avoid duplicate refunds.</li>
-              <li>Basic abuse controls include login throttling and invoice creation safety limits.</li>
-            </ul>
-          </section>
+        <section>
+          <h2 className={MARKETING_H3}>Operational safety</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>Webhook processing is idempotent via event-level deduplication.</li>
+            <li>Refund creation uses Stripe idempotency keys to avoid duplicate refunds.</li>
+            <li>Basic abuse controls include login throttling and invoice creation safety limits.</li>
+          </ul>
+        </section>
 
-          <section>
-            <h2 className="text-base font-medium text-white">Contact</h2>
-            <p className="mt-2">
-              Security questions and reports:{' '}
-              <a href={`mailto:${SUPPORT_EMAIL}`} className="text-white hover:underline">
-                {SUPPORT_EMAIL}
-              </a>
-              .
-            </p>
-          </section>
-        </div>
+        <section>
+          <h2 className={MARKETING_H3}>Contact</h2>
+          <p className="mt-2">
+            Security questions and reports:{' '}
+            <a
+              href={`mailto:${SUPPORT_EMAIL}`}
+              className={`${MARKETING_SUBTLE_HOVER} text-[var(--mk-fg-strong)] hover:underline`}
+            >
+              {SUPPORT_EMAIL}
+            </a>
+            .
+          </p>
+        </section>
+      </div>
 
-        <div className="mt-10 border-t border-neutral-900 pt-6 text-sm text-neutral-400">
-          <Link href="/" className="hover:text-white">
-            Back to homepage
-          </Link>
-        </div>
-      </main>
-      <PublicFooter />
-    </div>
+      <div className={`${MARKETING_BODY_MUTED} mt-10 border-t border-[color:var(--mk-border)] pt-6`}>
+        <Link href="/" className={MARKETING_SUBTLE_HOVER}>
+          Back to homepage
+        </Link>
+      </div>
+    </MarketingPageShell>
   );
 }

@@ -26,7 +26,7 @@ function SubmitButton() {
 
   return (
     <Button
-      className="h-11 w-full justify-start border-white bg-white px-4 text-black shadow-[0_10px_28px_rgba(0,0,0,0.35)] hover:bg-white/90"
+      className="h-11 w-full justify-start border-zinc-300 bg-white px-4 text-zinc-950 shadow-[0_10px_24px_rgba(0,0,0,0.12)] hover:border-zinc-400 hover:bg-white hover:shadow-[0_12px_26px_rgba(0,0,0,0.14)] focus-visible:ring-emerald-500/35 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:shadow-[0_10px_28px_rgba(0,0,0,0.35)] dark:hover:bg-zinc-800 dark:focus-visible:ring-emerald-500/40"
       aria-disabled={pending}
     >
       Log in
@@ -117,16 +117,16 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
   if (state.needsTwoFactor || twoFactorState.needsTwoFactor) {
     return (
       <form action={twoFactorFormAction} className="space-y-5">
-        <p className="text-sm text-white/70">
+        <p className="text-sm text-zinc-600 dark:text-white/70">
           We sent a 6-digit code to{' '}
-          <span className="font-medium text-white">
+          <span className="font-medium text-zinc-950 dark:text-white">
             {activeTwoFactorState.emailForTwoFactor || email}
           </span>
           .
         </p>
 
         <label
-          className="block text-xs font-medium text-white/80"
+          className="block text-xs font-medium text-zinc-700 dark:text-white/80"
           htmlFor="twoFactorCode"
         >
           6-digit code
@@ -140,7 +140,7 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
           autoComplete="one-time-code"
           maxLength={6}
           required
-          className={`${authInputStyles.authInput} block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-3 text-center text-lg tracking-[0.24em] tabular-nums text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20`}
+          className={`${authInputStyles.authInput} block w-full rounded-xl border border-zinc-300 bg-white py-3 text-center text-lg tracking-[0.24em] tabular-nums text-zinc-900 outline-none placeholder:text-zinc-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-emerald-500/25 dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-white dark:placeholder:text-white/35 dark:focus:border-white/20 dark:focus:ring-emerald-500/30`}
           placeholder="000000"
         />
 
@@ -148,8 +148,8 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
           <p
             className={
               twoFactorInfoMessage
-                ? 'rounded-lg border border-white/[0.12] bg-white/[0.06] px-3 py-2 text-sm text-white/70'
-                : 'text-sm text-red-400'
+                ? 'rounded-lg border border-zinc-300 bg-white/80 px-3 py-2 text-sm text-zinc-600 dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-white/70'
+                : 'text-sm text-red-600 dark:text-red-400'
             }
             aria-live="polite"
           >
@@ -159,13 +159,13 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
 
         <input type="hidden" name="redirectTo" defaultValue={callbackUrl} />
 
-        <Button className="h-11 w-full border-white bg-white text-black shadow-[0_10px_28px_rgba(0,0,0,0.35)] hover:bg-white/90" type="submit">
+        <Button className="h-11 w-full border-zinc-300 bg-white text-zinc-950 shadow-[0_10px_24px_rgba(0,0,0,0.12)] hover:border-zinc-400 hover:bg-white hover:shadow-[0_12px_26px_rgba(0,0,0,0.14)] focus-visible:ring-emerald-500/35 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:shadow-[0_10px_28px_rgba(0,0,0,0.35)] dark:hover:bg-zinc-800 dark:focus-visible:ring-emerald-500/40" type="submit">
           Verify code
           <ArrowRightIcon className="ml-auto h-5 w-5 text-current" />
         </Button>
 
         <div className="text-center">
-          <Link href="/login" className="text-xs text-white/60 hover:text-white">
+          <Link href="/login" className="text-xs text-zinc-500 hover:text-zinc-800 dark:text-white/60 dark:hover:text-white">
             Start over
           </Link>
         </div>
@@ -180,27 +180,27 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
         githubEnabled={githubEnabled}
       />
       <div className="flex items-center gap-3">
-        <span className="h-px flex-1 bg-white/10" />
-        <span className="text-xs uppercase tracking-[0.16em] text-white/50">
+        <span className="h-px flex-1 bg-zinc-300 dark:bg-white/10" />
+        <span className="text-xs uppercase tracking-[0.16em] text-zinc-500 dark:text-white/50">
           or
         </span>
-        <span className="h-px flex-1 bg-white/10" />
+        <span className="h-px flex-1 bg-zinc-300 dark:bg-white/10" />
       </div>
 
       {state.message && (
         <div
-          className="flex items-start space-x-2 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2"
+          className="flex items-start space-x-2 rounded-lg border border-red-600/25 bg-red-500/10 px-3 py-2 dark:border-red-400/30"
           aria-live="polite"
           aria-atomic="true"
         >
-          <ExclamationCircleIcon className="mt-0.5 h-5 w-5 text-red-400" />
-          <p className="text-sm text-red-300">{state.message}</p>
+          <ExclamationCircleIcon className="mt-0.5 h-5 w-5 text-red-600 dark:text-red-400" />
+          <p className="text-sm text-red-700 dark:text-red-300">{state.message}</p>
         </div>
       )}
 
       <div>
         <label
-          className="mb-2 block text-xs font-medium text-white/80"
+          className="mb-2 block text-xs font-medium text-zinc-700 dark:text-white/80"
           htmlFor="email"
         >
           Email
@@ -214,15 +214,15 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
             placeholder="you@example.com"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className={`${authInputStyles.authInput} peer block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-[11px] pl-10 text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20`}
+            className={`${authInputStyles.authInput} peer block w-full rounded-xl border border-zinc-300 bg-white py-[11px] pl-10 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-emerald-500/25 dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-white dark:placeholder:text-white/35 dark:focus:border-white/20 dark:focus:ring-emerald-500/30`}
           />
-          <AtSymbolIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/40 transition peer-focus:text-white/70" />
+          <AtSymbolIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-zinc-400 transition peer-focus:text-zinc-600 dark:text-white/40 dark:peer-focus:text-white/70" />
         </div>
       </div>
 
       <div>
         <label
-          className="mb-2 block text-xs font-medium text-white/80"
+          className="mb-2 block text-xs font-medium text-zinc-700 dark:text-white/80"
           htmlFor="password"
         >
           Password
@@ -237,14 +237,14 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
             placeholder="Enter your password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className={`${authInputStyles.authInput} peer block w-full rounded-xl border border-white/[0.12] bg-white/[0.06] py-[11px] pl-10 text-sm text-white outline-none placeholder:text-white/35 transition focus:border-white/20 focus:ring-2 focus:ring-white/20`}
+            className={`${authInputStyles.authInput} peer block w-full rounded-xl border border-zinc-300 bg-white py-[11px] pl-10 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 transition focus:border-zinc-500 focus:ring-2 focus:ring-emerald-500/25 dark:border-white/[0.12] dark:bg-white/[0.06] dark:text-white dark:placeholder:text-white/35 dark:focus:border-white/20 dark:focus:ring-emerald-500/30`}
           />
-          <KeyIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-white/40 transition peer-focus:text-white/70" />
+          <KeyIcon className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-zinc-400 transition peer-focus:text-zinc-600 dark:text-white/40 dark:peer-focus:text-white/70" />
         </div>
         <div className="mt-2 text-right">
           <Link
             href="/forgot-password"
-            className="text-xs text-white/60 hover:text-white"
+            className="text-xs text-zinc-500 hover:text-zinc-800 dark:text-white/60 dark:hover:text-white"
           >
             Forgot password?
           </Link>

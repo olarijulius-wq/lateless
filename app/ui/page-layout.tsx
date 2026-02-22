@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import DashboardPageTitle from '@/app/ui/dashboard/page-title';
 
 type PageShellProps = {
   title: string;
@@ -17,17 +18,7 @@ export function PageShell({
 }: PageShellProps) {
   return (
     <main className={clsx('mx-auto w-full max-w-6xl space-y-6', className)}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-            {title}
-          </h1>
-          {subtitle ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">{subtitle}</p>
-          ) : null}
-        </div>
-        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-      </header>
+      <DashboardPageTitle title={title} description={subtitle} actions={actions} />
       {children}
     </main>
   );

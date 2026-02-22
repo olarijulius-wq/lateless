@@ -72,7 +72,7 @@ function statusChip(status: CheckStatus) {
     return 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-200';
   }
   if (status === 'manual') {
-    return 'border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-500/35 dark:bg-sky-500/10 dark:text-sky-200';
+    return 'border-zinc-300 bg-zinc-50 text-zinc-900 dark:border-zinc-500/35 dark:bg-zinc-500/10 dark:text-zinc-200';
   }
   return 'border-red-300 bg-red-50 text-red-900 dark:border-red-500/35 dark:bg-red-500/10 dark:text-red-200';
 }

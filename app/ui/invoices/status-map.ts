@@ -52,12 +52,12 @@ const STATUS_DISPLAY: Record<KnownInvoiceStatus, StatusDisplay> = {
   refunded: {
     label: 'Refunded',
     className:
-      'border-sky-600 bg-sky-600 text-white dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-200',
+      'border-zinc-600 bg-zinc-600 text-white dark:border-zinc-500/30 dark:bg-zinc-500/15 dark:text-zinc-200',
   },
   partially_refunded: {
     label: 'Partially refunded',
     className:
-      'border-cyan-600 bg-cyan-600 text-white dark:border-cyan-500/30 dark:bg-cyan-500/15 dark:text-cyan-200',
+      'border-zinc-500 bg-zinc-500 text-white dark:border-zinc-500/30 dark:bg-zinc-500/15 dark:text-zinc-200',
   },
   disputed: {
     label: 'Disputed',

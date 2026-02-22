@@ -67,14 +67,14 @@ export default function SocialAuthButtons({
             }
             disabled={!item.available}
             className={clsx(
-              'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/[0.12] bg-white/[0.06] px-3 text-sm font-medium transition',
+              'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-300/70 bg-white/80 px-3 text-sm font-medium shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] transition dark:border-white/[0.12] dark:bg-white/[0.06] dark:shadow-none',
               'col-span-1',
               item.available
-                ? 'text-white/90 hover:border-white/20 hover:bg-white/8'
-                : 'cursor-not-allowed text-white/45',
+                ? 'text-zinc-800 hover:border-zinc-400/80 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:text-white/90 dark:hover:border-white/20 dark:hover:bg-white/10 dark:focus-visible:ring-emerald-500/40 dark:focus-visible:ring-offset-black'
+                : 'cursor-not-allowed text-zinc-400 dark:text-white/45',
             )}
           >
-            <span className={item.available ? 'text-white/70' : 'text-white/35'}>
+            <span className={item.available ? 'text-zinc-500 dark:text-white/70' : 'text-zinc-400 dark:text-white/35'}>
               {item.icon}
             </span>
             <span className="truncate">

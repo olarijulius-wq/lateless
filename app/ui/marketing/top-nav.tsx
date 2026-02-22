@@ -1,13 +1,17 @@
 import Link from 'next/link';
+import {
+  MARKETING_BUTTON_PRIMARY,
+  MARKETING_CONTAINER_WIDE,
+  MARKETING_SUBTLE_HOVER,
+} from '@/app/ui/marketing/tokens';
 
-const navAnchorClasses =
-  'text-sm text-neutral-300 transition hover:text-white';
+const navAnchorClasses = `relative text-sm text-[color:var(--mk-fg-muted)] ${MARKETING_SUBTLE_HOVER} dark:after:absolute dark:after:bottom-[-6px] dark:after:left-0 dark:after:h-px dark:after:w-full dark:after:origin-left dark:after:scale-x-0 dark:after:bg-emerald-400/70 dark:after:transition-transform dark:after:duration-200 dark:hover:after:scale-x-100`;
 
 export default function TopNav() {
   return (
-    <header className="sticky top-0 z-50 border-b border-neutral-800/80 bg-black/85 backdrop-blur">
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-        <Link href="/" className="text-base font-semibold tracking-tight text-white">
+    <header className="sticky top-0 z-50 border-b border-[color:var(--mk-border)] bg-[color:var(--mk-bg)]/85 backdrop-blur-xl">
+      <div className={`${MARKETING_CONTAINER_WIDE} flex h-16 items-center justify-between`}>
+        <Link href="/" className="text-base font-medium tracking-tight text-[var(--mk-fg-strong)]">
           Lateless
         </Link>
 
@@ -35,14 +39,11 @@ export default function TopNav() {
         <div className="flex items-center gap-2">
           <Link
             href="/login"
-            className="rounded-full px-3 py-2 text-sm text-neutral-300 transition hover:bg-neutral-900 hover:text-white"
+            className="inline-flex h-10 items-center rounded-full px-3 text-sm text-[color:var(--mk-fg-muted)] transition-colors duration-200 hover:bg-[color:var(--mk-surface)] hover:text-[var(--mk-fg-strong)] dark:hover:shadow-[0_0_0_1px_rgba(16,185,129,0.28)]"
           >
             Log in
           </Link>
-          <Link
-            href="/login?signup=1"
-            className="inline-flex items-center rounded-full border border-white bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-neutral-200"
-          >
+          <Link href="/login?signup=1" className={MARKETING_BUTTON_PRIMARY}>
             Get started
           </Link>
         </div>

@@ -4,7 +4,7 @@ export default function ThemeInitScript() {
       try {
         var key = 'lateless-theme';
         var stored = window.localStorage.getItem(key);
-        var theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
+        var theme = stored === 'light' || stored === 'dark' ? stored : 'light';
         var root = document.documentElement;
         root.classList.toggle('dark', theme === 'dark');
         root.style.colorScheme = theme;

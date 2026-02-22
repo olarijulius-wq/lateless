@@ -55,7 +55,7 @@ export default function CustomersTable({
     <div className="mt-6 flow-root">
       <div className="overflow-x-auto overflow-y-visible">
         <div className="inline-block min-w-full align-middle">
-          <div className={`overflow-visible rounded-2xl border border-neutral-200 bg-white p-2 shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:pt-0 ${DARK_SURFACE_SUBTLE} dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>
+          <div className={`overflow-hidden rounded-2xl border border-neutral-200 bg-white p-2 shadow-[0_12px_24px_rgba(15,23,42,0.06)] md:pt-0 ${DARK_SURFACE_SUBTLE} dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}>
             <div className="md:hidden">
               {customers?.map((customer) => {
                 const isHighlighted = highlightedCustomerId === customer.id;
@@ -124,7 +124,7 @@ export default function CustomersTable({
             </div>
 
             <table className="hidden min-w-full rounded-md text-slate-900 dark:text-zinc-100 md:table">
-              <thead className="rounded-md bg-black text-left text-xs font-semibold uppercase tracking-[0.12em] text-white dark:bg-black dark:text-zinc-100">
+              <thead className="sticky top-0 z-10 rounded-md border-b border-neutral-200 bg-white text-left text-xs font-semibold uppercase tracking-[0.12em] text-slate-600 dark:border-zinc-800 dark:bg-black dark:text-zinc-100">
                 <tr>
                   <th scope="col" className="px-4 py-5 font-medium sm:pl-6">
                     Name
@@ -153,13 +153,13 @@ export default function CustomersTable({
                   return (
                   <tr
                     key={customer.id}
-                    className={`group transition hover:bg-slate-50 dark:hover:bg-zinc-950 ${
+                    className={`group transition hover:bg-slate-50 dark:hover:bg-zinc-950 [&:first-child>td:first-child]:rounded-tl-xl [&:first-child>td:last-child]:rounded-tr-xl [&:last-child>td:first-child]:rounded-bl-xl [&:last-child>td:last-child]:rounded-br-xl ${
                       isHighlighted
                         ? 'bg-emerald-50/70 ring-2 ring-inset ring-emerald-300/80 dark:bg-emerald-500/10 dark:ring-emerald-500/60'
                         : ''
                     }`}
                   >
-                    <td className="whitespace-nowrap py-5 pl-4 pr-3 text-sm text-slate-900 dark:text-zinc-100 group-first-of-type:rounded-xl group-last-of-type:rounded-xl sm:pl-6">
+                    <td className="whitespace-nowrap py-5 pl-4 pr-3 text-sm text-slate-900 dark:text-zinc-100 sm:pl-6">
                       <div className="flex items-center gap-3">
                         {customer.image_url ? (
                           <Image
@@ -192,7 +192,7 @@ export default function CustomersTable({
                         <span>{customer.total_pending}</span>
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-5 text-sm text-emerald-800 dark:text-zinc-200 group-first-of-type:rounded-xl group-last-of-type:rounded-xl">
+                    <td className="whitespace-nowrap px-4 py-5 text-sm text-emerald-800 dark:text-zinc-200">
                       <div className="flex flex-col items-start gap-1">
                         <InvoiceStatus status="paid" />
                         <span>{customer.total_paid}</span>

@@ -1,10 +1,36 @@
 .authInput:-webkit-autofill,
 .authInput:-webkit-autofill:hover,
 .authInput:-webkit-autofill:focus,
-.authInput:-webkit-autofill:active {
-  -webkit-text-fill-color: #e5e7eb;
-  caret-color: #e5e7eb;
+.authInput:-webkit-autofill:active,
+textarea.authInput:-webkit-autofill,
+textarea.authInput:-webkit-autofill:hover,
+textarea.authInput:-webkit-autofill:focus,
+textarea.authInput:-webkit-autofill:active,
+select.authInput:-webkit-autofill,
+select.authInput:-webkit-autofill:hover,
+select.authInput:-webkit-autofill:focus,
+select.authInput:-webkit-autofill:active {
+  -webkit-text-fill-color: #111111;
+  caret-color: #111111;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+  transition: background-color 9999s ease-out 0s;
+}
+
+:global(html.dark) .authInput:-webkit-autofill,
+:global(html.dark) .authInput:-webkit-autofill:hover,
+:global(html.dark) .authInput:-webkit-autofill:focus,
+:global(html.dark) .authInput:-webkit-autofill:active,
+:global(html.dark) textarea.authInput:-webkit-autofill,
+:global(html.dark) textarea.authInput:-webkit-autofill:hover,
+:global(html.dark) textarea.authInput:-webkit-autofill:focus,
+:global(html.dark) textarea.authInput:-webkit-autofill:active,
+:global(html.dark) select.authInput:-webkit-autofill,
+:global(html.dark) select.authInput:-webkit-autofill:hover,
+:global(html.dark) select.authInput:-webkit-autofill:focus,
+:global(html.dark) select.authInput:-webkit-autofill:active {
+  -webkit-text-fill-color: #f4f4f5;
+  caret-color: #f4f4f5;
   box-shadow: 0 0 0 1000px rgba(10, 10, 10, 0.92) inset;
   -webkit-box-shadow: 0 0 0 1000px rgba(10, 10, 10, 0.92) inset;
-  transition: background-color 9999s ease-out 0s;
 }

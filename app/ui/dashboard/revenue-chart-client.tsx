@@ -36,6 +36,17 @@ function formatDailyTick(value: string) {
   }).format(date);
 }
 
+function formatMonthlyTick(value: string) {
+  const [year, month] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, 1));
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
 function formatDailyTooltipLabel(value: string) {
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return value;
@@ -43,6 +54,17 @@ function formatDailyTooltipLabel(value: string) {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
+function formatMonthlyTooltipLabel(value: string) {
+  const [year, month] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, 1));
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
     timeZone: 'UTC',
   }).format(date);
 }
@@ -123,7 +145,9 @@ export function RevenueChartClient({
             tickLine={false}
             minTickGap={14}
             tickFormatter={(value) =>
-              effectiveGranularity === 'daily' ? formatDailyTick(String(value)) : String(value)
+              effectiveGranularity === 'daily'
+                ? formatDailyTick(String(value))
+                : formatMonthlyTick(String(value))
             }
           />
           <YAxis
@@ -138,7 +162,7 @@ export function RevenueChartClient({
             labelFormatter={(value) =>
               effectiveGranularity === 'daily'
                 ? formatDailyTooltipLabel(String(value))
-                : String(value)
+                : formatMonthlyTooltipLabel(String(value))
             }
             contentStyle={{
               background: tooltipBg,

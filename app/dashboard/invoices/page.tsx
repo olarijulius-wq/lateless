@@ -1,5 +1,4 @@
 import { Metadata } from 'next';
-import { lusitana } from '@/app/ui/fonts';
 import Pagination from '@/app/ui/invoices/pagination';
 import Table from '@/app/ui/invoices/table';
 import { CreateInvoice } from '@/app/ui/invoices/buttons';
@@ -20,6 +19,7 @@ import MobileExpandableSearchToolbar from '@/app/ui/dashboard/mobile-expandable-
 import UpgradeNudge from '@/app/ui/upgrade-nudge';
 import InvoicesListControls from '@/app/ui/invoices/list-controls';
 import InvoicesUpdatedToast from '@/app/ui/invoices/updated-toast';
+import DashboardPageTitle from '@/app/ui/dashboard/page-title';
 
 export const metadata: Metadata = {
   title: 'Invoices',
@@ -99,13 +99,7 @@ export default async function Page(props: {
   return (
     <main>
       <RevealOnMount>
-        <div className="mb-3">
-          <h1
-            className={`${lusitana.className} text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}
-          >
-            Invoices
-          </h1>
-        </div>
+        <DashboardPageTitle title="Invoices" className="mb-3" />
 
         <div className="mb-4">
           <UpgradeNudge

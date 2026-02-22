@@ -2,6 +2,7 @@
 import { lusitana } from '@/app/ui/fonts';
 import { fetchRevenue, fetchRevenueDaily } from '@/app/lib/data';
 import { RevenueChartClient } from '@/app/ui/dashboard/revenue-chart-client';
+import { fillRevenueSeries } from '@/app/ui/dashboard/revenue-series';
 
 export default async function RevenueChart() {
   const [monthlyRevenue, dailyRevenue] = await Promise.all([
@@ -9,16 +10,24 @@ export default async function RevenueChart() {
     fetchRevenueDaily(30),
   ]);
 
-  const monthlyChartData = monthlyRevenue.map((m) => ({
-    period: m.month,
-    revenueCents: Math.round(m.revenue * 100),
-  }));
-  const dailyChartData = dailyRevenue.map((d) => ({
-    period: d.day,
-    revenueCents: Math.round(d.revenue * 100),
-  }));
+  const monthlyChartData = fillRevenueSeries(
+    monthlyRevenue.map((m) => ({
+      period: m.month,
+      revenueCents: Math.round(m.revenue * 100),
+    })),
+    'monthly',
+    { timeZone: 'Europe/Tallinn', windowSize: 6 },
+  );
+  const dailyChartData = fillRevenueSeries(
+    dailyRevenue.map((d) => ({
+      period: d.day,
+      revenueCents: Math.round(d.revenue * 100),
+    })),
+    'daily',
+    { timeZone: 'Europe/Tallinn', windowSize: 30 },
+  );
 
-  if (monthlyChartData.length === 0 && dailyChartData.length === 0) {
+  if (monthlyRevenue.length === 0 && dailyRevenue.length === 0) {
     return (
       <p className="mt-4 text-neutral-600 dark:text-neutral-400">
         No revenue yet. Create and mark invoices as paid to see revenue.

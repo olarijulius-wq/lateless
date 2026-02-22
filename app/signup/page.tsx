@@ -37,7 +37,7 @@ export default async function Page(props: SignupPageProps) {
       subtitle={
         <>
           Already have an account?{' '}
-          <Link href={loginHref} className="text-white hover:text-white/90">
+          <Link href={loginHref} className="text-zinc-900 hover:text-zinc-700 dark:text-white dark:hover:text-white/90">
             Log in.
           </Link>
         </>

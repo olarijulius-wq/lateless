@@ -173,7 +173,7 @@ export default async function LatePayers({
                   ))}
                 </div>
 
-                <div className="hidden rounded-xl border border-neutral-200 bg-slate-50 md:block dark:border-zinc-800 dark:bg-black">
+                <div className="hidden overflow-hidden rounded-xl border border-neutral-200 bg-slate-50 md:block dark:border-zinc-800 dark:bg-black">
                   <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-4 border-b border-neutral-200 px-4 py-3 text-xs uppercase tracking-[0.12em] text-slate-500 dark:border-zinc-800">
                     <span>Name</span>
                     <span>Email</span>

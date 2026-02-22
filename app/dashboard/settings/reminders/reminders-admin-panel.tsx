@@ -810,7 +810,7 @@ export default function RemindersAdminPanel({
                           <span
                             className={`inline-flex w-fit rounded-md border px-1.5 py-0.5 text-[11px] ${
                               run.workspaceId
-                                ? 'border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200'
+                                ? 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200'
                                 : 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200'
                             }`}
                           >

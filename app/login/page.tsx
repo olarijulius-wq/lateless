@@ -52,7 +52,7 @@ export default async function LoginPage(props: LoginPageProps) {
       subtitle={
         <>
           Don&apos;t have an account?{' '}
-          <Link href={signupHref} className="text-white hover:text-white/90">
+          <Link href={signupHref} className="text-zinc-900 hover:text-zinc-700 dark:text-white dark:hover:text-white/90">
             Sign up.
           </Link>
         </>
@@ -61,29 +61,29 @@ export default async function LoginPage(props: LoginPageProps) {
     >
       <div className="space-y-3">
         {signupSuccess && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          <div className="rounded-xl border border-emerald-600/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:text-emerald-200">
             Account created. We&apos;ve sent a verification email to your
             address. Please check your inbox and spam folder.
           </div>
         )}
         {verifiedSuccess && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          <div className="rounded-xl border border-emerald-600/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:text-emerald-200">
             Your email has been verified. You can now log in.
           </div>
         )}
         {verifiedAlready && (
-          <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-400/12 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
             This verification link is invalid or has already been used. If
             needed, request a new one from the login page.
           </div>
         )}
         {resetSuccess && (
-          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          <div className="rounded-xl border border-emerald-600/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:text-emerald-200">
             Your password has been reset. You can now log in.
           </div>
         )}
         {oauthAccountNotLinked && (
-          <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-400/12 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
             Account exists. Please log in with email/password first, then connect
             Google/GitHub from Settings.
           </div>

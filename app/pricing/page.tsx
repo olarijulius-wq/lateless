@@ -1,9 +1,19 @@
-import Link from 'next/link';
 import type { Metadata } from 'next';
 import { PLAN_CONFIG, PLAN_IDS } from '@/app/lib/config';
-import TopNav from '@/app/ui/marketing/top-nav';
-import PublicFooter from '@/app/ui/marketing/public-footer';
 import { getPricingProductJsonLd } from '@/app/lib/seo/jsonld';
+import { RevealOnScroll, StaggeredList } from '@/app/ui/motion/reveal';
+import HeroBackground from '@/app/ui/marketing/hero-background';
+import MarketingPageShell from '@/app/ui/marketing/page-shell';
+import PricingCard from '@/app/ui/marketing/pricing-card';
+import {
+  MARKETING_BODY,
+  MARKETING_BODY_MUTED,
+  MARKETING_CONTAINER_WIDE,
+  MARKETING_EYEBROW,
+  MARKETING_H1,
+  MARKETING_H2,
+  MARKETING_SECTION_PY,
+} from '@/app/ui/marketing/tokens';
 
 export const metadata: Metadata = {
   title: 'Pricing',
@@ -20,65 +30,56 @@ export const metadata: Metadata = {
   },
 };
 
-function formatLimit(maxPerMonth: number) {
-  return Number.isFinite(maxPerMonth)
-    ? `Up to ${maxPerMonth} invoices / month`
-    : 'Unlimited invoices / month';
-}
-
 export default function PricingPage() {
   const pricingJsonLd = getPricingProductJsonLd();
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:text-black"
-      >
-        Skip to content
-      </a>
-      <TopNav />
-      <main id="main-content" className="mx-auto w-full max-w-6xl px-6 py-16">
-        <h1 className="text-4xl font-semibold text-white">Pricing</h1>
-        <p className="mt-3 max-w-2xl text-sm text-neutral-300">
-          Choose a plan that matches your invoice volume. Limits reset monthly, and your invoice history stays available.
-        </p>
+    <MarketingPageShell mainClassName="p-0">
+      <section className="relative isolate overflow-hidden border-b border-[color:var(--mk-border)]">
+        <HeroBackground className="opacity-80" muted />
 
-        <div className="mt-10 grid gap-5 lg:grid-cols-4">
-          {PLAN_IDS.map((planId) => {
-            const plan = PLAN_CONFIG[planId];
-            return (
-              <section
-                key={plan.id}
-                className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-6"
-              >
-                <h2 className="text-lg font-semibold text-white">{plan.name}</h2>
-                <p className="mt-2 text-3xl font-semibold text-white">€{plan.priceMonthlyEuro}</p>
-                <p className="text-xs text-neutral-400">per month</p>
-                <ul className="mt-5 space-y-2 text-sm text-neutral-300">
-                  <li>{formatLimit(plan.maxPerMonth)}</li>
-                  <li>Resets monthly</li>
-                  <li>Invoice history persists</li>
-                  <li>
-                    Platform fee: €{(plan.platformFeeFixedCents / 100).toFixed(2)} + {plan.platformFeePercent.toFixed(1)}%
-                  </li>
-                </ul>
-                <Link
-                  href={`/login?plan=${plan.id}&interval=monthly`}
-                  className="mt-6 inline-flex rounded-full border border-white bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-neutral-200"
-                >
-                  Start with {plan.name}
-                </Link>
-              </section>
-            );
-          })}
+        <div className={`${MARKETING_CONTAINER_WIDE} relative z-10 ${MARKETING_SECTION_PY}`}>
+          <RevealOnScroll className="max-w-3xl">
+            <p className={MARKETING_EYEBROW}>Plans</p>
+            <h1 className={`${MARKETING_H1} mt-3`}>Calm pricing, clear limits.</h1>
+            <p className={`${MARKETING_BODY} mt-4`}>
+              Choose the plan that matches your monthly invoice volume. Limits reset monthly and your invoice history remains available.
+            </p>
+          </RevealOnScroll>
         </div>
-      </main>
-      <PublicFooter />
+      </section>
+
+      <section className="border-b border-[color:var(--mk-border)]">
+        <div className={`${MARKETING_CONTAINER_WIDE} ${MARKETING_SECTION_PY}`}>
+          <RevealOnScroll className="mb-8 max-w-3xl">
+            <h2 className={MARKETING_H2}>All plans include Stripe checkout and reminders</h2>
+            <p className={`${MARKETING_BODY_MUTED} mt-3`}>
+              Platform fees are charged per paid invoice by plan. Stripe processing fees are separate.
+            </p>
+          </RevealOnScroll>
+
+          <StaggeredList className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" itemClassName="h-full" stagger={0.04}>
+            {PLAN_IDS.map((planId) => {
+              const plan = PLAN_CONFIG[planId];
+              return (
+                <PricingCard
+                  key={plan.id}
+                  plan={plan}
+                  displayPrice={plan.priceMonthlyEuro}
+                  periodLabel="/ month"
+                  interval="monthly"
+                  isPopular={planId === 'solo'}
+                />
+              );
+            })}
+          </StaggeredList>
+        </div>
+      </section>
+
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingJsonLd) }}
       />
-    </div>
+    </MarketingPageShell>
   );
 }

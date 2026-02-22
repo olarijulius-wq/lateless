@@ -56,6 +56,9 @@ importers:
       recharts:
         specifier: ^3.7.0
         version: 3.7.0(@types/react@19.0.7)(react-dom@19.2.0(react@19.2.0))(react-is@16.13.1)(react@19.2.0)(redux@5.0.1)
+      require-in-the-middle:
+        specifier: ^8.0.1
+        version: 8.0.1
       stripe:
         specifier: ^20.1.0
         version: 20.1.0(@types/node@22.10.7)
