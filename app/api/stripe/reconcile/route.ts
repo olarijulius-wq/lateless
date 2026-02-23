@@ -204,8 +204,8 @@ export async function POST(req: Request) {
       subscription =
         typeof checkoutSession.subscription === 'string'
           ? await stripe.subscriptions.retrieve(checkoutSession.subscription, {
-              expand: ['items.data.price'],
-            })
+            expand: ['items.data.price'],
+          })
           : checkoutSession.subscription;
     } else if (subscriptionId) {
       subscription = await stripe.subscriptions.retrieve(subscriptionId, {
@@ -246,6 +246,59 @@ export async function POST(req: Request) {
       });
     }
 
+    // P0-B: Enforce workspace membership before ANY billing write.
+    // The current user must be the owner or an explicit member of the resolved
+    // workspace. We check both the workspaces table (owner) and workspace_members
+    // (team members). Without this check, any authenticated user could reconcile
+    // a Stripe subscription to an arbitrary workspaceId in metadata.
+    const membership = await sql<{ user_id: string }[]>`
+      select user_id from public.workspaces
+      where id = ${workspaceId} and owner_user_id = ${userId}
+      union all
+      select user_id from public.workspace_members
+      where workspace_id = ${workspaceId} and user_id = ${userId}
+      limit 1
+    `;
+
+    if (membership.length === 0) {
+      console.warn('[stripe reconcile] membership mismatch', {
+        userId,
+        workspaceId,
+        strategy: workspaceResolution.strategy,
+        metadataWorkspaceId: metadataWorkspaceId ?? null,
+      });
+      return jsonFailure({
+        status: 403,
+        code: 'WORKSPACE_MEMBERSHIP_MISMATCH',
+        message: 'You are not a member of the workspace associated with this Stripe object.',
+        build,
+      });
+    }
+
+    // P0-B continued: if the Stripe customer is already bound to a *different*
+    // workspace, this is ambiguous \u2014 reject rather than silently overwrite.
+    const customerId = parseStripeId(subscription.customer);
+    if (customerId) {
+      const existingBinding = await sql<{ workspace_id: string }[]>`
+        select workspace_id from public.workspaces
+        where stripe_customer_id = ${customerId}
+          and id != ${workspaceId}
+        limit 1
+      `.catch(() => [] as { workspace_id: string }[]);
+
+      if (existingBinding.length > 0) {
+        return jsonFailure({
+          status: 409,
+          code: 'STRIPE_OBJECT_AMBIGUOUS',
+          message: 'This Stripe customer is already bound to a different workspace. Contact support.',
+          build,
+          debug: process.env.NODE_ENV === 'development'
+            ? { customerId, conflictingWorkspaceId: existingBinding[0]?.workspace_id }
+            : undefined,
+        });
+      }
+    }
+
     const firstPrice = subscription.items.data[0]?.price;
     const requestedPlan = resolvePaidPlanFromStripe({
       metadataPlan: checkoutSession?.metadata?.plan ?? subscription.metadata?.plan ?? null,
@@ -283,7 +336,6 @@ export async function POST(req: Request) {
       });
     }
 
-    const customerId = parseStripeId(subscription.customer);
     const status = String(subscription.status).trim().toLowerCase();
     const interval = toStoredBillingInterval(
       subscription.items?.data?.[0]?.price?.recurring?.interval,

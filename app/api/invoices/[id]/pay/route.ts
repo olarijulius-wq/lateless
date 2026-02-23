@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
 import { auth } from '@/auth';
+import { sql } from '@/app/lib/db';
+import {
+  enforceRateLimit,
+  parseRouteParams,
+  routeUuidParamsSchema,
+} from '@/app/lib/security/api-guard';
 import { createInvoiceCheckoutSession } from '@/app/lib/invoice-checkout';
 import { fetchStripeConnectStatusForUser } from '@/app/lib/data';
 import { canPayInvoiceStatus } from '@/app/lib/invoice-status';
@@ -21,8 +26,6 @@ import {
 
 export const runtime = 'nodejs';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
-
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -36,8 +39,20 @@ export async function POST(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const params = await props.params;
   const userEmail = normalizeEmail(session.user.email);
+
+  const rl = await enforceRateLimit(req, {
+    bucket: 'invoice_pay',
+    windowSec: 60,
+    ipLimit: 20,
+    userLimit: 15,
+  }, { userKey: userEmail });
+  if (rl) return rl;
+
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(routeUuidParamsSchema, rawParams);
+  if (!parsedParams.ok) return parsedParams.response;
+  const params = parsedParams.data;
 
   const [invoice] = await sql<{
     id: string;

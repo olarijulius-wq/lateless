@@ -1,11 +1,11 @@
 import crypto from 'crypto';
-import { NextRequest, NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { sql } from '@/app/lib/db';
 import { sendEmailVerification } from '@/app/lib/email';
+import { enforceRateLimit, parseJsonBody } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -21,15 +21,29 @@ function resolveBaseUrl() {
   );
 }
 
-export async function POST(request: NextRequest) {
+const resendVerificationSchema = z
+  .object({
+    email: z.string().email().max(254).trim(),
+  })
+  .strict();
+
+export async function POST(request: Request) {
+  const rateLimitResponse = await enforceRateLimit(request, {
+    bucket: 'resend_verification',
+    windowSec: 60,
+    ipLimit: 5,
+  });
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
-    const body = await request.json().catch(() => null);
-    const emailValue = body?.email;
-    if (typeof emailValue !== 'string' || emailValue.trim() === '') {
-      return NextResponse.json({ ok: true });
+    const parsedBody = await parseJsonBody(request, resendVerificationSchema);
+    if (!parsedBody.ok) {
+      return parsedBody.response;
     }
 
-    const normalizedEmail = normalizeEmail(emailValue);
+    const normalizedEmail = normalizeEmail(parsedBody.data.email);
     const [user] = await sql<{
       id: string;
       email: string;

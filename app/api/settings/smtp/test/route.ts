@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -13,6 +14,7 @@ import {
   isRecipientUnsubscribed,
   isUnsubscribeMigrationRequiredError,
 } from '@/app/lib/unsubscribe';
+import { enforceRateLimit, parseJsonBody } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -20,11 +22,13 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as
-    | { toEmail?: unknown }
-    | null;
+const smtpTestBodySchema = z
+  .object({
+    toEmail: z.string().email().max(254).optional(),
+  })
+  .strict();
 
+export async function POST(request: Request) {
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
 
@@ -35,14 +39,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const toEmailRaw = typeof body?.toEmail === 'string' ? body.toEmail : '';
+    const rl = await enforceRateLimit(request, {
+      bucket: 'smtp_test',
+      windowSec: 300,
+      ipLimit: 5,
+      userLimit: 3,
+    }, { userKey: context.userEmail });
+    if (rl) return rl;
+
+    const parsedBody = await parseJsonBody(request, smtpTestBodySchema);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const toEmailRaw = parsedBody.data.toEmail ?? '';
     const toEmail = toEmailRaw.trim() ? normalizeEmail(toEmailRaw) : context.userEmail;
-    if (!/^\S+@\S+\.\S+$/.test(toEmail)) {
-      return NextResponse.json(
-        { ok: false, message: 'Please provide a valid email address.' },
-        { status: 400 },
-      );
-    }
 
     try {
       const unsubscribed = await isRecipientUnsubscribed(context.workspaceId, toEmail);

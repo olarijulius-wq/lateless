@@ -287,10 +287,10 @@ async function parseRunOptions(req: Request) {
       try {
         const body = (await req.json()) as
           | {
-              dryRun?: boolean;
-              triggeredBy?: string;
-              source?: string;
-            }
+            dryRun?: boolean;
+            triggeredBy?: string;
+            source?: string;
+          }
           | null;
 
         if (!dryRun && typeof body?.dryRun === 'boolean') {
@@ -473,16 +473,16 @@ async function runReminderJob(req: Request) {
     req,
     authorization.source === 'cron'
       ? {
-          bucket: 'reminders_run_cron',
-          windowSec: 60,
-          ipLimit: 30,
-        }
+        bucket: 'reminders_run_cron',
+        windowSec: 60,
+        ipLimit: 30,
+      }
       : {
-          bucket: 'reminders_run_manual',
-          windowSec: 300,
-          ipLimit: 20,
-          userLimit: 6,
-        },
+        bucket: 'reminders_run_manual',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 6,
+      },
     { userKey: authorization.userEmail },
   );
   if (rateLimitResponse) {
@@ -549,166 +549,166 @@ async function runReminderJob(req: Request) {
 
   try {
 
-  let includeReminderPauseJoin = false;
-  try {
-    await assertReminderPauseSchemaReady();
-    includeReminderPauseJoin = true;
-  } catch (error) {
-    if (!isReminderPauseMigrationRequiredError(error)) {
-      throw error;
-    }
-  }
-
-  const reminders = await fetchReminderCandidates(
-    includeReminderPauseJoin,
-    selectionLimit,
-    scopeWorkspaceId,
-  );
-  const hasMoreFromSelection = reminders.length >= selectionLimit;
-  const updatedInvoiceIds: string[] = [];
-  const workspaceStats = new Map<string, WorkspaceAccumulator>();
-  const decisions: CandidateDecision[] = [];
-  const errors: RunErrorItem[] = [];
-  const eligibleReminders: ReminderCandidate[] = [];
-  const seenInvoiceIds = new Set<string>();
-  const sentByUser = new Map<string, number>();
-  let concurrentClaimSkips = 0;
-
-  if (reminders.length === 0) {
-    console.log('No reminders to send (either none overdue or owners not verified).');
-  }
-
-  for (const reminder of reminders) {
-    if (seenInvoiceIds.has(reminder.id)) {
-      const workspaceAccumulator = getWorkspaceAccumulator(workspaceStats, reminder.workspace_id);
-      decisions.push({
-        invoiceId: reminder.id,
-        workspaceId: reminder.workspace_id,
-        willSend: false,
-        reason: 'duplicate_in_run',
-      });
-      incrementSkip(workspaceAccumulator, 'duplicate_in_run');
-      continue;
-    }
-    seenInvoiceIds.add(reminder.id);
-
-    const workspaceAccumulator = getWorkspaceAccumulator(workspaceStats, reminder.workspace_id);
-    const customerEmail = reminder.customer_email?.trim() ?? '';
-
-    if (reminder.status !== 'pending') {
-      decisions.push({
-        invoiceId: reminder.id,
-        workspaceId: reminder.workspace_id,
-        willSend: false,
-        reason: 'not_eligible',
-      });
-      incrementSkip(workspaceAccumulator, 'not_eligible');
-      continue;
-    }
-
-    if (reminder.invoice_paused) {
-      decisions.push({
-        invoiceId: reminder.id,
-        workspaceId: reminder.workspace_id,
-        willSend: false,
-        reason: 'paused_invoice',
-      });
-      incrementSkip(workspaceAccumulator, 'paused_invoice');
-      continue;
-    }
-
-    if (reminder.customer_paused) {
-      decisions.push({
-        invoiceId: reminder.id,
-        workspaceId: reminder.workspace_id,
-        willSend: false,
-        reason: 'paused_customer',
-      });
-      incrementSkip(workspaceAccumulator, 'paused_customer');
-      continue;
-    }
-
-    if (!customerEmail) {
-      decisions.push({
-        invoiceId: reminder.id,
-        workspaceId: reminder.workspace_id,
-        willSend: false,
-        reason: 'missing_email',
-      });
-      incrementSkip(workspaceAccumulator, 'missing_email');
-      continue;
-    }
-
-    if (reminder.workspace_id) {
-      try {
-        const unsubscribeSettings = await fetchUnsubscribeSettings(reminder.workspace_id);
-        if (unsubscribeSettings.enabled) {
-          const alreadyUnsubscribed = await isRecipientUnsubscribed(
-            reminder.workspace_id,
-            customerEmail,
-          );
-
-          if (alreadyUnsubscribed) {
-            decisions.push({
-              invoiceId: reminder.id,
-              workspaceId: reminder.workspace_id,
-              willSend: false,
-              reason: 'unsubscribed',
-            });
-            incrementSkip(workspaceAccumulator, 'unsubscribed');
-            continue;
-          }
-        }
-      } catch (unsubscribeError) {
-        if (!isUnsubscribeMigrationRequiredError(unsubscribeError)) {
-          console.error('Unsubscribe check failed:', reminder.id, unsubscribeError);
-        }
+    let includeReminderPauseJoin = false;
+    try {
+      await assertReminderPauseSchemaReady();
+      includeReminderPauseJoin = true;
+    } catch (error) {
+      if (!isReminderPauseMigrationRequiredError(error)) {
+        throw error;
       }
     }
 
-    decisions.push({
-      invoiceId: reminder.id,
-      workspaceId: reminder.workspace_id,
-      willSend: true,
-      reason: 'eligible',
-    });
-    eligibleReminders.push(reminder);
-  }
+    const reminders = await fetchReminderCandidates(
+      includeReminderPauseJoin,
+      selectionLimit,
+      scopeWorkspaceId,
+    );
+    const hasMoreFromSelection = reminders.length >= selectionLimit;
+    const updatedInvoiceIds: string[] = [];
+    const workspaceStats = new Map<string, WorkspaceAccumulator>();
+    const decisions: CandidateDecision[] = [];
+    const errors: RunErrorItem[] = [];
+    const eligibleReminders: ReminderCandidate[] = [];
+    const seenInvoiceIds = new Set<string>();
+    const sentByUser = new Map<string, number>();
+    let concurrentClaimSkips = 0;
 
-  const run = await sendWithThrottle(eligibleReminders, {
-    delayMs: dryRun ? 0 : delayMs,
-    maxItems: batchSize,
-    maxRunMs,
-    onItem: async (reminder) => {
+    if (reminders.length === 0) {
+      console.log('No reminders to send (either none overdue or owners not verified).');
+    }
+
+    for (const reminder of reminders) {
+      if (seenInvoiceIds.has(reminder.id)) {
+        const workspaceAccumulator = getWorkspaceAccumulator(workspaceStats, reminder.workspace_id);
+        decisions.push({
+          invoiceId: reminder.id,
+          workspaceId: reminder.workspace_id,
+          willSend: false,
+          reason: 'duplicate_in_run',
+        });
+        incrementSkip(workspaceAccumulator, 'duplicate_in_run');
+        continue;
+      }
+      seenInvoiceIds.add(reminder.id);
+
       const workspaceAccumulator = getWorkspaceAccumulator(workspaceStats, reminder.workspace_id);
       const customerEmail = reminder.customer_email?.trim() ?? '';
 
-      if (dryRun) {
-        if (workspaceAccumulator) {
-          workspaceAccumulator.sentCount += 1;
-        }
-        return;
+      if (reminder.status !== 'pending') {
+        decisions.push({
+          invoiceId: reminder.id,
+          workspaceId: reminder.workspace_id,
+          willSend: false,
+          reason: 'not_eligible',
+        });
+        incrementSkip(workspaceAccumulator, 'not_eligible');
+        continue;
       }
 
-      let includeUnsubscribeLink = false;
-      let unsubscribeUrl: string | null = null;
+      if (reminder.invoice_paused) {
+        decisions.push({
+          invoiceId: reminder.id,
+          workspaceId: reminder.workspace_id,
+          willSend: false,
+          reason: 'paused_invoice',
+        });
+        incrementSkip(workspaceAccumulator, 'paused_invoice');
+        continue;
+      }
+
+      if (reminder.customer_paused) {
+        decisions.push({
+          invoiceId: reminder.id,
+          workspaceId: reminder.workspace_id,
+          willSend: false,
+          reason: 'paused_customer',
+        });
+        incrementSkip(workspaceAccumulator, 'paused_customer');
+        continue;
+      }
+
+      if (!customerEmail) {
+        decisions.push({
+          invoiceId: reminder.id,
+          workspaceId: reminder.workspace_id,
+          willSend: false,
+          reason: 'missing_email',
+        });
+        incrementSkip(workspaceAccumulator, 'missing_email');
+        continue;
+      }
+
       if (reminder.workspace_id) {
         try {
           const unsubscribeSettings = await fetchUnsubscribeSettings(reminder.workspace_id);
           if (unsubscribeSettings.enabled) {
-            const unsubscribePath = await issueUnsubscribeToken(reminder.workspace_id, customerEmail);
-            unsubscribeUrl = `${baseUrl}${unsubscribePath}`;
-            includeUnsubscribeLink = true;
+            const alreadyUnsubscribed = await isRecipientUnsubscribed(
+              reminder.workspace_id,
+              customerEmail,
+            );
+
+            if (alreadyUnsubscribed) {
+              decisions.push({
+                invoiceId: reminder.id,
+                workspaceId: reminder.workspace_id,
+                willSend: false,
+                reason: 'unsubscribed',
+              });
+              incrementSkip(workspaceAccumulator, 'unsubscribed');
+              continue;
+            }
           }
         } catch (unsubscribeError) {
           if (!isUnsubscribeMigrationRequiredError(unsubscribeError)) {
-            console.error('Unsubscribe token generation failed:', reminder.id, unsubscribeError);
+            console.error('Unsubscribe check failed:', reminder.id, unsubscribeError);
           }
         }
       }
 
-      try {
-        const claimed = await sql<{ id: string }[]>`
+      decisions.push({
+        invoiceId: reminder.id,
+        workspaceId: reminder.workspace_id,
+        willSend: true,
+        reason: 'eligible',
+      });
+      eligibleReminders.push(reminder);
+    }
+
+    const run = await sendWithThrottle(eligibleReminders, {
+      delayMs: dryRun ? 0 : delayMs,
+      maxItems: batchSize,
+      maxRunMs,
+      onItem: async (reminder) => {
+        const workspaceAccumulator = getWorkspaceAccumulator(workspaceStats, reminder.workspace_id);
+        const customerEmail = reminder.customer_email?.trim() ?? '';
+
+        if (dryRun) {
+          if (workspaceAccumulator) {
+            workspaceAccumulator.sentCount += 1;
+          }
+          return;
+        }
+
+        let includeUnsubscribeLink = false;
+        let unsubscribeUrl: string | null = null;
+        if (reminder.workspace_id) {
+          try {
+            const unsubscribeSettings = await fetchUnsubscribeSettings(reminder.workspace_id);
+            if (unsubscribeSettings.enabled) {
+              const unsubscribePath = await issueUnsubscribeToken(reminder.workspace_id, customerEmail);
+              unsubscribeUrl = `${baseUrl}${unsubscribePath}`;
+              includeUnsubscribeLink = true;
+            }
+          } catch (unsubscribeError) {
+            if (!isUnsubscribeMigrationRequiredError(unsubscribeError)) {
+              console.error('Unsubscribe token generation failed:', reminder.id, unsubscribeError);
+            }
+          }
+        }
+
+        try {
+          const claimed = await sql<{ id: string }[]>`
           update invoices
           set reminder_level = reminder_level + 1,
               last_reminder_sent_at = now()
@@ -717,34 +717,34 @@ async function runReminderJob(req: Request) {
           returning id
         `;
 
-        if (claimed.length === 0) {
-          concurrentClaimSkips += 1;
-          incrementSkip(workspaceAccumulator, 'duplicate_in_run');
-          return;
-        }
+          if (claimed.length === 0) {
+            concurrentClaimSkips += 1;
+            incrementSkip(workspaceAccumulator, 'duplicate_in_run');
+            return;
+          }
 
-        const payLink = generatePayLink(baseUrl, reminder.id);
-        const amountLabel = formatAmount(reminder.amount);
-        const dueDateLabel = formatDate(reminder.due_date);
-        const reminderNumber = reminder.reminder_level + 1;
-        const subject = `Invoice reminder #${reminderNumber}: ${amountLabel} due`;
+          const payLink = generatePayLink(baseUrl, reminder.id);
+          const amountLabel = formatAmount(reminder.amount);
+          const dueDateLabel = formatDate(reminder.due_date);
+          const reminderNumber = reminder.reminder_level + 1;
+          const subject = `Invoice reminder #${reminderNumber}: ${amountLabel} due`;
 
-        const bodyText = [
-          `Hi ${reminder.customer_name},`,
-          '',
-          `This is a reminder that your invoice is overdue.`,
-          `Amount: ${amountLabel}`,
-          `Due date: ${dueDateLabel}`,
-          `Pay here: ${payLink}`,
-          ...(includeUnsubscribeLink && unsubscribeUrl
-            ? ['', `Unsubscribe from reminder emails: ${unsubscribeUrl}`]
-            : []),
-          '',
-          'Thank you,',
-          'Lateless',
-        ].join('\n');
+          const bodyText = [
+            `Hi ${reminder.customer_name},`,
+            '',
+            `This is a reminder that your invoice is overdue.`,
+            `Amount: ${amountLabel}`,
+            `Due date: ${dueDateLabel}`,
+            `Pay here: ${payLink}`,
+            ...(includeUnsubscribeLink && unsubscribeUrl
+              ? ['', `Unsubscribe from reminder emails: ${unsubscribeUrl}`]
+              : []),
+            '',
+            'Thank you,',
+            'Lateless',
+          ].join('\n');
 
-        const bodyHtml = `
+          const bodyHtml = `
           <p>Hi ${reminder.customer_name},</p>
           <p>This is a reminder that your invoice is overdue.</p>
           <ul>
@@ -752,33 +752,32 @@ async function runReminderJob(req: Request) {
             <li><strong>Due date:</strong> ${dueDateLabel}</li>
           </ul>
           <p><a href="${payLink}">Pay this invoice now</a></p>
-          ${
-            includeUnsubscribeLink && unsubscribeUrl
+          ${includeUnsubscribeLink && unsubscribeUrl
               ? `<p style="margin-top:12px;"><a href="${unsubscribeUrl}">Unsubscribe from reminder emails</a></p>`
               : ''
-          }
+            }
           <p>Thank you,<br />Lateless</p>
         `;
 
-        await sendInvoiceReminderEmail({
-          to: customerEmail,
-          subject,
-          bodyHtml,
-          bodyText,
-        });
+          await sendInvoiceReminderEmail({
+            to: customerEmail,
+            subject,
+            bodyHtml,
+            bodyText,
+          });
 
-        updatedInvoiceIds.push(reminder.id);
-        const normalizedUserEmail = reminder.user_email.trim().toLowerCase();
-        sentByUser.set(
-          normalizedUserEmail,
-          (sentByUser.get(normalizedUserEmail) ?? 0) + 1,
-        );
-        if (workspaceAccumulator) {
-          workspaceAccumulator.sentCount += 1;
-        }
-      } catch (error) {
-        try {
-          await sql`
+          updatedInvoiceIds.push(reminder.id);
+          const normalizedUserEmail = reminder.user_email.trim().toLowerCase();
+          sentByUser.set(
+            normalizedUserEmail,
+            (sentByUser.get(normalizedUserEmail) ?? 0) + 1,
+          );
+          if (workspaceAccumulator) {
+            workspaceAccumulator.sentCount += 1;
+          }
+        } catch (error) {
+          try {
+            await sql`
             update invoices
             set
               reminder_level = ${reminder.reminder_level},
@@ -786,190 +785,190 @@ async function runReminderJob(req: Request) {
             where id = ${reminder.id}
               and reminder_level = ${reminder.reminder_level + 1}
           `;
-        } catch (rollbackError) {
-          console.error('Reminder rollback failed:', reminder.id, rollbackError);
-        }
+          } catch (rollbackError) {
+            console.error('Reminder rollback failed:', reminder.id, rollbackError);
+          }
 
-        console.error('Reminder send failed:', reminder.id, error);
-        const errorItem = {
-          invoiceId: reminder.id,
-          message: safeErrorMessage(error),
-        } satisfies RunErrorItem;
-        errors.push(errorItem);
+          console.error('Reminder send failed:', reminder.id, error);
+          const errorItem = {
+            invoiceId: reminder.id,
+            message: safeErrorMessage(error),
+          } satisfies RunErrorItem;
+          errors.push(errorItem);
 
-        if (workspaceAccumulator) {
-          workspaceAccumulator.errorCount += 1;
-          workspaceAccumulator.errors.push(errorItem);
+          if (workspaceAccumulator) {
+            workspaceAccumulator.errorCount += 1;
+            workspaceAccumulator.errors.push(errorItem);
+          }
+          throw error;
         }
-        throw error;
+      },
+    });
+
+    const durationMs = Date.now() - startedAt;
+
+    let workspaceRunLogWritten = false;
+    let workspaceRunLogWarning: string | null = null;
+    if (workspaceStats.size > 0) {
+      try {
+        await assertReminderRunsSchemaReady();
+        await Promise.all(
+          Array.from(workspaceStats.entries()).map(([workspaceId, stats]) =>
+            insertReminderRun(workspaceId, {
+              triggeredBy,
+              dryRun,
+              sentCount: stats.sentCount,
+              skippedCount: stats.skippedCount,
+              errorCount: stats.errorCount,
+              skippedBreakdown: stats.skippedBreakdown,
+              durationMs,
+              errors: stats.errors.slice(-10),
+              ranAt: ranAtIso,
+            }),
+          ),
+        );
+        workspaceRunLogWritten = true;
+      } catch (error) {
+        if (isReminderRunsMigrationRequiredError(error)) {
+          workspaceRunLogWarning = 'REMINDER_RUNS_LOGGING_SKIPPED_MIGRATION_REQUIRED';
+        } else {
+          console.error('Reminder run logging failed:', error);
+          workspaceRunLogWarning = 'REMINDER_RUNS_LOGGING_SKIPPED';
+        }
       }
-    },
-  });
+    }
 
-  const durationMs = Date.now() - startedAt;
+    const sentCount = dryRun ? run.attempted : updatedInvoiceIds.length;
+    const skippedCount =
+      decisions.filter((decision) => !decision.willSend).length + concurrentClaimSkips;
+    const skippedBreakdown = decisions.reduce<Required<ReminderRunSkippedBreakdown>>(
+      (acc, decision) => {
+        if (decision.willSend) {
+          return acc;
+        }
 
-  let workspaceRunLogWritten = false;
-  let workspaceRunLogWarning: string | null = null;
-  if (workspaceStats.size > 0) {
-    try {
-      await assertReminderRunsSchemaReady();
+        if (decision.reason === 'paused_customer' || decision.reason === 'paused_invoice') {
+          acc.paused += 1;
+          return acc;
+        }
+
+        if (decision.reason === 'unsubscribed') {
+          acc.unsubscribed += 1;
+          return acc;
+        }
+
+        if (decision.reason === 'missing_email') {
+          acc.missing_email += 1;
+          return acc;
+        }
+
+        if (decision.reason === 'not_eligible') {
+          acc.not_eligible += 1;
+          return acc;
+        }
+
+        acc.other += 1;
+        return acc;
+      },
+      { ...emptyBreakdown },
+    );
+    skippedBreakdown.other += concurrentClaimSkips;
+
+    console.log(
+      `[reminders] ranAt=${ranAtIso} dryRun=${dryRun} attempted=${run.attempted} sent=${sentCount} skipped=${skippedCount} errors=${errors.length} hasMore=${run.hasMore || hasMoreFromSelection}`,
+    );
+
+    const hasMore = run.hasMore || hasMoreFromSelection;
+    const runLogScope = resolveRunLogScope({
+      headerWorkspaceId: runLogWorkspaceId,
+      headerUserEmail: runLogUserEmail,
+      candidates: reminders,
+      eligibleCandidates: eligibleReminders,
+    });
+
+    if (!dryRun && sentByUser.size > 0) {
       await Promise.all(
-        Array.from(workspaceStats.entries()).map(([workspaceId, stats]) =>
-          insertReminderRun(workspaceId, {
-            triggeredBy,
-            dryRun,
-            sentCount: stats.sentCount,
-            skippedCount: stats.skippedCount,
-            errorCount: stats.errorCount,
-            skippedBreakdown: stats.skippedBreakdown,
-            durationMs,
-            errors: stats.errors.slice(-10),
-            ranAt: ranAtIso,
+        Array.from(sentByUser.entries()).map(([userEmail, sentCountForUser]) =>
+          logFunnelEvent({
+            userEmail,
+            eventName: 'first_reminder_sent',
+            source: 'nudge',
+            meta: { sentCount: sentCountForUser, triggeredBy },
           }),
         ),
       );
-      workspaceRunLogWritten = true;
-    } catch (error) {
-      if (isReminderRunsMigrationRequiredError(error)) {
-        workspaceRunLogWarning = 'REMINDER_RUNS_LOGGING_SKIPPED_MIGRATION_REQUIRED';
-      } else {
-        console.error('Reminder run logging failed:', error);
-        workspaceRunLogWarning = 'REMINDER_RUNS_LOGGING_SKIPPED';
-      }
     }
-  }
 
-  const sentCount = dryRun ? run.attempted : updatedInvoiceIds.length;
-  const skippedCount =
-    decisions.filter((decision) => !decision.willSend).length + concurrentClaimSkips;
-  const skippedBreakdown = decisions.reduce<Required<ReminderRunSkippedBreakdown>>(
-    (acc, decision) => {
-      if (decision.willSend) {
-        return acc;
-      }
-
-      if (decision.reason === 'paused_customer' || decision.reason === 'paused_invoice') {
-        acc.paused += 1;
-        return acc;
-      }
-
-      if (decision.reason === 'unsubscribed') {
-        acc.unsubscribed += 1;
-        return acc;
-      }
-
-      if (decision.reason === 'missing_email') {
-        acc.missing_email += 1;
-        return acc;
-      }
-
-      if (decision.reason === 'not_eligible') {
-        acc.not_eligible += 1;
-        return acc;
-      }
-
-      acc.other += 1;
-      return acc;
-    },
-    { ...emptyBreakdown },
-  );
-  skippedBreakdown.other += concurrentClaimSkips;
-
-  console.log(
-    `[reminders] ranAt=${ranAtIso} dryRun=${dryRun} attempted=${run.attempted} sent=${sentCount} skipped=${skippedCount} errors=${errors.length} hasMore=${run.hasMore || hasMoreFromSelection}`,
-  );
-
-  const hasMore = run.hasMore || hasMoreFromSelection;
-  const runLogScope = resolveRunLogScope({
-    headerWorkspaceId: runLogWorkspaceId,
-    headerUserEmail: runLogUserEmail,
-    candidates: reminders,
-    eligibleCandidates: eligibleReminders,
-  });
-
-  if (!dryRun && sentByUser.size > 0) {
-    await Promise.all(
-      Array.from(sentByUser.entries()).map(([userEmail, sentCountForUser]) =>
-        logFunnelEvent({
-          userEmail,
-          eventName: 'first_reminder_sent',
-          source: 'nudge',
-          meta: { sentCount: sentCountForUser, triggeredBy },
-        }),
-      ),
-    );
-  }
-
-  const responsePayload = {
-    ranAt: ranAtIso,
-    attempted: run.attempted,
-    sent: sentCount,
-    failed: run.failed,
-    skipped: skippedCount,
-    hasMore,
-    updatedCount: sentCount,
-    updatedInvoiceIds,
-    dryRun,
-    triggeredBy,
-    durationMs,
-    actorEmail: triggeredBy === 'manual' ? runLogActorEmail : null,
-    workspaceId: runLogScope.workspaceId,
-    userEmail: runLogScope.userEmail,
-    config: runConfig,
-    summary: {
+    const responsePayload = {
+      ranAt: ranAtIso,
       attempted: run.attempted,
       sent: sentCount,
       failed: run.failed,
       skipped: skippedCount,
       hasMore,
-      sentCount,
-      skippedCount,
-      errorCount: errors.length,
-      skippedBreakdown,
-      wouldSendCount: decisions.filter((decision) => decision.willSend).length,
-    },
-    candidates: decisions,
-    errors: errors.slice(-10),
-  };
-
-  let runLogWritten = false;
-  const runWarnings: string[] = [];
-
-  try {
-    await insertReminderRunLog({
-      triggeredBy: triggeredBy === 'cron' ? 'cron' : 'manual',
+      updatedCount: sentCount,
+      updatedInvoiceIds,
+      dryRun,
+      triggeredBy,
+      durationMs,
+      actorEmail: triggeredBy === 'manual' ? runLogActorEmail : null,
       workspaceId: runLogScope.workspaceId,
       userEmail: runLogScope.userEmail,
-      actorEmail: triggeredBy === 'manual' ? runLogActorEmail : null,
       config: runConfig,
-      attempted: run.attempted,
-      sent: sentCount,
-      failed: run.failed,
-      skipped: skippedCount,
-      hasMore,
-      durationMs,
-      rawJson: responsePayload,
-      ranAt: ranAtIso,
-    });
-    runLogWritten = true;
-  } catch (error) {
-    if (isReminderRunLogsMigrationRequiredError(error)) {
-      runWarnings.push('REMINDER_RUN_LOGS_MIGRATION_REQUIRED');
-    } else {
-      console.error('Reminder run log write failed:', error);
-      runWarnings.push('REMINDER_RUN_LOGS_WRITE_FAILED');
+      summary: {
+        attempted: run.attempted,
+        sent: sentCount,
+        failed: run.failed,
+        skipped: skippedCount,
+        hasMore,
+        sentCount,
+        skippedCount,
+        errorCount: errors.length,
+        skippedBreakdown,
+        wouldSendCount: decisions.filter((decision) => decision.willSend).length,
+      },
+      candidates: decisions,
+      errors: errors.slice(-10),
+    };
+
+    let runLogWritten = false;
+    const runWarnings: string[] = [];
+
+    try {
+      await insertReminderRunLog({
+        triggeredBy: triggeredBy === 'cron' ? 'cron' : 'manual',
+        workspaceId: runLogScope.workspaceId,
+        userEmail: runLogScope.userEmail,
+        actorEmail: triggeredBy === 'manual' ? runLogActorEmail : null,
+        config: runConfig,
+        attempted: run.attempted,
+        sent: sentCount,
+        failed: run.failed,
+        skipped: skippedCount,
+        hasMore,
+        durationMs,
+        rawJson: responsePayload,
+        ranAt: ranAtIso,
+      });
+      runLogWritten = true;
+    } catch (error) {
+      if (isReminderRunLogsMigrationRequiredError(error)) {
+        runWarnings.push('REMINDER_RUN_LOGS_MIGRATION_REQUIRED');
+      } else {
+        console.error('Reminder run log write failed:', error);
+        runWarnings.push('REMINDER_RUN_LOGS_WRITE_FAILED');
+      }
     }
-  }
 
-  if (!workspaceRunLogWritten && workspaceRunLogWarning) {
-    runWarnings.push(workspaceRunLogWarning);
-  }
+    if (!workspaceRunLogWritten && workspaceRunLogWarning) {
+      runWarnings.push(workspaceRunLogWarning);
+    }
 
-  return NextResponse.json({
-    ...responsePayload,
-    runLogWritten,
-    runLogWarning: runWarnings.length > 0 ? runWarnings.join('; ') : null,
-  });
+    return NextResponse.json({
+      ...responsePayload,
+      runLogWritten,
+      runLogWarning: runWarnings.length > 0 ? runWarnings.join('; ') : null,
+    });
   } finally {
     await releaseJobLock({
       lockKey,
@@ -985,10 +984,10 @@ export async function POST(req: Request) {
   return runReminderJob(req);
 }
 
-export async function GET(req: Request) {
-  if (process.env.ALLOW_REMINDERS_RUN_GET === '1') {
-    return POST(req);
-  }
+// GET must NEVER trigger a mutation. Always 405.
+// (The previous ALLOW_REMINDERS_RUN_GET=1 escape hatch has been removed as a
+//  P0 security fix \u2014 cron jobs MUST use POST with a cron token.)
+export async function GET() {
   return NextResponse.json(
     { ok: false, error: 'Method Not Allowed. Use POST.' },
     { status: 405 },

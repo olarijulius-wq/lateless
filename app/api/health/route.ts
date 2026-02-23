@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+export async function GET(req: Request) {
+  const rateLimitResponse = await enforceRateLimit(req, {
+    bucket: 'health',
+    windowSec: 60,
+    ipLimit: 60,
+  });
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
 
-export async function GET() {
   const time = new Date().toISOString();
   const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
   let db: 'ok' | 'fail' = 'ok';

@@ -1,7 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getAbsoluteUrl, getSiteUrl } from '@/app/lib/seo/site-url';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
-export async function GET() {
+export async function GET(req: Request) {
+  const rateLimitResponse = await enforceRateLimit(req, {
+    bucket: 'seo_verify',
+    windowSec: 60,
+    ipLimit: 30,
+  });
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const appUrl = getSiteUrl().toString();
   const robotsUrl = getAbsoluteUrl('/robots.txt');
   const sitemapUrl = getAbsoluteUrl('/sitemap.xml');

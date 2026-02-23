@@ -33,6 +33,12 @@ const TOKEN_PARAM_SCHEMA = z
   })
   .strict();
 
+const UUID_PARAM_SCHEMA = z
+  .object({
+    id: z.string().uuid('Route param id must be a valid UUID'),
+  })
+  .strict();
+
 function normalizeKey(value: string) {
   return value.trim().toLowerCase().slice(0, 256);
 }
@@ -266,3 +272,4 @@ export async function parseJsonBody<T>(
 }
 
 export const routeTokenParamsSchema = TOKEN_PARAM_SCHEMA;
+export const routeUuidParamsSchema = UUID_PARAM_SCHEMA;

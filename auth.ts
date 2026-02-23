@@ -10,7 +10,18 @@ import type { User } from '@/app/lib/definitions';
 import bcrypt from 'bcrypt';
 import postgres from 'postgres';
 import crypto from 'crypto';
- 
+
+/**
+ * Compute the HMAC used for 2FA bypass nonces. This is a server-only helper;
+ * the returned HMAC is never sent to the browser.
+ */
+function compute2FaBypassHmac(nonce: string): string {
+  const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET || '';
+  return crypto.createHmac('sha256', secret).update(nonce).digest('hex');
+}
+
+export { compute2FaBypassHmac };
+
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 function normalizeEmail(email: string) {
@@ -487,6 +498,102 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           throw new AuthError('CredentialsSignin', {
             cause: { code: 'EMAIL_NOT_VERIFIED', email: user.email },
           } as any);
+        }
+
+        return user as User;
+      },
+    }),
+    /**
+     * 2fa-bypass provider: used exclusively by verifyTwoFactorCode() in
+     * app/lib/actions.ts after the OTP has been validated server-side.
+     *
+     * The provider accepts { nonce, hmac } where:
+     *   - nonce = opaque UUID stored in the pending_2fa_challenges DB table
+     *   - hmac  = HMAC-SHA256(nonce, AUTH_SECRET) — computed server-side only,
+     *             never sent to the browser
+     *
+     * On success it looks up the user_id from the DB nonce row and returns the
+     * user object. The caller (actions.ts) is responsible for deleting the nonce
+     * row before calling signIn to prevent replay.
+     */
+    Credentials({
+      id: '2fa-bypass',
+      name: '2FA Bypass',
+      credentials: { nonce: {}, hmac: {} },
+      async authorize(credentials) {
+        const parsed = z
+          .object({
+            // composite format: "<randomUUID>|<userId>" — not a bare UUID
+            nonce: z.string().min(36).max(120),
+            hmac: z.string().length(64),
+          })
+          .safeParse(credentials);
+
+        if (!parsed.success) {
+          return null;
+        }
+
+        const { nonce, hmac } = parsed.data;
+
+        // Constant-time HMAC comparison (prevents timing attacks)
+        const expectedHmac = compute2FaBypassHmac(nonce);
+        const expectedBuf = Buffer.from(expectedHmac, 'hex');
+        const providedBuf = Buffer.from(hmac, 'hex');
+        if (
+          expectedBuf.length !== providedBuf.length ||
+          !crypto.timingSafeEqual(expectedBuf, providedBuf)
+        ) {
+          return null;
+        }
+
+        // Look up the pending challenge (nonce was already deleted by actions.ts
+        // before signIn is called, so this should normally not find a row —
+        // but we query anyway to fail safe if deletion was skipped for any reason)
+        const [challenge] = await sql<{ user_id: string; expires_at: Date }[]>`
+          select user_id, expires_at
+          from public.pending_2fa_challenges
+          where nonce = ${nonce}
+          limit 1
+        `;
+
+        // If the row still exists but is expired, reject
+        if (challenge && challenge.expires_at < new Date()) {
+          return null;
+        }
+
+        // Resolve userId: prefer the live DB row (exists if cleanup was skipped),
+        // otherwise the nonce was already cleaned up by actions.ts (expected path).
+        // We need userId from the token passed inline as the nonce value.
+        // IMPORTANT: Since actions.ts deletes the row *before* calling signIn,
+        // we encode the user_id in the nonce field as "<uuid>:<userId>" so we can
+        // extract it even after deletion.
+        let userId: string;
+        if (challenge) {
+          userId = challenge.user_id;
+        } else {
+          // Nonce was already consumed (expected). Decode from composite nonce:
+          // format: "<randomUUID>|<userId>"
+          const parts = nonce.split('|');
+          if (parts.length !== 2 || !parts[1]) {
+            return null;
+          }
+          userId = parts[1];
+        }
+
+        const [user] = await sql<{
+          id: string;
+          name: string | null;
+          email: string;
+          is_verified: boolean;
+        }[]>`
+          select id, name, email, is_verified
+          from users
+          where id = ${userId}
+          limit 1
+        `;
+
+        if (!user || !user.is_verified) {
+          return null;
         }
 
         return user as User;

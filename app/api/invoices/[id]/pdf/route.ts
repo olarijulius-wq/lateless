@@ -2,13 +2,19 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import type PDFDocumentType from 'pdfkit';
 import { auth } from '@/auth';
+import postgres from 'postgres';
+import {
+  enforceRateLimit,
+  parseRouteParams,
+  routeUuidParamsSchema,
+} from '@/app/lib/security/api-guard';
 import { fetchInvoiceById } from '@/app/lib/data';
 import { formatDateToLocal } from '@/app/lib/utils';
 import { fetchCompanyProfileForWorkspace } from '@/app/lib/company-profile';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 
+import type PDFDocumentType from 'pdfkit';
 const PDFDocument = require('pdfkit/js/pdfkit.standalone') as typeof PDFDocumentType;
 
 function formatAmountForPdf(amountCents: number) {
@@ -107,7 +113,7 @@ async function buildInvoicePdf(input: {
 }
 
 export async function GET(
-  _: Request,
+  req: Request,
   props: { params: Promise<{ id: string }> },
 ) {
   const session = await auth();
@@ -115,7 +121,21 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const params = await props.params;
+  const userEmail = session.user.email.trim().toLowerCase();
+
+  const rl = await enforceRateLimit(req, {
+    bucket: 'invoice_pdf',
+    windowSec: 60,
+    ipLimit: 30,
+    userLimit: 20,
+  }, { userKey: userEmail });
+  if (rl) return rl;
+
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(routeUuidParamsSchema, rawParams);
+  if (!parsedParams.ok) return parsedParams.response;
+  const params = parsedParams.data;
+
   const context = await ensureWorkspaceContextForCurrentUser();
 
   const [invoice, companyProfile] = await Promise.all([
@@ -133,7 +153,7 @@ export async function GET(
   });
   const filenameId = invoice.invoice_number ?? invoice.id;
 
-  return new NextResponse(pdfBuffer, {
+  return new NextResponse(pdfBuffer as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="invoice-${filenameId}.pdf"`,

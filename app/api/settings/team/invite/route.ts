@@ -7,13 +7,14 @@ import {
   TEAM_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/workspaces';
 import { sendWorkspaceInviteEmail } from '@/app/lib/email';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
 const inviteSchema = z.object({
-  email: z.string().email().transform((value) => value.trim().toLowerCase()),
+  email: z.string().email().max(254).transform((value) => value.trim().toLowerCase()),
   role: z.enum(['admin', 'member']),
-});
+}).strict();
 
 function resolveBaseUrl(req: NextRequest) {
   return (
@@ -53,6 +54,14 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     }
+
+    const rl = await enforceRateLimit(request, {
+      bucket: 'team_invite',
+      windowSec: 300,
+      ipLimit: 10,
+      userLimit: 5,
+    }, { userKey: context.userEmail });
+    if (rl) return rl;
 
     const invite = await createWorkspaceInvite({
       workspaceId: context.workspaceId,

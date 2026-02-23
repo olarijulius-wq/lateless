@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import postgres from 'postgres';
 import { auth } from '@/auth';
 import { PLAN_CONFIG, resolveEffectivePlan } from '@/app/lib/config';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -21,7 +22,7 @@ function toCsvValue(value: string | number | null | undefined): string {
   return str;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth();
 
   if (!session?.user?.email) {
@@ -29,6 +30,14 @@ export async function GET() {
   }
 
   const email = normalizeEmail(session.user.email);
+
+  const rl = await enforceRateLimit(req, {
+    bucket: 'invoice_export',
+    windowSec: 300,
+    ipLimit: 10,
+    userLimit: 5,
+  }, { userKey: email });
+  if (rl) return rl;
 
   const userRows = await sql<
     { plan: string | null; subscription_status: string | null }[]

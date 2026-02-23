@@ -3,6 +3,7 @@ import postgres from 'postgres';
 import Stripe from 'stripe';
 import { requireUserEmail } from '@/app/lib/data';
 import { checkConnectedAccountAccess } from '@/app/lib/stripe-connect';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -131,6 +132,14 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const rl = await enforceRateLimit(req, {
+    bucket: 'stripe_connect_onboard',
+    windowSec: 300,
+    ipLimit: 10,
+    userLimit: 3,
+  }, { userKey: userEmail });
+  if (rl) return rl;
 
   const baseUrl =
     process.env.NEXT_PUBLIC_APP_URL ||

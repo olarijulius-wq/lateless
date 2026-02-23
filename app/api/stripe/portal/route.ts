@@ -9,16 +9,26 @@ import {
 } from '@/app/lib/stripe-guard';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { insertBillingEvent } from '@/app/lib/billing-dunning';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
-export async function POST() {
+export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user?.email) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const email = session.user.email.trim().toLowerCase();
+
+  const rl = await enforceRateLimit(req, {
+    bucket: 'stripe_portal',
+    windowSec: 300,
+    ipLimit: 10,
+    userLimit: 5,
+  }, { userKey: email });
+  if (rl) return rl;
+
   let workspaceId: string | null = null;
   try {
     const workspaceContext = await ensureWorkspaceContextForCurrentUser();

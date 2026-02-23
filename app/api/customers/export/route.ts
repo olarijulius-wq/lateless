@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import postgres from 'postgres';
 import { auth } from '@/auth';
 import { PLAN_CONFIG, resolveEffectivePlan } from '@/app/lib/config';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -12,7 +13,7 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await auth();
 
   if (!session?.user?.email) {
@@ -20,6 +21,14 @@ export async function GET() {
   }
 
   const email = normalizeEmail(session.user.email);
+
+  const rl = await enforceRateLimit(req, {
+    bucket: 'customers_export',
+    windowSec: 300,
+    ipLimit: 10,
+    userLimit: 5,
+  }, { userKey: email });
+  if (rl) return rl;
 
   const userRows = await sql<
     { plan: string | null; subscription_status: string | null }[]

@@ -1,14 +1,21 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
 import { auth } from '@/auth';
-import { canPayInvoiceStatus } from '@/app/lib/invoice-status';
-import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+import { sql } from '@/app/lib/db';
 import { sendInvoiceEmail } from '@/app/lib/invoice-email';
+import { canPayInvoiceStatus } from '@/app/lib/invoice-status';
 import { revalidatePath } from 'next/cache';
+import {
+  ensureWorkspaceContextForCurrentUser,
+  isTeamMigrationRequiredError,
+  TEAM_MIGRATION_REQUIRED_CODE,
+} from '@/app/lib/workspaces';
+import {
+  enforceRateLimit,
+  parseRouteParams,
+  routeUuidParamsSchema,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -34,8 +41,21 @@ export async function POST(
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const params = await props.params;
   const userEmail = normalizeEmail(session.user.email);
+
+  const rl = await enforceRateLimit(req, {
+    bucket: 'invoice_send',
+    windowSec: 300,
+    ipLimit: 20,
+    userLimit: 10,
+  }, { userKey: userEmail });
+  if (rl) return rl;
+
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(routeUuidParamsSchema, rawParams);
+  if (!parsedParams.ok) return parsedParams.response;
+
+  const params = parsedParams.data;
   const returnTo = sanitizeReturnTo(new URL(req.url).searchParams.get('returnTo'));
 
   const [invoice] = await sql<{

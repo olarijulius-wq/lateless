@@ -6,6 +6,7 @@ import postgres from 'postgres';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { signIn, auth } from '@/auth';
+import { compute2FaBypassHmac } from '@/auth';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { getNextInvoiceNumber, upsertCompanyProfile } from '@/app/lib/data';
@@ -26,8 +27,7 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-const PENDING_TWO_FACTOR_USER_ID_COOKIE = 'pending_2fa_user_id';
-const PENDING_TWO_FACTOR_PASSWORD_COOKIE = 'pending_2fa_password';
+const PENDING_TWO_FACTOR_NONCE_COOKIE = 'pending_2fa_nonce';
 
 function getBaseAppUrl() {
   return (
@@ -39,10 +39,9 @@ function getBaseAppUrl() {
   );
 }
 
-async function clearPendingTwoFactorCookies() {
+async function clearPending2FaCookies() {
   const cookieStore = await cookies();
-  cookieStore.delete(PENDING_TWO_FACTOR_USER_ID_COOKIE);
-  cookieStore.delete(PENDING_TWO_FACTOR_PASSWORD_COOKIE);
+  cookieStore.delete(PENDING_TWO_FACTOR_NONCE_COOKIE);
 }
 
 async function clearTwoFactorChallenge(userId: string) {
@@ -183,19 +182,19 @@ export type State = {
 export type CreateInvoiceState =
   | { ok: true; invoiceId: string }
   | {
-      ok: false;
-      code: 'LIMIT_REACHED' | 'VALIDATION' | 'UNKNOWN';
-      message: string;
-      errors?: State['errors'];
-    };
+    ok: false;
+    code: 'LIMIT_REACHED' | 'VALIDATION' | 'UNKNOWN';
+    message: string;
+    errors?: State['errors'];
+  };
 
 export type DuplicateInvoiceState =
   | { ok: true; invoiceId: string }
   | {
-      ok: false;
-      code: 'LIMIT_REACHED' | 'NOT_FOUND' | 'UNKNOWN';
-      message: string;
-    };
+    ok: false;
+    code: 'LIMIT_REACHED' | 'NOT_FOUND' | 'UNKNOWN';
+    message: string;
+  };
 
 export type CompanyProfileState = {
   ok: boolean;
@@ -1010,8 +1009,8 @@ export async function registerUser(prevState: SignupState, formData: FormData) {
   const callbackUrlRaw = formData.get('callbackUrl');
   const callbackUrl =
     typeof callbackUrlRaw === 'string' &&
-    callbackUrlRaw.startsWith('/') &&
-    !callbackUrlRaw.startsWith('//')
+      callbackUrlRaw.startsWith('/') &&
+      !callbackUrlRaw.startsWith('//')
       ? callbackUrlRaw
       : null;
   const loginParams = new URLSearchParams({ signup: 'success' });
@@ -1137,6 +1136,7 @@ export async function authenticate(
       return { ...initialLoginState, success: true };
     }
 
+    // Generate the 6-digit OTP and store its hash in the users table
     const code = crypto.randomInt(0, 1000000).toString().padStart(6, '0');
     const codeHash = await bcrypt.hash(code, 10);
 
@@ -1150,6 +1150,26 @@ export async function authenticate(
 
     await sendTwoFactorCodeEmail({ to: user.email, code });
 
+    // Issue a server-side nonce (NEVER store password material in a cookie).
+    //
+    // The nonce is a composite string: "<randomPart>|<userId>" so that
+    // its meaning is recoverable even after DB deletion (needed because the
+    // 2fa-bypass provider in auth.ts deletes the row before signIn completes).
+    const randomPart = crypto.randomUUID();
+    const compositeNonce = `${randomPart}|${user.id}`;
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await sql`
+      -- Purge any expired challenges for this user before inserting a new one
+      delete from public.pending_2fa_challenges
+      where user_id = ${user.id}
+        and expires_at < now();
+
+      insert into public.pending_2fa_challenges (nonce, user_id, expires_at)
+      values (${compositeNonce}, ${user.id}, ${expiresAt})
+      on conflict (nonce) do nothing
+    `;
+
     const cookieStore = await cookies();
     const cookieOptions = {
       httpOnly: true,
@@ -1158,12 +1178,7 @@ export async function authenticate(
       maxAge: 15 * 60,
       path: '/',
     };
-    cookieStore.set(PENDING_TWO_FACTOR_USER_ID_COOKIE, user.id, cookieOptions);
-    cookieStore.set(
-      PENDING_TWO_FACTOR_PASSWORD_COOKIE,
-      Buffer.from(password, 'utf8').toString('base64url'),
-      cookieOptions,
-    );
+    cookieStore.set(PENDING_TWO_FACTOR_NONCE_COOKIE, compositeNonce, cookieOptions);
 
     return {
       ...initialLoginState,
@@ -1209,14 +1224,55 @@ export async function verifyTwoFactorCode(
   }
 
   const cookieStore = await cookies();
-  const pendingUserId = cookieStore.get(PENDING_TWO_FACTOR_USER_ID_COOKIE)?.value;
-  const pendingPasswordEncoded = cookieStore.get(PENDING_TWO_FACTOR_PASSWORD_COOKIE)?.value;
+  const pendingNonce = cookieStore.get(PENDING_TWO_FACTOR_NONCE_COOKIE)?.value;
 
-  if (!pendingUserId || !pendingPasswordEncoded) {
-    await clearPendingTwoFactorCookies();
+  if (!pendingNonce) {
+    await clearPending2FaCookies();
     return {
       ...initialLoginState,
       message: 'Session expired. Please log in again.',
+      needsTwoFactor: false,
+    };
+  }
+
+  // Extract userId from composite nonce format: "<randomPart>|<userId>"
+  const nonceParts = pendingNonce.split('|');
+  const pendingUserId = nonceParts.length === 2 ? nonceParts[1] : null;
+
+  if (!pendingUserId) {
+    await clearPending2FaCookies();
+    return {
+      ...initialLoginState,
+      message: 'Session expired. Please log in again.',
+      needsTwoFactor: false,
+    };
+  }
+
+  // Verify the nonce exists in DB and is not expired
+  const [challenge] = await sql<{ user_id: string; expires_at: Date }[]>`
+    select user_id, expires_at
+    from public.pending_2fa_challenges
+    where nonce = ${pendingNonce}
+      and user_id = ${pendingUserId}
+    limit 1
+  `;
+
+  if (!challenge) {
+    await clearPending2FaCookies();
+    return {
+      ...initialLoginState,
+      message: 'Session expired. Please log in again.',
+      needsTwoFactor: false,
+    };
+  }
+
+  if (challenge.expires_at < new Date()) {
+    // Clean up expired nonce
+    await sql`delete from public.pending_2fa_challenges where nonce = ${pendingNonce}`;
+    await clearPending2FaCookies();
+    return {
+      ...initialLoginState,
+      message: 'Code expired. Please log in again.',
       needsTwoFactor: false,
     };
   }
@@ -1245,7 +1301,8 @@ export async function verifyTwoFactorCode(
     if (user?.id) {
       await clearTwoFactorChallenge(user.id);
     }
-    await clearPendingTwoFactorCookies();
+    await sql`delete from public.pending_2fa_challenges where nonce = ${pendingNonce}`;
+    await clearPending2FaCookies();
     return {
       ...initialLoginState,
       message: 'Session expired. Please log in again.',
@@ -1258,7 +1315,8 @@ export async function verifyTwoFactorCode(
     user.two_factor_expires_at.getTime() < Date.now()
   ) {
     await clearTwoFactorChallenge(user.id);
-    await clearPendingTwoFactorCookies();
+    await sql`delete from public.pending_2fa_challenges where nonce = ${pendingNonce}`;
+    await clearPending2FaCookies();
     return {
       ...initialLoginState,
       message: 'Code expired. Please log in again.',
@@ -1268,7 +1326,8 @@ export async function verifyTwoFactorCode(
 
   if ((user.two_factor_attempts ?? 0) >= 5) {
     await clearTwoFactorChallenge(user.id);
-    await clearPendingTwoFactorCookies();
+    await sql`delete from public.pending_2fa_challenges where nonce = ${pendingNonce}`;
+    await clearPending2FaCookies();
     return {
       ...initialLoginState,
       message: 'Too many attempts. Please log in again.',
@@ -1292,17 +1351,21 @@ export async function verifyTwoFactorCode(
     };
   }
 
+  // OTP verified — clear all 2FA state
   await clearTwoFactorChallenge(user.id);
-  await clearPendingTwoFactorCookies();
+  // Delete nonce from DB *before* calling signIn (prevents replay)
+  await sql`delete from public.pending_2fa_challenges where nonce = ${pendingNonce}`;
+  await clearPending2FaCookies();
 
-  const pendingPassword = Buffer.from(pendingPasswordEncoded, 'base64url').toString(
-    'utf8',
-  );
+  // Complete sign-in via the 2fa-bypass provider.
+  // The bypass provider verifies the HMAC server-side and looks up the user
+  // by userId embedded in the composite nonce. No password is needed.
+  const bypassHmac = compute2FaBypassHmac(pendingNonce);
 
   try {
-    await signIn('credentials', {
-      email: user.email,
-      password: pendingPassword,
+    await signIn('2fa-bypass', {
+      nonce: pendingNonce,
+      hmac: bypassHmac,
       redirect: false,
       redirectTo,
     });

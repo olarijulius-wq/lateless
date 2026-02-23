@@ -13,6 +13,11 @@ import {
   REFUND_REQUESTS_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/refund-requests';
 import { isStripePermissionOrNoAccessError } from '@/app/lib/stripe-connect';
+import {
+  enforceRateLimit,
+  parseRouteParams,
+  routeUuidParamsSchema,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -57,10 +62,10 @@ function readChargeRefundSnapshot(charge: {
   amount_refunded?: unknown;
   currency?: unknown;
   refunds?:
-    | {
-        data?: Array<{ id?: unknown; created?: unknown; amount?: unknown }>;
-      }
-    | null;
+  | {
+    data?: Array<{ id?: unknown; created?: unknown; amount?: unknown }>;
+  }
+  | null;
 }): ChargeRefundSnapshot {
   const amount = typeof charge.amount === 'number' ? charge.amount : 0;
   const refunds = Array.isArray(charge.refunds?.data) ? charge.refunds.data : [];
@@ -105,15 +110,10 @@ export async function POST(
   _request: Request,
   props: { params: Promise<{ id: string }> },
 ) {
-  const params = await props.params;
-  const requestId = params.id?.trim();
-
-  if (!requestId) {
-    return NextResponse.json(
-      { ok: false, message: 'Refund request id is required.' },
-      { status: 400 },
-    );
-  }
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(routeUuidParamsSchema, rawParams);
+  if (!parsedParams.ok) return parsedParams.response;
+  const requestId = parsedParams.data.id;
 
   try {
     await assertRefundRequestsSchemaReady();
@@ -125,6 +125,14 @@ export async function POST(
         { status: 403 },
       );
     }
+
+    const rl = await enforceRateLimit(_request, {
+      bucket: 'refund_approve',
+      windowSec: 300,
+      ipLimit: 20,
+      userLimit: 10,
+    }, { userKey: context.userEmail });
+    if (rl) return rl;
 
     const [row] = await sql<{
       id: string;
