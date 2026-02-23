@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
+import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -11,6 +12,12 @@ import {
   resumeCustomer,
   resumeInvoice,
 } from '@/app/lib/reminder-pauses';
+import {
+  emailSchema,
+  enforceRateLimit,
+  parseJsonBody,
+  uuidSchema,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -19,31 +26,20 @@ const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 const migrationMessage =
   'Reminder pauses require DB migration 015_add_reminder_pauses.sql. Run migrations and retry.';
 
-type PauseScope = 'customer' | 'invoice';
-
-function normalizeEmail(email: string) {
-  return email.trim().toLowerCase();
-}
-
-function parseBody(body: unknown): {
-  scope: PauseScope;
-  invoiceId: string | null;
-  email: string | null;
-} | null {
-  const scope = (body as { scope?: unknown })?.scope;
-  if (scope !== 'customer' && scope !== 'invoice') {
-    return null;
-  }
-
-  const invoiceIdRaw = (body as { invoiceId?: unknown })?.invoiceId;
-  const emailRaw = (body as { email?: unknown })?.email;
-
-  return {
-    scope,
-    invoiceId: typeof invoiceIdRaw === 'string' && invoiceIdRaw.trim() ? invoiceIdRaw.trim() : null,
-    email: typeof emailRaw === 'string' && emailRaw.trim() ? normalizeEmail(emailRaw) : null,
-  };
-}
+const remindersResumeBodySchema = z.discriminatedUnion('scope', [
+  z
+    .object({
+      scope: z.literal('customer'),
+      email: emailSchema,
+    })
+    .strict(),
+  z
+    .object({
+      scope: z.literal('invoice'),
+      invoiceId: uuidSchema,
+    })
+    .strict(),
+]);
 
 async function invoiceBelongsToWorkspace(workspaceId: string, invoiceId: string) {
   const [row] = await sql<{ id: string }[]>`
@@ -62,28 +58,6 @@ async function invoiceBelongsToWorkspace(workspaceId: string, invoiceId: string)
 }
 
 export async function POST(request: NextRequest) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid request payload.' },
-      { status: 400 },
-    );
-  }
-
-  const parsed = parseBody(body);
-  if (!parsed) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message:
-          "Body must include scope ('customer' or 'invoice') and corresponding email or invoiceId.",
-      },
-      { status: 400 },
-    );
-  }
-
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
 
@@ -94,34 +68,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (parsed.scope === 'customer') {
-      if (!parsed.email) {
-        return NextResponse.json(
-          { ok: false, message: 'Email is required for customer scope.' },
-          { status: 400 },
-        );
-      }
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'reminders_resume',
+        windowSec: 60,
+        ipLimit: 30,
+        userLimit: 20,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
 
-      const resumed = await resumeCustomer(context.workspaceId, parsed.email);
+    const parsedBody = await parseJsonBody(request, remindersResumeBodySchema);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const body = parsedBody.data;
+
+    if (body.scope === 'customer') {
+      const resumed = await resumeCustomer(context.workspaceId, body.email);
 
       return NextResponse.json({
         ok: true,
         scope: 'customer',
-        normalizedEmail: parsed.email,
+        normalizedEmail: body.email,
         resumed,
       });
     }
 
-    if (!parsed.invoiceId) {
-      return NextResponse.json(
-        { ok: false, message: 'invoiceId is required for invoice scope.' },
-        { status: 400 },
-      );
-    }
-
     const canAccessInvoice = await invoiceBelongsToWorkspace(
       context.workspaceId,
-      parsed.invoiceId,
+      body.invoiceId,
     );
 
     if (!canAccessInvoice) {
@@ -131,12 +108,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const resumed = await resumeInvoice(parsed.invoiceId);
+    const resumed = await resumeInvoice(body.invoiceId);
 
     return NextResponse.json({
       ok: true,
       scope: 'invoice',
-      invoiceId: parsed.invoiceId,
+      invoiceId: body.invoiceId,
       resumed,
     });
   } catch (error) {

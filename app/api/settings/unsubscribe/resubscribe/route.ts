@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -9,30 +10,25 @@ import {
   resubscribeRecipient,
   UNSUBSCRIBE_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/unsubscribe';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
 const migrationMessage =
   'Unsubscribe requires DB migrations 007_add_workspaces_and_team.sql and 009_add_unsubscribe.sql. Run migrations and retry.';
+const resubscribeBodySchema = z
+  .object({
+    email: z.string().trim().min(1),
+  })
+  .strict();
 
 export async function POST(request: NextRequest) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid request payload.' },
-      { status: 400 },
-    );
-  }
-
-  const emailRaw = (body as { email?: unknown })?.email;
-  if (typeof emailRaw !== 'string' || emailRaw.trim() === '') {
-    return NextResponse.json(
-      { ok: false, message: 'Email is required.' },
-      { status: 400 },
-    );
-  }
+  const parsedBody = await parseJsonBody(request, resubscribeBodySchema);
+  if (!parsedBody.ok) return parsedBody.response;
+  const emailRaw = parsedBody.data.email;
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
@@ -43,6 +39,18 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     }
+
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'unsubscribe_resubscribe',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
 
     const removed = await resubscribeRecipient(
       context.workspaceId,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -9,11 +10,21 @@ import {
   UNSUBSCRIBE_MIGRATION_REQUIRED_CODE,
   upsertUnsubscribeSettings,
 } from '@/app/lib/unsubscribe';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
 const migrationMessage =
   'Unsubscribe requires DB migrations 007_add_workspaces_and_team.sql and 009_add_unsubscribe.sql. Run migrations and retry.';
+const unsubscribeSettingsBodySchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    pageText: z.string().optional(),
+  })
+  .strict();
 
 export async function GET() {
   try {
@@ -49,15 +60,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid request payload.' },
-      { status: 400 },
-    );
-  }
+  const parsedBody = await parseJsonBody(request, unsubscribeSettingsBodySchema);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.data;
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
@@ -69,9 +74,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const enabled = Boolean((body as { enabled?: unknown })?.enabled);
-    const pageTextRaw = (body as { pageText?: unknown })?.pageText;
-    const pageText = typeof pageTextRaw === 'string' ? pageTextRaw : '';
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'unsubscribe_settings_update',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
+
+    const enabled = body.enabled === true;
+    const pageText = typeof body.pageText === 'string' ? body.pageText : '';
 
     const settings = await upsertUnsubscribeSettings(context.workspaceId, {
       enabled,

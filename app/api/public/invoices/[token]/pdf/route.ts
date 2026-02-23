@@ -85,6 +85,9 @@ export async function GET(
       windowSec: 60,
       ipLimit: 30,
     },
+    {
+      failClosed: true,
+    },
   );
   if (rateLimitResponse) {
     return rateLimitResponse;

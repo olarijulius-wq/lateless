@@ -5,11 +5,17 @@ import { enforceRateLimit } from '@/app/lib/security/api-guard';
 export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
-  const rateLimitResponse = await enforceRateLimit(req, {
-    bucket: 'health',
-    windowSec: 60,
-    ipLimit: 60,
-  });
+  const rateLimitResponse = await enforceRateLimit(
+    req,
+    {
+      bucket: 'health',
+      windowSec: 60,
+      ipLimit: 60,
+    },
+    {
+      failClosed: true,
+    },
+  );
   if (rateLimitResponse) {
     return rateLimitResponse;
   }

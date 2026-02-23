@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   acceptInviteForCurrentUser,
   isTeamMigrationRequiredError,
   TEAM_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/workspaces';
+import {
+  enforceRateLimit,
+  parseRouteParams,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -11,11 +16,30 @@ type RouteProps = {
   params: Promise<{ token?: string }>;
 };
 
-export async function POST(_: Request, props: RouteProps) {
-  const params = await props.params;
-  const token = params.token?.trim() ?? '';
+const inviteTokenParamsSchema = z
+  .object({
+    token: z.string().trim().min(1).max(512),
+  })
+  .strict();
+
+export async function POST(request: Request, props: RouteProps) {
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(inviteTokenParamsSchema, rawParams);
+  if (!parsedParams.ok) return parsedParams.response;
+  const token = parsedParams.data.token;
 
   try {
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'team_invite_accept',
+        windowSec: 300,
+        ipLimit: 20,
+      },
+      { failClosed: true },
+    );
+    if (rl) return rl;
+
     const result = await acceptInviteForCurrentUser(token);
 
     if (!result.ok) {

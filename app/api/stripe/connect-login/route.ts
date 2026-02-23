@@ -6,18 +6,31 @@ import {
   assertStripeConfig,
   normalizeStripeConfigError,
 } from '@/app/lib/stripe-guard';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
-export async function GET() {
+export async function GET(request: Request) {
   let userEmail = '';
   try {
     userEmail = await requireUserEmail();
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+
+  const rl = await enforceRateLimit(
+    request,
+    {
+      bucket: 'stripe_connect_login',
+      windowSec: 300,
+      ipLimit: 20,
+      userLimit: 10,
+    },
+    { userKey: userEmail, failClosed: true },
+  );
+  if (rl) return rl;
 
   try {
     assertStripeConfig();

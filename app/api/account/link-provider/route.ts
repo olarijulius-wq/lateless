@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
+import { z } from 'zod';
 import { auth } from '@/auth';
+import { enforceRateLimit, parseQuery } from '@/app/lib/security/api-guard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
-const ALLOWED_PROVIDERS = new Set(['google', 'github']);
+const linkProviderQuerySchema = z
+  .object({
+    provider: z.enum(['google', 'github']),
+  })
+  .strict();
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -38,10 +44,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
   }
 
-  const provider = request.nextUrl.searchParams.get('provider')?.toLowerCase();
-  if (!provider || !ALLOWED_PROVIDERS.has(provider)) {
-    return NextResponse.json({ message: 'Invalid provider' }, { status: 400 });
-  }
+  const session = await auth();
+  const userEmail = session?.user?.email ? normalizeEmail(session.user.email) : null;
+
+  const rl = await enforceRateLimit(
+    request,
+    {
+      bucket: 'account_link_provider',
+      windowSec: 300,
+      ipLimit: 30,
+      userLimit: 10,
+    },
+    {
+      userKey: userEmail ?? undefined,
+      failClosed: true,
+    },
+  );
+  if (rl) return rl;
+
+  const url = new URL(request.url);
+  const parsedQuery = parseQuery(linkProviderQuerySchema, url);
+  if (!parsedQuery.ok) return parsedQuery.response;
+
+  const { provider } = parsedQuery.data;
 
   return NextResponse.json({
     ok: true,

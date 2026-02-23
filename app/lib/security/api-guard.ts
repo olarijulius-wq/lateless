@@ -21,6 +21,19 @@ type ParseFailure = { ok: false; response: NextResponse };
 export type ParseResult<T> = ParseSuccess<T> | ParseFailure;
 
 const RATE_LIMIT_MODE = process.env.RATE_LIMIT_MODE === 'report' ? 'report' : 'enforce';
+// 256 KiB keeps typical API JSON payloads safe while limiting accidental/abusive oversized bodies.
+const MAX_JSON_BYTES = 256 * 1024;
+
+type RateLimitOptions = {
+  userKey?: string | null;
+  /**
+   * When true, a failure in the rate limiter itself will block the request
+   * (fail-closed) instead of allowing it to proceed (fail-open). This is
+   * appropriate for public token endpoints and other sensitive, unauthenticated
+   * entry points.
+   */
+  failClosed?: boolean;
+};
 
 const TOKEN_PARAM_SCHEMA = z
   .object({
@@ -38,6 +51,32 @@ const UUID_PARAM_SCHEMA = z
     id: z.string().uuid('Route param id must be a valid UUID'),
   })
   .strict();
+
+export const emailSchema = z
+  .string()
+  .email()
+  .max(254)
+  .transform((value) => value.trim().toLowerCase());
+
+export const uuidSchema = z
+  .string()
+  .uuid()
+  .max(64);
+
+export const tokenSchema = z
+  .string()
+  .trim()
+  .min(16)
+  .max(2048);
+
+const stripeIdBase = z
+  .string()
+  .trim()
+  .max(255);
+
+export const stripeSessionIdSchema = stripeIdBase.regex(/^cs_[A-Za-z0-9_]+$/, 'Invalid Stripe session id');
+export const stripeSubscriptionIdSchema = stripeIdBase.regex(/^sub_[A-Za-z0-9_]+$/, 'Invalid Stripe subscription id');
+export const stripeCustomerIdSchema = stripeIdBase.regex(/^cus_[A-Za-z0-9_]+$/, 'Invalid Stripe customer id');
 
 function normalizeKey(value: string) {
   return value.trim().toLowerCase().slice(0, 256);
@@ -133,7 +172,7 @@ function rateLimitResponse(input: {
 export async function enforceRateLimit(
   req: Request,
   policy: RateLimitPolicy,
-  options?: { userKey?: string | null },
+  options?: RateLimitOptions,
 ): Promise<NextResponse | null> {
   const ipKey = normalizeKey(parseClientIp(req));
 
@@ -181,6 +220,19 @@ export async function enforceRateLimit(
       remaining: denied.remaining,
     });
   } catch (error) {
+    if (options?.failClosed) {
+      console.error('[rate-limit] limiter failed closed', {
+        bucket: policy.bucket,
+        error,
+      });
+      return rateLimitResponse({
+        bucket: policy.bucket,
+        retryAfterSec: policy.windowSec,
+        limit: policy.ipLimit,
+        remaining: 0,
+      });
+    }
+
     console.error('[rate-limit] limiter failed open', {
       bucket: policy.bucket,
       error,
@@ -234,7 +286,27 @@ export function parseQuery<T>(schema: ZodType<T>, url: URL): ParseResult<T> {
 export async function parseJsonBody<T>(
   req: Request,
   schema: ZodType<T>,
+  opts?: { maxBytes?: number },
 ): Promise<ParseResult<T>> {
+  const maxBytes = opts?.maxBytes ?? MAX_JSON_BYTES;
+  const contentLengthHeader = req.headers.get('content-length')?.trim();
+  if (contentLengthHeader) {
+    const contentLength = Number(contentLengthHeader);
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            ok: false,
+            code: 'PAYLOAD_TOO_LARGE',
+            message: 'Request body too large.',
+          },
+          { status: 413 },
+        ),
+      };
+    }
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -269,6 +341,23 @@ export async function parseJsonBody<T>(
   }
 
   return { ok: true, data: parsed.data };
+}
+
+export async function parseOptionalJsonBody<T>(
+  req: Request,
+  schema: ZodType<T>,
+): Promise<T | null> {
+  const contentType = req.headers.get('content-type')?.toLowerCase() ?? '';
+  if (!contentType.includes('application/json')) {
+    return null;
+  }
+
+  const parsed = await parseJsonBody(req, schema);
+  if (!parsed.ok) {
+    return null;
+  }
+
+  return parsed.data;
 }
 
 export const routeTokenParamsSchema = TOKEN_PARAM_SCHEMA;

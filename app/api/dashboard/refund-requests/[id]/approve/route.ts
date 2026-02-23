@@ -126,12 +126,19 @@ export async function POST(
       );
     }
 
-    const rl = await enforceRateLimit(_request, {
-      bucket: 'refund_approve',
-      windowSec: 300,
-      ipLimit: 20,
-      userLimit: 10,
-    }, { userKey: context.userEmail });
+    const rl = await enforceRateLimit(
+      _request,
+      {
+        bucket: 'refund_approve',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      {
+        userKey: context.userEmail,
+        failClosed: true,
+      },
+    );
     if (rl) return rl;
 
     const [row] = await sql<{

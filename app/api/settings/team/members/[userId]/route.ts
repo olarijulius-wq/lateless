@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
   fetchWorkspaceMembers,
@@ -7,6 +8,11 @@ import {
   TEAM_MIGRATION_REQUIRED_CODE,
   updateWorkspaceMemberRole,
 } from '@/app/lib/workspaces';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+  parseRouteParams,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -14,16 +20,23 @@ type RouteProps = {
   params: Promise<{ userId?: string }>;
 };
 
-export async function DELETE(_: Request, props: RouteProps) {
-  const params = await props.params;
-  const userId = params.userId?.trim();
+const teamMemberParamsSchema = z
+  .object({
+    userId: z.string().uuid(),
+  })
+  .strict();
 
-  if (!userId) {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid user id.' },
-      { status: 400 },
-    );
-  }
+const updateRoleBodySchema = z
+  .object({
+    role: z.enum(['admin', 'member']),
+  })
+  .strict();
+
+export async function DELETE(request: Request, props: RouteProps) {
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(teamMemberParamsSchema, rawParams);
+  if (!parsedParams.ok) return parsedParams.response;
+  const userId = parsedParams.data.userId;
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
@@ -34,6 +47,18 @@ export async function DELETE(_: Request, props: RouteProps) {
         { status: 403 },
       );
     }
+
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'team_member_remove',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
 
     if (context.userId === userId) {
       return NextResponse.json(
@@ -97,27 +122,14 @@ export async function DELETE(_: Request, props: RouteProps) {
 }
 
 export async function PATCH(request: Request, props: RouteProps) {
-  const params = await props.params;
-  const userId = params.userId?.trim();
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(teamMemberParamsSchema, rawParams);
+  if (!parsedParams.ok) return parsedParams.response;
+  const userId = parsedParams.data.userId;
 
-  if (!userId) {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid user id.' },
-      { status: 400 },
-    );
-  }
-
-  const body = (await request.json().catch(() => null)) as
-    | { role?: unknown }
-    | null;
-  const role = body?.role;
-
-  if (role !== 'admin' && role !== 'member') {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid role.' },
-      { status: 400 },
-    );
-  }
+  const parsedBody = await parseJsonBody(request, updateRoleBodySchema);
+  if (!parsedBody.ok) return parsedBody.response;
+  const role = parsedBody.data.role;
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
@@ -128,6 +140,18 @@ export async function PATCH(request: Request, props: RouteProps) {
         { status: 403 },
       );
     }
+
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'team_member_role_update',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
 
     if (context.userId === userId) {
       return NextResponse.json(

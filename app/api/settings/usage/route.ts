@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { fetchUserPlanAndUsage } from '@/app/lib/data';
 import {
   ensureWorkspaceContextForCurrentUser,
@@ -17,17 +18,39 @@ import {
   normalizeUsageInvoiceWindow,
   USAGE_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/usage';
+import {
+  enforceRateLimit,
+  parseQuery,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
+const usageQuerySchema = z
+  .object({
+    metric: z.string().trim().optional(),
+    win: z.string().trim().optional(),
+  })
+  .strict();
 
 export async function GET(request: Request) {
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'usage_read',
+        windowSec: 300,
+        ipLimit: 40,
+        userLimit: 15,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
     const plan = await fetchUserPlanAndUsage();
     const monthWindow = await fetchCurrentTallinnMonthWindow();
-    const params = new URL(request.url).searchParams;
-    const metric = normalizeUsageInvoiceMetric(params.get('metric'));
-    const win = normalizeUsageInvoiceWindow(params.get('win'));
+    const parsedQuery = parseQuery(usageQuerySchema, new URL(request.url));
+    if (!parsedQuery.ok) return parsedQuery.response;
+    const metric = normalizeUsageInvoiceMetric(parsedQuery.data.metric ?? null);
+    const win = normalizeUsageInvoiceWindow(parsedQuery.data.win ?? null);
 
     const [capabilities, monthMetric, invoiceDailyWindow, invoiceDaily, reminderDaily, topSkipReasons] =
       await Promise.all([

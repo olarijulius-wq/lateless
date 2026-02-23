@@ -10,12 +10,13 @@ import {
   countScopeRuns,
   getReminderRunsSchema,
 } from '@/app/lib/reminder-runs-diagnostics';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
     const session = await auth();
     if (!session?.user?.email) {
@@ -26,6 +27,18 @@ export async function POST() {
     if (context.userRole !== 'owner' && context.userRole !== 'admin') {
       return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
     }
+
+    const rl = await enforceRateLimit(
+      req,
+      {
+        bucket: 'reminders_fix_logs',
+        windowSec: 300,
+        ipLimit: 10,
+        userLimit: 3,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
 
     const schema = await getReminderRunsSchema(sql);
     const [beforeBad, beforeScope] = await Promise.all([

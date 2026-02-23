@@ -39,12 +39,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const rl = await enforceRateLimit(request, {
-      bucket: 'smtp_test',
-      windowSec: 300,
-      ipLimit: 5,
-      userLimit: 3,
-    }, { userKey: context.userEmail });
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'smtp_test',
+        windowSec: 300,
+        ipLimit: 5,
+        userLimit: 3,
+      },
+      {
+        userKey: context.userEmail,
+        failClosed: true,
+      },
+    );
     if (rl) return rl;
 
     const parsedBody = await parseJsonBody(request, smtpTestBodySchema);

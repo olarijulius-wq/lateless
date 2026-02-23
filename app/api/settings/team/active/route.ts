@@ -1,29 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
   setActiveWorkspaceForCurrentUser,
   TEAM_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/workspaces';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
+const activeWorkspaceBodySchema = z
+  .object({
+    workspaceId: z.string().uuid(),
+  })
+  .strict();
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => null)) as
-    | { workspaceId?: unknown }
-    | null;
-  const workspaceId =
-    typeof body?.workspaceId === 'string' ? body.workspaceId.trim() : '';
-
-  if (!workspaceId) {
-    return NextResponse.json(
-      { ok: false, message: 'Workspace id is required.' },
-      { status: 400 },
-    );
-  }
+  const parsedBody = await parseJsonBody(request, activeWorkspaceBodySchema);
+  if (!parsedBody.ok) return parsedBody.response;
+  const workspaceId = parsedBody.data.workspaceId;
 
   try {
-    await ensureWorkspaceContextForCurrentUser();
+    const context = await ensureWorkspaceContextForCurrentUser();
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'team_active_switch',
+        windowSec: 300,
+        ipLimit: 30,
+        userLimit: 12,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
+
     await setActiveWorkspaceForCurrentUser(workspaceId);
 
     return NextResponse.json({

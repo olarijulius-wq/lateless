@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -9,11 +10,23 @@ import {
   isDocumentsMigrationRequiredError,
   updateWorkspaceDocumentSettings,
 } from '@/app/lib/documents';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
 const migrationMessage =
   'Documents requires DB migrations 007_add_workspaces_and_team.sql and 010_add_documents_settings.sql. Run migrations and retry.';
+const updateDocumentsBodySchema = z
+  .object({
+    invoicePrefix: z.unknown().optional(),
+    nextInvoiceNumber: z.unknown().optional(),
+    numberPadding: z.unknown().optional(),
+    footerNote: z.unknown().optional(),
+  })
+  .strict();
 
 export async function GET() {
   try {
@@ -47,15 +60,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid request payload.' },
-      { status: 400 },
-    );
-  }
+  const parsedBody = await parseJsonBody(request, updateDocumentsBodySchema);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.data;
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
@@ -67,11 +74,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'documents_settings_update',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
+
     const settings = await updateWorkspaceDocumentSettings(context.workspaceId, {
-      invoicePrefix: (body as { invoicePrefix?: unknown }).invoicePrefix,
-      nextInvoiceNumber: (body as { nextInvoiceNumber?: unknown }).nextInvoiceNumber,
-      numberPadding: (body as { numberPadding?: unknown }).numberPadding,
-      footerNote: (body as { footerNote?: unknown }).footerNote,
+      invoicePrefix: body.invoicePrefix,
+      nextInvoiceNumber: body.nextInvoiceNumber,
+      numberPadding: body.numberPadding,
+      footerNote: body.footerNote,
     });
 
     return NextResponse.json({ ok: true, settings });

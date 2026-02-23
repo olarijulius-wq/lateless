@@ -7,7 +7,10 @@ import { stripe } from '@/app/lib/stripe';
 import { resolvePaidPlanFromStripe } from '@/app/lib/config';
 import { applyPlanSync, readCanonicalWorkspacePlanSource } from '@/app/lib/billing-sync';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
-import { enforceRateLimit } from '@/app/lib/security/api-guard';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+} from '@/app/lib/security/api-guard';
 
 const reconcileSchema = z
   .object({
@@ -160,25 +163,23 @@ export async function POST(req: Request) {
       return rateLimitResponse;
     }
 
-    let body: unknown = {};
-    try {
-      body = await req.json();
-    } catch {
-      body = {};
+    const contentType = req.headers.get('content-type')?.toLowerCase() ?? '';
+    const parsedBody = contentType.includes('application/json')
+      ? await parseJsonBody(req, reconcileSchema)
+      : {
+        ok: false as const,
+        response: jsonFailure({
+          status: 400,
+          code: 'INVALID_REQUEST_BODY',
+          message: 'sessionId or subscriptionId is required',
+          build,
+        }),
+      };
+    if (!parsedBody.ok) {
+      return parsedBody.response;
     }
 
-    const parsed = reconcileSchema.safeParse(body);
-    if (!parsed.success) {
-      return jsonFailure({
-        status: 400,
-        code: 'INVALID_REQUEST_BODY',
-        message: 'sessionId or subscriptionId is required',
-        build,
-        debug: { issues: parsed.error.issues },
-      });
-    }
-
-    const { sessionId, subscriptionId } = parsed.data;
+    const { sessionId, subscriptionId } = parsedBody.data;
 
     let checkoutSession: Stripe.Checkout.Session | null = null;
     let subscription: Stripe.Subscription | null = null;

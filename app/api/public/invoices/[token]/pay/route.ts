@@ -41,6 +41,9 @@ export async function POST(
       windowSec: 60,
       ipLimit: 20,
     },
+    {
+      failClosed: true,
+    },
   );
   if (rateLimitResponse) {
     return rateLimitResponse;

@@ -5,7 +5,6 @@ import { stripe } from '@/app/lib/stripe';
 import { auth } from '@/auth';
 import {
   STRIPE_PRICE_ID_BY_PLAN_AND_INTERVAL,
-  type BillingInterval,
   normalizePaidPlan,
   type PaidPlanId,
 } from '@/app/lib/config';
@@ -20,7 +19,7 @@ import {
 } from '@/app/lib/workspaces';
 import {
   enforceRateLimit,
-  parseJsonBody,
+  parseOptionalJsonBody,
   parseQuery,
 } from '@/app/lib/security/api-guard';
 
@@ -39,6 +38,7 @@ const checkoutBodySchema = z
     workspaceId: z.string().trim().uuid().optional(),
   })
   .strict();
+type CheckoutBody = z.infer<typeof checkoutBodySchema>;
 
 const checkoutQuerySchema = z
   .object({
@@ -77,14 +77,7 @@ export async function POST(req: Request) {
     return parsedQuery.response;
   }
 
-  let body: { plan?: string; interval?: BillingInterval; workspaceId?: string } = {};
-  if ((req.headers.get('content-type') ?? '').toLowerCase().includes('application/json')) {
-    const parsedBody = await parseJsonBody(req, checkoutBodySchema);
-    if (!parsedBody.ok) {
-      return parsedBody.response;
-    }
-    body = parsedBody.data;
-  }
+  const body: CheckoutBody = (await parseOptionalJsonBody(req, checkoutBodySchema)) ?? {};
 
   const parsed = checkoutParamsSchema.safeParse({
     plan: parsedQuery.data.plan ?? body.plan,

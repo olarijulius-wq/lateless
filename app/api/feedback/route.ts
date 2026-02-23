@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { requireUserEmail } from '@/app/lib/data';
 import {
   createFeedback,
@@ -8,6 +9,10 @@ import {
   isFeedbackAdminEmail,
   isFeedbackMigrationRequiredError,
 } from '@/app/lib/feedback';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +20,12 @@ type FeedbackPayload = {
   message?: unknown;
   pagePath?: unknown;
 };
+const feedbackBodySchema = z
+  .object({
+    message: z.unknown().optional(),
+    pagePath: z.unknown().optional(),
+  })
+  .strict();
 
 function normalizeMessage(value: unknown) {
   if (typeof value !== 'string') return '';
@@ -42,15 +53,21 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let payload: FeedbackPayload;
-  try {
-    payload = (await request.json()) as FeedbackPayload;
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid request payload.' },
-      { status: 400 },
-    );
-  }
+  const rl = await enforceRateLimit(
+    request,
+    {
+      bucket: 'feedback_submit',
+      windowSec: 300,
+      ipLimit: 30,
+      userLimit: 12,
+    },
+    { userKey: userEmail },
+  );
+  if (rl) return rl;
+
+  const parsedBody = await parseJsonBody(request, feedbackBodySchema);
+  if (!parsedBody.ok) return parsedBody.response;
+  const payload: FeedbackPayload = parsedBody.data;
 
   const message = normalizeMessage(payload.message);
   if (message.length < 1 || message.length > 2000) {

@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt';
 import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
+import { z } from 'zod';
 import { requireUserEmail } from '@/app/lib/data';
+import { enforceRateLimit, parseJsonBody } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +12,13 @@ const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
+
+const deleteAccountBodySchema = z
+  .object({
+    confirmText: z.string().min(1),
+    currentPassword: z.string().min(1),
+  })
+  .strict();
 
 export async function POST(request: NextRequest) {
   let userEmail = '';
@@ -24,21 +33,26 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json().catch(() => null);
-    const confirmText = typeof body?.confirmText === 'string' ? body.confirmText : '';
-    const currentPassword =
-      typeof body?.currentPassword === 'string' ? body.currentPassword : '';
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'account_delete',
+        windowSec: 600,
+        ipLimit: 10,
+        userLimit: 5,
+      },
+      { userKey: userEmail },
+    );
+    if (rl) return rl;
+
+    const parsedBody = await parseJsonBody(request, deleteAccountBodySchema);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const { confirmText, currentPassword } = parsedBody.data;
 
     if (confirmText !== 'DELETE') {
       return NextResponse.json(
         { ok: false, message: 'Type DELETE to confirm account deletion.' },
-        { status: 400 },
-      );
-    }
-
-    if (!currentPassword) {
-      return NextResponse.json(
-        { ok: false, message: 'Current password is required.' },
         { status: 400 },
       );
     }

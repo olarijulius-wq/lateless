@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { sendInvoiceReminderEmail } from '@/app/lib/email';
 import { generatePayLink } from '@/app/lib/pay-link';
 import { sendWithThrottle } from '@/app/lib/throttled-batch-sender';
@@ -32,12 +33,31 @@ import {
   releaseJobLock,
 } from '@/app/lib/job-locks';
 import { sql } from '@/app/lib/db';
-import { enforceRateLimit } from '@/app/lib/security/api-guard';
+import {
+  enforceRateLimit,
+  parseOptionalJsonBody,
+  parseQuery,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 const DEFAULT_EMAIL_THROTTLE_MS = 6000;
 const DEFAULT_EMAIL_BATCH_SIZE = 25;
 const DEFAULT_EMAIL_MAX_RUN_MS = 480000;
+const remindersRunQuerySchema = z
+  .object({
+    dryRun: z.enum(['0', '1', 'true', 'false']).optional(),
+    triggeredBy: z.enum(['manual', 'cron', 'dev']).optional(),
+    source: z.enum(['manual', 'cron', 'dev']).optional(),
+    token: z.string().trim().min(1).max(512).optional(),
+  })
+  .strict();
+const remindersRunBodySchema = z
+  .object({
+    dryRun: z.boolean().optional(),
+    triggeredBy: z.enum(['manual', 'cron', 'dev']).optional(),
+    source: z.enum(['manual', 'cron', 'dev']).optional(),
+  })
+  .strict();
 
 type ReminderCandidate = {
   id: string;
@@ -109,7 +129,10 @@ function getBaseUrl() {
 // Local smoke tests:
 // curl -i -H "Authorization: Bearer $REMINDER_CRON_TOKEN" http://localhost:3000/api/reminders/run?dryRun=1
 // curl -i -H "x-reminder-cron-token: $REMINDER_CRON_TOKEN" http://localhost:3000/api/reminders/run?dryRun=1
-function getCronAuthToken(req: Request) {
+function getCronAuthToken(
+  req: Request,
+  query: z.infer<typeof remindersRunQuerySchema>,
+) {
   const authorization = req.headers.get('authorization')?.trim() ?? '';
   if (authorization.toLowerCase().startsWith('bearer ')) {
     const bearerToken = authorization.slice(7).trim();
@@ -127,13 +150,15 @@ function getCronAuthToken(req: Request) {
     return null;
   }
 
-  const url = new URL(req.url);
-  return url.searchParams.get('token')?.trim() ?? null;
+  return query.token?.trim() ?? null;
 }
 
-async function authorizeRunRequest(req: Request) {
+async function authorizeRunRequest(
+  req: Request,
+  query: z.infer<typeof remindersRunQuerySchema>,
+) {
   const expectedCronToken = process.env.REMINDER_CRON_TOKEN?.trim() || '';
-  const providedCronToken = getCronAuthToken(req)?.trim() || '';
+  const providedCronToken = getCronAuthToken(req, query)?.trim() || '';
   if (expectedCronToken && providedCronToken === expectedCronToken) {
     return { ok: true as const, source: 'cron' as const, userEmail: null };
   }
@@ -262,13 +287,13 @@ function resolveTriggeredBy(value: string | null | undefined): ReminderRunTrigge
   return 'manual';
 }
 
-async function parseRunOptions(req: Request) {
-  const url = new URL(req.url);
-
-  const dryRunFromQuery = url.searchParams.get('dryRun');
+async function parseRunOptions(
+  req: Request,
+  query: z.infer<typeof remindersRunQuerySchema>,
+) {
+  const dryRunFromQuery = query.dryRun;
   const dryRunFromHeader = req.headers.get('x-dry-run') ?? req.headers.get('x-reminders-dry-run');
-  const triggeredByFromQuery =
-    url.searchParams.get('triggeredBy') ?? url.searchParams.get('source');
+  const triggeredByFromQuery = query.triggeredBy ?? query.source;
   const triggeredByFromHeader = req.headers.get('x-reminders-triggered-by');
   const runLogWorkspaceIdFromHeader = req.headers.get('x-reminders-workspace-id');
   const runLogUserEmailFromHeader = req.headers.get('x-reminders-user-email');
@@ -282,31 +307,20 @@ async function parseRunOptions(req: Request) {
   let triggeredBy = resolveTriggeredBy(triggeredByFromQuery ?? triggeredByFromHeader);
 
   if (req.method !== 'GET') {
-    const contentType = req.headers.get('content-type') ?? '';
-    if (contentType.toLowerCase().includes('application/json')) {
-      try {
-        const body = (await req.json()) as
-          | {
-            dryRun?: boolean;
-            triggeredBy?: string;
-            source?: string;
-          }
-          | null;
+    const body = await parseOptionalJsonBody(req, remindersRunBodySchema);
+    if (body) {
+      if (!dryRun && typeof body.dryRun === 'boolean') {
+        dryRun = body.dryRun;
+      }
 
-        if (!dryRun && typeof body?.dryRun === 'boolean') {
-          dryRun = body.dryRun;
-        }
-
-        if (triggeredBy === 'manual') {
-          triggeredBy = resolveTriggeredBy(body?.triggeredBy ?? body?.source);
-        }
-      } catch {
-        // Ignore malformed optional body and fall back to query/header parsing.
+      if (triggeredBy === 'manual') {
+        triggeredBy = resolveTriggeredBy(body.triggeredBy ?? body.source);
       }
     }
   }
 
   return {
+    ok: true as const,
     dryRun,
     triggeredBy,
     runLogWorkspaceId: runLogWorkspaceIdFromHeader?.trim() || null,
@@ -464,7 +478,12 @@ function resolveRunLogScope(input: {
 
 // ÜHINE job, mida POST ja GET mõlemad kasutavad
 async function runReminderJob(req: Request) {
-  const authorization = await authorizeRunRequest(req);
+  const parsedQuery = parseQuery(remindersRunQuerySchema, new URL(req.url));
+  if (!parsedQuery.ok) {
+    return parsedQuery.response;
+  }
+
+  const authorization = await authorizeRunRequest(req, parsedQuery.data);
   if (!authorization.ok) {
     return authorization.response;
   }
@@ -491,14 +510,14 @@ async function runReminderJob(req: Request) {
 
   const startedAt = Date.now();
   const ranAtIso = new Date(startedAt).toISOString();
+  const runOptions = await parseRunOptions(req, parsedQuery.data);
   const {
     dryRun,
     triggeredBy,
     runLogWorkspaceId,
     runLogUserEmail,
     runLogActorEmail,
-  } =
-    await parseRunOptions(req);
+  } = runOptions;
   const baseUrl = getBaseUrl();
   const batchSize = parsePositiveInt(process.env.EMAIL_BATCH_SIZE, DEFAULT_EMAIL_BATCH_SIZE);
   const delayMs = parsePositiveInt(process.env.EMAIL_THROTTLE_MS, DEFAULT_EMAIL_THROTTLE_MS);

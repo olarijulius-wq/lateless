@@ -10,24 +10,24 @@ import {
   isRefundRequestsMigrationRequiredError,
   REFUND_REQUESTS_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/refund-requests';
+import {
+  enforceRateLimit,
+  parseRouteParams,
+  routeUuidParamsSchema,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export async function POST(
-  _request: Request,
+  request: Request,
   props: { params: Promise<{ id: string }> },
 ) {
-  const params = await props.params;
-  const requestId = params.id?.trim();
-
-  if (!requestId) {
-    return NextResponse.json(
-      { ok: false, message: 'Refund request id is required.' },
-      { status: 400 },
-    );
-  }
+  const rawParams = await props.params;
+  const parsedParams = parseRouteParams(routeUuidParamsSchema, rawParams);
+  if (!parsedParams.ok) return parsedParams.response;
+  const requestId = parsedParams.data.id;
 
   try {
     await assertRefundRequestsSchemaReady();
@@ -39,6 +39,21 @@ export async function POST(
         { status: 403 },
       );
     }
+
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'refund_decline',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      {
+        userKey: context.userEmail,
+        failClosed: true,
+      },
+    );
+    if (rl) return rl;
 
     const updated = await sql<{ id: string }[]>`
       update public.refund_requests

@@ -3,11 +3,17 @@ import { getAbsoluteUrl, getSiteUrl } from '@/app/lib/seo/site-url';
 import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export async function GET(req: Request) {
-  const rateLimitResponse = await enforceRateLimit(req, {
-    bucket: 'seo_verify',
-    windowSec: 60,
-    ipLimit: 30,
-  });
+  const rateLimitResponse = await enforceRateLimit(
+    req,
+    {
+      bucket: 'seo_verify',
+      windowSec: 60,
+      ipLimit: 30,
+    },
+    {
+      failClosed: true,
+    },
+  );
   if (rateLimitResponse) {
     return rateLimitResponse;
   }

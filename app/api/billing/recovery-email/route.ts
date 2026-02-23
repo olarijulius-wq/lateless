@@ -5,8 +5,9 @@ import {
   logRecoveryEmailFailure,
   maybeSendRecoveryEmailForWorkspace,
 } from '@/app/lib/billing-dunning';
+import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
     const canManageBilling =
@@ -18,6 +19,18 @@ export async function POST() {
         { status: 403 },
       );
     }
+
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'billing_recovery_email',
+        windowSec: 600,
+        ipLimit: 10,
+        userLimit: 5,
+      },
+      { userKey: context.userEmail, failClosed: true },
+    );
+    if (rl) return rl;
 
     const state = await fetchWorkspaceDunningState(context.workspaceId);
     if (!state?.recoveryRequired) {

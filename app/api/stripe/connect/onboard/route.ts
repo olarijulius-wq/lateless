@@ -1,14 +1,23 @@
 import { NextResponse } from 'next/server';
 import postgres from 'postgres';
 import Stripe from 'stripe';
+import { z } from 'zod';
 import { requireUserEmail } from '@/app/lib/data';
 import { checkConnectedAccountAccess } from '@/app/lib/stripe-connect';
-import { enforceRateLimit } from '@/app/lib/security/api-guard';
+import {
+  enforceRateLimit,
+  parseQuery,
+} from '@/app/lib/security/api-guard';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 const STRIPE_CONFIG_INVALID = 'STRIPE_CONFIG_INVALID';
 const STRIPE_CONNECT_ACCOUNTS_CREATE_FAILED = 'STRIPE_CONNECT_ACCOUNTS_CREATE_FAILED';
+const onboardQuerySchema = z
+  .object({
+    reconnect: z.enum(['0', '1']).optional(),
+  })
+  .strict();
 
 type StripeErrorDetails = {
   type: string | null;
@@ -133,12 +142,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const rl = await enforceRateLimit(req, {
-    bucket: 'stripe_connect_onboard',
-    windowSec: 300,
-    ipLimit: 10,
-    userLimit: 3,
-  }, { userKey: userEmail });
+  const rl = await enforceRateLimit(
+    req,
+    {
+      bucket: 'stripe_connect_onboard',
+      windowSec: 300,
+      ipLimit: 10,
+      userLimit: 3,
+    },
+    { userKey: userEmail, failClosed: true },
+  );
   if (rl) return rl;
 
   const baseUrl =
@@ -150,8 +163,11 @@ export async function POST(req: Request) {
   const payoutsUrl = `${baseUrl}/dashboard/settings/payouts`;
   const isTest = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') ?? false;
   const mode = isTest ? 'test' : 'live';
-  const reconnectRequested =
-    new URL(req.url).searchParams.get('reconnect') === '1';
+  const parsedQuery = parseQuery(onboardQuerySchema, new URL(req.url));
+  if (!parsedQuery.ok) {
+    return parsedQuery.response;
+  }
+  const reconnectRequested = parsedQuery.data.reconnect === '1';
 
   const configReason = getStripeConfigInvalidReason();
   if (configReason) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -10,6 +11,10 @@ import {
   SMTP_MIGRATION_REQUIRED_CODE,
   upsertWorkspaceEmailSettings,
 } from '@/app/lib/smtp-settings';
+import {
+  enforceRateLimit,
+  parseJsonBody,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -58,15 +63,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid request payload.' },
-      { status: 400 },
-    );
-  }
+  const parsedBody = await parseJsonBody(request, z.unknown());
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.data;
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
@@ -77,6 +76,18 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     }
+
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'smtp_settings_update',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
 
     const settings = await upsertWorkspaceEmailSettings(context.workspaceId, body);
 

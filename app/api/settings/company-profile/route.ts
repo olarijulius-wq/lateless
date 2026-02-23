@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import {
   fetchCompanyProfileForWorkspace,
   upsertCompanyProfileForWorkspace,
@@ -9,8 +10,24 @@ import {
   isTeamMigrationRequiredError,
   TEAM_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/workspaces';
+import {
+  emailSchema,
+  enforceRateLimit,
+  parseJsonBody,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
+
+const companyProfileBodySchema = z
+  .object({
+    companyName: z.string().trim().max(200).optional(),
+    address: z.string().trim().max(4000).optional(),
+    vatNumber: z.string().trim().max(50).optional(),
+    vatOrRegNumber: z.string().trim().max(50).optional(),
+    companyEmail: emailSchema.optional(),
+    invoiceFooter: z.string().trim().max(2000).optional(),
+  })
+  .strict();
 
 export async function GET() {
   try {
@@ -45,17 +62,6 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => null)) as
-    | {
-        companyName?: unknown;
-        address?: unknown;
-        vatNumber?: unknown;
-        vatOrRegNumber?: unknown;
-        companyEmail?: unknown;
-        invoiceFooter?: unknown;
-      }
-    | null;
-
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
 
@@ -66,21 +72,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const incomingVat =
-      typeof body?.vatNumber === 'string'
-        ? body.vatNumber
-        : typeof body?.vatOrRegNumber === 'string'
-          ? body.vatOrRegNumber
-          : '';
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'settings_company_profile',
+        windowSec: 60,
+        ipLimit: 30,
+        userLimit: 15,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
+
+    const parsedBody = await parseJsonBody(request, companyProfileBodySchema);
+    if (!parsedBody.ok) return parsedBody.response;
+
+    const body = parsedBody.data;
+
+    const incomingVat = body.vatNumber ?? body.vatOrRegNumber ?? '';
     const normalizedVatNumber = normalizeVat(incomingVat);
 
     const profile = await upsertCompanyProfileForWorkspace({
       workspaceId: context.workspaceId,
-      companyName: body?.companyName,
-      address: body?.address,
+      companyName: body.companyName,
+      address: body.address,
       vatNumber: normalizedVatNumber,
-      companyEmail: body?.companyEmail,
-      invoiceFooter: body?.invoiceFooter,
+      companyEmail: body.companyEmail,
+      invoiceFooter: body.invoiceFooter,
     });
 
     return NextResponse.json({ ok: true, profile });

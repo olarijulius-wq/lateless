@@ -7,14 +7,16 @@ import {
   TEAM_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/workspaces';
 import { sendWorkspaceInviteEmail } from '@/app/lib/email';
-import { enforceRateLimit } from '@/app/lib/security/api-guard';
+import { enforceRateLimit, parseJsonBody } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
-const inviteSchema = z.object({
-  email: z.string().email().max(254).transform((value) => value.trim().toLowerCase()),
-  role: z.enum(['admin', 'member']),
-}).strict();
+const inviteSchema = z
+  .object({
+    email: z.string().email().max(254).transform((value) => value.trim().toLowerCase()),
+    role: z.enum(['admin', 'member']),
+  })
+  .strict();
 
 function resolveBaseUrl(req: NextRequest) {
   return (
@@ -27,24 +29,6 @@ function resolveBaseUrl(req: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Invalid request payload.' },
-      { status: 400 },
-    );
-  }
-
-  const parsed = inviteSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { ok: false, message: 'Please provide a valid email and role.' },
-      { status: 400 },
-    );
-  }
-
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
 
@@ -55,30 +39,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const rl = await enforceRateLimit(request, {
-      bucket: 'team_invite',
-      windowSec: 300,
-      ipLimit: 10,
-      userLimit: 5,
-    }, { userKey: context.userEmail });
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'team_invite',
+        windowSec: 300,
+        ipLimit: 10,
+        userLimit: 5,
+      },
+      { userKey: context.userEmail },
+    );
     if (rl) return rl;
+
+    const parsedBody = await parseJsonBody(request, inviteSchema);
+    if (!parsedBody.ok) return parsedBody.response;
 
     const invite = await createWorkspaceInvite({
       workspaceId: context.workspaceId,
       invitedByUserId: context.userId,
-      email: parsed.data.email,
-      role: parsed.data.role,
+      email: parsedBody.data.email,
+      role: parsedBody.data.role,
     });
 
     const inviteUrl = `${resolveBaseUrl(request)}/invite/${invite.token}`;
 
     try {
       await sendWorkspaceInviteEmail({
-        to: parsed.data.email,
+        to: parsedBody.data.email,
         invitedByEmail: context.userEmail,
         workspaceName: context.workspaceName,
         inviteUrl,
-        role: parsed.data.role,
+        role: parsedBody.data.role,
       });
     } catch (error) {
       console.error('Team invite email failed:', error);

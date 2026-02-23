@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 import { auth } from '@/auth';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { isSettingsRemindersAdminEmail } from '@/app/lib/admin-gates';
+import {
+  enforceRateLimit,
+  parseOptionalJsonBody,
+} from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -14,6 +19,12 @@ function getBaseUrl(req: Request) {
       : new URL(req.url).origin)
   );
 }
+
+const remindersRunManualBodySchema = z
+  .object({
+    dryRun: z.boolean().optional(),
+  })
+  .strict();
 
 export async function POST(req: Request) {
   try {
@@ -33,11 +44,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
     }
 
-    let dryRun = false;
-    if ((req.headers.get('content-type') ?? '').toLowerCase().includes('application/json')) {
-      const body = (await req.json().catch(() => null)) as { dryRun?: boolean } | null;
-      dryRun = body?.dryRun === true;
-    }
+    const rl = await enforceRateLimit(
+      req,
+      {
+        bucket: 'reminders_run_manual',
+        windowSec: 300,
+        ipLimit: 10,
+        userLimit: 3,
+      },
+      { userKey: context.userEmail },
+    );
+    if (rl) return rl;
+
+    const body = await parseOptionalJsonBody(req, remindersRunManualBodySchema);
+    const dryRun = body?.dryRun === true;
 
     const cronToken = process.env.REMINDER_CRON_TOKEN?.trim();
     if (!cronToken) {

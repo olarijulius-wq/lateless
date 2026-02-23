@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { auth } from '@/auth';
 import { sql } from '@/app/lib/db';
 import { sendInvoiceEmail } from '@/app/lib/invoice-email';
@@ -11,11 +12,18 @@ import {
 } from '@/app/lib/workspaces';
 import {
   enforceRateLimit,
+  parseQuery,
   parseRouteParams,
   routeUuidParamsSchema,
 } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
+
+const invoiceSendQuerySchema = z
+  .object({
+    returnTo: z.string().trim().max(256).optional(),
+  })
+  .strict();
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -56,7 +64,9 @@ export async function POST(
   if (!parsedParams.ok) return parsedParams.response;
 
   const params = parsedParams.data;
-  const returnTo = sanitizeReturnTo(new URL(req.url).searchParams.get('returnTo'));
+  const parsedQuery = parseQuery(invoiceSendQuerySchema, new URL(req.url));
+  if (!parsedQuery.ok) return parsedQuery.response;
+  const returnTo = sanitizeReturnTo(parsedQuery.data.returnTo ?? null);
 
   const [invoice] = await sql<{
     id: string;

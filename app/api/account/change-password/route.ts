@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt';
 import { NextRequest, NextResponse } from 'next/server';
 import postgres from 'postgres';
+import { z } from 'zod';
 import { requireUserEmail } from '@/app/lib/data';
+import { enforceRateLimit, parseJsonBody } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +12,14 @@ const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
+
+const changePasswordBodySchema = z
+  .object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(8),
+    confirmNewPassword: z.string().min(1),
+  })
+  .strict();
 
 export async function POST(request: NextRequest) {
   let userEmail = '';
@@ -24,26 +34,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = await request.json().catch(() => null);
-    const currentPassword =
-      typeof body?.currentPassword === 'string' ? body.currentPassword : '';
-    const newPassword = typeof body?.newPassword === 'string' ? body.newPassword : '';
-    const confirmNewPassword =
-      typeof body?.confirmNewPassword === 'string' ? body.confirmNewPassword : '';
+    const rl = await enforceRateLimit(
+      request,
+      {
+        bucket: 'account_change_password',
+        windowSec: 300,
+        ipLimit: 20,
+        userLimit: 10,
+      },
+      { userKey: userEmail },
+    );
+    if (rl) return rl;
 
-    if (!currentPassword || !newPassword || !confirmNewPassword) {
-      return NextResponse.json(
-        { ok: false, message: 'All password fields are required.' },
-        { status: 400 },
-      );
-    }
+    const parsedBody = await parseJsonBody(request, changePasswordBodySchema);
+    if (!parsedBody.ok) return parsedBody.response;
 
-    if (newPassword.length < 8) {
-      return NextResponse.json(
-        { ok: false, message: 'New password must be at least 8 characters.' },
-        { status: 400 },
-      );
-    }
+    const { currentPassword, newPassword, confirmNewPassword } = parsedBody.data;
 
     if (newPassword !== confirmNewPassword) {
       return NextResponse.json(

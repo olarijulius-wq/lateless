@@ -28,11 +28,17 @@ const resendVerificationSchema = z
   .strict();
 
 export async function POST(request: Request) {
-  const rateLimitResponse = await enforceRateLimit(request, {
-    bucket: 'resend_verification',
-    windowSec: 60,
-    ipLimit: 5,
-  });
+  const rateLimitResponse = await enforceRateLimit(
+    request,
+    {
+      bucket: 'resend_verification',
+      windowSec: 60,
+      ipLimit: 5,
+    },
+    {
+      failClosed: true,
+    },
+  );
   if (rateLimitResponse) {
     return rateLimitResponse;
   }

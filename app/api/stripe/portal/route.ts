@@ -21,12 +21,16 @@ export async function POST(req: Request) {
 
   const email = session.user.email.trim().toLowerCase();
 
-  const rl = await enforceRateLimit(req, {
-    bucket: 'stripe_portal',
-    windowSec: 300,
-    ipLimit: 10,
-    userLimit: 5,
-  }, { userKey: email });
+  const rl = await enforceRateLimit(
+    req,
+    {
+      bucket: 'stripe_portal',
+      windowSec: 300,
+      ipLimit: 10,
+      userLimit: 5,
+    },
+    { userKey: email, failClosed: true },
+  );
   if (rl) return rl;
 
   let workspaceId: string | null = null;
