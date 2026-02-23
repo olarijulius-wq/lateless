@@ -44,6 +44,62 @@ function dataUrlToBuffer(dataUrl: string) {
   }
 }
 
+function parseImageDimensions(buffer: Buffer) {
+  if (buffer.length >= 24) {
+    const isPng =
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47 &&
+      buffer[4] === 0x0d &&
+      buffer[5] === 0x0a &&
+      buffer[6] === 0x1a &&
+      buffer[7] === 0x0a;
+
+    if (isPng && buffer.toString('ascii', 12, 16) === 'IHDR') {
+      const width = buffer.readUInt32BE(16);
+      const height = buffer.readUInt32BE(20);
+      if (width > 0 && height > 0) return { width, height };
+    }
+  }
+
+  if (buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    const sofMarkers = new Set([
+      0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
+    ]);
+
+    while (offset + 3 < buffer.length) {
+      if (buffer[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+
+      const marker = buffer[offset + 1];
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+        offset += 2;
+        continue;
+      }
+
+      if (offset + 4 > buffer.length) break;
+      const segmentLength = buffer.readUInt16BE(offset + 2);
+      if (segmentLength < 2) break;
+
+      if (sofMarkers.has(marker)) {
+        if (offset + 9 >= buffer.length) break;
+        const height = buffer.readUInt16BE(offset + 5);
+        const width = buffer.readUInt16BE(offset + 7);
+        if (width > 0 && height > 0) return { width, height };
+        break;
+      }
+
+      offset += 2 + segmentLength;
+    }
+  }
+
+  return null;
+}
+
 async function buildInvoicePdf(input: {
   invoice: {
     id: string;
@@ -85,19 +141,15 @@ async function buildInvoicePdf(input: {
         const sig = logoBuffer.subarray(0, 8).toString('hex');
         console.log('[pdf-logo-sig]', sig, 'bytes', logoBuffer.length);
         try {
-          const logoArrayBuffer = logoBuffer.buffer.slice(
-            logoBuffer.byteOffset,
-            logoBuffer.byteOffset + logoBuffer.byteLength,
-          );
-          const image = doc.openImage(logoArrayBuffer);
-          const sourceW = image.width;
-          const sourceH = image.height;
-          const scale = Math.min(LOGO_MAX_W / sourceW, LOGO_MAX_H / sourceH, 1);
-          const logoDrawW = Math.max(1, Math.round(sourceW * scale));
-          logoDrawH = Math.max(1, Math.round(sourceH * scale));
-          doc.image(logoArrayBuffer, logoX, logoY, {
-            width: logoDrawW,
-            height: logoDrawH,
+          const parsed = parseImageDimensions(logoBuffer);
+          if (parsed) {
+            const scale = Math.min(LOGO_MAX_W / parsed.width, LOGO_MAX_H / parsed.height, 1);
+            logoDrawH = Math.max(1, Math.round(parsed.height * scale));
+          } else {
+            logoDrawH = LOGO_MAX_H;
+          }
+          doc.image(logoBuffer, logoX, logoY, {
+            fit: [LOGO_MAX_W, LOGO_MAX_H],
           });
         } catch (err) {
           console.error('[pdf-logo-error]', err);
