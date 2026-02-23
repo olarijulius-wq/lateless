@@ -34,6 +34,7 @@ type SmtpSettingsPanelProps = {
   mailConfig?: EffectiveMailConfig;
   canEdit?: boolean;
   userRole?: 'owner' | 'admin' | 'member';
+  canViewInternalDebug?: boolean;
   migrationMessage?: string | null;
 };
 
@@ -42,6 +43,7 @@ export default function SmtpSettingsPanel({
   mailConfig,
   canEdit: initialCanEdit = false,
   userRole: initialUserRole = 'member',
+  canViewInternalDebug = false,
   migrationMessage = null,
 }: SmtpSettingsPanelProps) {
   const router = useRouter();
@@ -127,6 +129,9 @@ export default function SmtpSettingsPanel({
   }
 
   const showSmtpFields = provider === 'smtp';
+  const canSendTestEmail =
+    (data?.userRole === 'owner' || data?.userRole === 'admin') &&
+    testStatus !== 'sending';
 
   const disabledFieldClass = useMemo(
     () =>
@@ -189,13 +194,16 @@ export default function SmtpSettingsPanel({
     });
   }
 
-  async function handleSendSmokeTest() {
+  async function handleSendTestEmail() {
     setMessage(null);
     setTestStatus('sending');
     setTestMessage(null);
     try {
-      const res = await fetch('/api/settings/smoke-check/test-email', {
+      const res = await fetch('/api/settings/smtp/test', {
         method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
       });
       const body = (await res.json().catch(() => null)) as
         | { ok?: boolean; message?: string; error?: string }
@@ -238,78 +246,70 @@ export default function SmtpSettingsPanel({
 
   return (
     <div className="space-y-5">
-      <section className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Email setup</h2>
-            <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-              Verify sender identity and run a safe mailbox test.
-            </p>
+      {canViewInternalDebug ? (
+        <section className="space-y-4 rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Email setup</h2>
+              <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                Verify sender identity and run a safe mailbox test.
+              </p>
+            </div>
+            <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${status.className}`}>
+              {status.label}
+            </span>
           </div>
-          <span className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${status.className}`}>
-            {status.label}
-          </span>
-        </div>
 
-        <div className="grid gap-3 text-sm md:grid-cols-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Provider</p>
-            <p className="font-medium text-slate-900 dark:text-slate-100">
-              {mailConfig?.provider === 'smtp' ? 'SMTP' : 'Resend'}
-            </p>
+          <div className="grid gap-3 text-sm md:grid-cols-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Provider</p>
+              <p className="font-medium text-slate-900 dark:text-slate-100">
+                {mailConfig?.provider === 'smtp' ? 'SMTP' : 'Resend'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">From address</p>
+              <p className="font-medium text-slate-900 dark:text-slate-100">{maskedFrom}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Reply-to</p>
+              <p className="font-medium text-slate-900 dark:text-slate-100">{mailConfig?.replyTo ?? 'Not set'}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">From address</p>
-            <p className="font-medium text-slate-900 dark:text-slate-100">{maskedFrom}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Reply-to</p>
-            <p className="font-medium text-slate-900 dark:text-slate-100">{mailConfig?.replyTo ?? 'Not set'}</p>
-          </div>
-        </div>
 
-        <p className="text-sm text-slate-600 dark:text-slate-400">{status.hint}</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Verify domain in Resend dashboard; publish SPF/DKIM/DMARC in DNS; then run test email.
-        </p>
-        <div className="flex items-center gap-3">
-          <Button type="button" onClick={handleSendSmokeTest} disabled={testStatus === 'sending'}>
-            {testStatus === 'sending' ? 'Sending...' : 'Send test email'}
-          </Button>
-          {testMessage ? (
-            <p className={`text-sm ${testStatus === 'failed' ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
-              {testMessage}
-            </p>
-          ) : null}
-        </div>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{status.hint}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Verify domain in Resend dashboard; publish SPF/DKIM/DMARC in DNS; then run test email.
+          </p>
 
-        <details className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-900/50">
-          <summary className="cursor-pointer text-sm font-medium text-slate-800 dark:text-slate-200">
-            Deliverability checklist
-          </summary>
-          <div className="mt-3 space-y-3 text-sm text-slate-700 dark:text-slate-300">
-            <p>
-              SPF (MANUAL): publish TXT at your root domain.
-              <code className="ml-1 rounded bg-black/10 px-1 py-0.5 dark:bg-white/10">v=spf1 include:&lt;provider&gt; ~all</code>
-            </p>
-            <p>
-              DKIM (MANUAL): publish provider DKIM selector TXT/CNAME records from your provider dashboard.
-            </p>
-            <p>
-              DMARC (MANUAL): publish TXT at <code>_dmarc.yourdomain.com</code>
-              <code className="ml-1 rounded bg-black/10 px-1 py-0.5 dark:bg-white/10">v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code>
-            </p>
-            <a
-              href="https://resend.com/docs/knowledge-base/what-records-do-i-need-in-my-dns"
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex h-8 items-center rounded-lg border border-neutral-300 px-2 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-            >
-              Open Resend docs
-            </a>
-          </div>
-        </details>
-      </section>
+          <details className="rounded-xl border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-900/50">
+            <summary className="cursor-pointer text-sm font-medium text-slate-800 dark:text-slate-200">
+              Deliverability checklist
+            </summary>
+            <div className="mt-3 space-y-3 text-sm text-slate-700 dark:text-slate-300">
+              <p>
+                SPF (MANUAL): publish TXT at your root domain.
+                <code className="ml-1 rounded bg-black/10 px-1 py-0.5 dark:bg-white/10">v=spf1 include:&lt;provider&gt; ~all</code>
+              </p>
+              <p>
+                DKIM (MANUAL): publish provider DKIM selector TXT/CNAME records from your provider dashboard.
+              </p>
+              <p>
+                DMARC (MANUAL): publish TXT at <code>_dmarc.yourdomain.com</code>
+                <code className="ml-1 rounded bg-black/10 px-1 py-0.5 dark:bg-white/10">v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com</code>
+              </p>
+              <a
+                href="https://resend.com/docs/knowledge-base/what-records-do-i-need-in-my-dns"
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex h-8 items-center rounded-lg border border-neutral-300 px-2 text-xs font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+              >
+                Open Resend docs
+              </a>
+            </div>
+          </details>
+        </section>
+      ) : null}
 
       <form
         onSubmit={handleSave}
@@ -464,6 +464,16 @@ export default function SmtpSettingsPanel({
         <Button type="submit" disabled={!canEdit || isPending}>
           {isPending ? 'Saving...' : 'Save settings'}
         </Button>
+        {(data.userRole === 'owner' || data.userRole === 'admin') ? (
+          <Button type="button" onClick={handleSendTestEmail} disabled={!canSendTestEmail}>
+            {testStatus === 'sending' ? 'Sending...' : 'Send test email'}
+          </Button>
+        ) : null}
+        {testMessage ? (
+          <p className={`text-sm ${testStatus === 'failed' ? 'text-red-700 dark:text-red-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+            {testMessage}
+          </p>
+        ) : null}
       </div>
       </form>
     </div>

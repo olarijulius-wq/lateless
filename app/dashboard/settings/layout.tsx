@@ -2,6 +2,7 @@ import SettingsSectionsNav from '@/app/ui/dashboard/settings-sections-nav';
 import { diagnosticsEnabled } from '@/app/lib/admin-gates';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { isReminderManualRunAdmin } from '@/app/lib/reminder-admin';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 import { PageShell, SectionCard } from '@/app/ui/page-layout';
 
 export default async function SettingsLayout({
@@ -11,6 +12,7 @@ export default async function SettingsLayout({
 }) {
   const diagnosticsEnabledFlag = diagnosticsEnabled();
   let canViewFunnel = false;
+  let canViewBillingEvents = false;
   let currentUserEmail: string | null = null;
   let currentUserRole: 'owner' | 'admin' | 'member' | null = null;
 
@@ -22,8 +24,10 @@ export default async function SettingsLayout({
       context.userRole === 'owner' || context.userRole === 'admin';
     canViewFunnel =
       hasWorkspaceAccess && isReminderManualRunAdmin(context.userEmail);
+    canViewBillingEvents = hasWorkspaceAccess && isInternalAdminEmail(context.userEmail);
   } catch {
     canViewFunnel = false;
+    canViewBillingEvents = false;
     currentUserEmail = null;
     currentUserRole = null;
   }
@@ -37,6 +41,7 @@ export default async function SettingsLayout({
       <SectionCard className="p-4">
         <SettingsSectionsNav
           canViewFunnel={canViewFunnel}
+          canViewBillingEvents={canViewBillingEvents}
           diagnosticsEnabled={diagnosticsEnabledFlag}
           currentUserEmail={currentUserEmail}
           currentUserRole={currentUserRole}

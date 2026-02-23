@@ -15,6 +15,7 @@ import { primaryButtonClasses } from '@/app/ui/button';
 import { RevealOnScroll } from '@/app/ui/motion/reveal';
 import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
 import { CARD_INTERACTIVE, LIGHT_SURFACE } from '@/app/ui/theme/tokens';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 
 export const metadata: Metadata = {
   title: 'Settings',
@@ -116,6 +117,7 @@ export default async function SettingsPage(props: {
     canViewSmokeDiagnostics = false;
   }
   const canViewLaunchCheck = hasWorkspaceAdminRole && isLaunchCheckAdminEmail(workspaceEmail);
+  const canViewBillingEvents = hasWorkspaceAdminRole && isInternalAdminEmail(workspaceEmail);
   const connectStatus = await fetchStripeConnectStatusForUser(userEmail);
   const payoutsBadge = connectStatus.isReadyForTransfers
     ? {
@@ -194,7 +196,9 @@ export default async function SettingsPage(props: {
               description: 'Read-only migration tracking report for deploy safety.',
             }]
           : []),
-      ].map((card, index) => (
+      ]
+        .filter((card) => (card.href === '/dashboard/settings/billing-events' ? canViewBillingEvents : true))
+        .map((card, index) => (
         <RevealOnScroll key={card.href} delay={index * 0.04}>
           <Link
             href={card.href}

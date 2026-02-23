@@ -36,11 +36,13 @@ const remindersSection = {
 
 export default function SettingsSectionsNav({
   canViewFunnel = false,
+  canViewBillingEvents = false,
   diagnosticsEnabled = false,
   currentUserEmail,
   currentUserRole,
 }: {
   canViewFunnel?: boolean;
+  canViewBillingEvents?: boolean;
   diagnosticsEnabled?: boolean;
   currentUserEmail?: string | null;
   currentUserRole?: 'owner' | 'admin' | 'member' | null;
@@ -54,9 +56,12 @@ export default function SettingsSectionsNav({
   const canViewAllChecks =
     diagnosticsEnabled && canViewLaunchCheck && canViewSmokeCheck;
 
+  const baseVisibleSections = baseSections.filter((section) =>
+    section.href === '/dashboard/settings/billing-events' ? canViewBillingEvents : true,
+  );
   const sections = canViewSettingsReminders
-    ? [...baseSections, remindersSection]
-    : baseSections;
+    ? [...baseVisibleSections, remindersSection]
+    : baseVisibleSections;
 
   const withLaunchCheck = canViewLaunchCheck
     ? [...sections, { name: 'Launch readiness', href: '/dashboard/settings/launch-check' }]

@@ -9,6 +9,7 @@ import {
   normalizeStripeConfigError,
 } from '@/app/lib/stripe-guard';
 import { fetchStripeConnectStatusForUser } from '@/app/lib/data';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 
 export const runtime = 'nodejs';
 
@@ -57,6 +58,9 @@ async function readLatestWebhookStatus(): Promise<LatestWebhookStatus | null> {
 
 async function requireBillingSelfCheckAccess() {
   const context = await ensureWorkspaceContextForCurrentUser();
+  if (!isInternalAdminEmail(context.userEmail)) {
+    throw new Error('forbidden');
+  }
   if (context.userRole !== 'owner' && context.userRole !== 'admin') {
     throw new Error('forbidden');
   }

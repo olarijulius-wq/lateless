@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import postgres from 'postgres';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import BillingEventsPanel from './billing-events-panel';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -41,6 +42,10 @@ export default async function BillingEventsPage(props: {
   const canView = context.userRole === 'owner' || context.userRole === 'admin';
   if (!canView) {
     notFound();
+  }
+
+  if (!isInternalAdminEmail(context.userEmail)) {
+    redirect('/dashboard/settings/billing');
   }
 
   const q = searchParams?.q?.trim() ?? '';

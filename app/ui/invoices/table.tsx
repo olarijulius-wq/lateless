@@ -210,16 +210,11 @@ export default function InvoicesTable({
                               </Link>
                             ))}
                         </div>
-                        {invoice.last_email_status ? (
+                        {invoice.last_email_sent_at ? (
                           <div className="mt-1 max-w-[220px]">
-                            <p className="overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-slate-500 dark:text-zinc-400">
-                              Email: {invoice.last_email_status}
+                            <p className="text-[11px] text-slate-500 dark:text-zinc-400 md:hidden">
+                              Sent {formatDateToLocal(invoice.last_email_sent_at)}
                             </p>
-                            {invoice.last_email_sent_at ? (
-                              <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                                {formatDateToLocal(invoice.last_email_sent_at)}
-                              </p>
-                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -335,12 +330,6 @@ export default function InvoicesTable({
                             {invoice.days_overdue === 1 ? '' : 's'}
                           </span>
                         )}
-                        {invoice.last_email_status ? (
-                          <p className="mt-1 text-[11px] text-slate-500 dark:text-zinc-400">
-                            Email: {invoice.last_email_status}
-                            {invoice.last_email_sent_at ? ` · ${formatDateToLocal(invoice.last_email_sent_at)}` : ''}
-                          </p>
-                        ) : null}
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-5 text-center">

@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { auth } from '@/auth';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
-import { isSettingsRemindersAdminEmail } from '@/app/lib/admin-gates';
 import {
   enforceRateLimit,
   parseOptionalJsonBody,
@@ -28,20 +26,9 @@ const remindersRunManualBodySchema = z
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    const userEmail = session?.user?.email?.trim().toLowerCase() ?? '';
-
-    if (!isSettingsRemindersAdminEmail(userEmail)) {
-      return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
-    }
-
     const context = await ensureWorkspaceContextForCurrentUser();
     if (context.userRole !== 'owner' && context.userRole !== 'admin') {
-      return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
-    }
-
-    if (!isSettingsRemindersAdminEmail(context.userEmail)) {
-      return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+      return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 });
     }
 
     const rl = await enforceRateLimit(
@@ -100,6 +87,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json(payload, { status: runResponse.status });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Manual reminders run failed:', error);
     return NextResponse.json(
       { ok: false, error: 'Failed to run reminders manually.' },

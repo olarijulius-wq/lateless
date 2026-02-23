@@ -19,8 +19,8 @@ import {
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
-  type WorkspaceRole,
 } from '@/app/lib/workspaces';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 
 export const metadata: Metadata = {
   title: 'Usage Settings',
@@ -139,11 +139,11 @@ export default async function UsageSettingsPage({
   let hasIssuedMetric = true;
   let hasPaidMetric = true;
   let activeMetric: InvoiceUsageMetric = requestedMetric;
-  let userRole: WorkspaceRole = 'member';
+  let canViewInternalDiagnostics = false;
 
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
-    userRole = context.userRole;
+    canViewInternalDiagnostics = isInternalAdminEmail(context.userEmail);
 
     const capabilities = await getUsageCapabilities();
     hasIssuedMetric = capabilities.hasIssuedMetric;
@@ -202,9 +202,7 @@ export default async function UsageSettingsPage({
     }
   }
 
-  const canViewDiagnostics =
-    process.env.NODE_ENV !== 'production' ||
-    (diagnosticsRequested && (userRole === 'owner' || userRole === 'admin'));
+  const canViewDiagnostics = canViewInternalDiagnostics;
 
   const displayedInvoicePoints = showZeroDays
     ? [...invoicePoints].reverse()

@@ -368,9 +368,12 @@ export default function RemindersAdminPanel({
     setIsRunning(true);
     void (async () => {
       try {
-        const response = await fetch('/api/reminders/run-manual', {
+        const response = await fetch('/api/reminders/run', {
           method: 'POST',
+          credentials: 'same-origin',
           cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ triggeredBy: 'manual', source: 'manual' }),
         });
 
         const payload = (await response.json().catch(() => null)) as RunNowResponse | null;

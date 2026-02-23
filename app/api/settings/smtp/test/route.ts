@@ -32,9 +32,9 @@ export async function POST(request: Request) {
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
 
-    if (context.userRole !== 'owner') {
+    if (context.userRole !== 'owner' && context.userRole !== 'admin') {
       return NextResponse.json(
-        { ok: false, message: 'Only owners can send test emails.' },
+        { ok: false, message: 'Only owners and admins can send test emails.' },
         { status: 403 },
       );
     }

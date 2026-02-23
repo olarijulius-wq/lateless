@@ -9,6 +9,7 @@ import {
   isSmtpMigrationRequiredError,
 } from '@/app/lib/smtp-settings';
 import { getEffectiveMailConfig } from '@/app/lib/email';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 
 export const metadata: Metadata = {
   title: 'Email Setup',
@@ -24,6 +25,7 @@ export default async function SmtpSettingsPage() {
         mailConfig: ReturnType<typeof getEffectiveMailConfig>;
         canEdit: boolean;
         userRole: 'owner' | 'admin' | 'member';
+        canViewInternalDebug: boolean;
       }
     | null = null;
 
@@ -46,6 +48,7 @@ export default async function SmtpSettingsPage() {
       }),
       canEdit: context.userRole === 'owner',
       userRole: context.userRole,
+      canViewInternalDebug: isInternalAdminEmail(context.userEmail),
     };
   } catch (error) {
     if (isTeamMigrationRequiredError(error) || isSmtpMigrationRequiredError(error)) {

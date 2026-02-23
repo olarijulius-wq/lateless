@@ -114,7 +114,14 @@ export default function SendInvoiceButton({
       </button>
 
       {status === 'sent' && sentLabel ? (
-        <p className="text-xs text-emerald-700 dark:text-emerald-300">Sent {sentLabel}</p>
+        compact ? (
+          <>
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400 md:hidden">Sent {sentLabel}</p>
+            <p className="hidden text-xs text-emerald-700 dark:text-emerald-300 md:block">Sent {sentLabel}</p>
+          </>
+        ) : (
+          <p className="text-xs text-emerald-700 dark:text-emerald-300">Sent {sentLabel}</p>
+        )
       ) : null}
 
       {error ? (

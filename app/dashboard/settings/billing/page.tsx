@@ -4,7 +4,6 @@ import { redirect } from 'next/navigation';
 import postgres from 'postgres';
 import UpgradeButton from '../upgrade-button';
 import ManageBillingButton from '../manage-billing-button';
-import ConnectStripeButton from '../connect-stripe-button';
 import BillingSelfCheckPanel from './billing-self-check-panel';
 import {
   fetchStripeConnectStatusForUser,
@@ -36,6 +35,7 @@ import {
 } from '@/app/lib/billing-dunning';
 import SendRecoveryEmailButton from './send-recovery-email-button';
 import BillingSyncToast from './billing-sync-toast';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -175,8 +175,10 @@ export default async function BillingSettingsPage(props: {
     userId: workspaceContext.userId,
   });
   const plan = normalizePlanId(planSource.value) ?? userPlan;
-  const canRunSelfCheck =
+  const hasWorkspaceAdminRole =
     workspaceContext.userRole === 'owner' || workspaceContext.userRole === 'admin';
+  const canViewInternalBillingDebug = isInternalAdminEmail(workspaceContext.userEmail);
+  const canRunSelfCheck = hasWorkspaceAdminRole && canViewInternalBillingDebug;
   const showPlanSourceDiagnostics =
     diagnosticsEnabled() && isSettingsRemindersAdminEmail(userEmail);
   const [dunningState, latestBillingEvent] = await Promise.all([
@@ -213,6 +215,7 @@ export default async function BillingSettingsPage(props: {
     dunningState?.subscriptionStatus ?? subscriptionStatus,
   );
   const recoveryRequired = Boolean(dunningState?.recoveryRequired);
+  const billingPortalLabel = recoveryRequired ? 'Fix payment' : 'Open billing portal';
   const lastPaymentFailureLabel = formatEtDateTime(dunningState?.lastPaymentFailureAt);
   const latestBillingEventRelative = formatRelativeTime(latestBillingEvent?.createdAt);
   const planConfig = PLAN_CONFIG[plan];
@@ -422,7 +425,7 @@ export default async function BillingSettingsPage(props: {
         <p className="text-sm text-slate-600 dark:text-neutral-300">
           Open Stripe billing to update payment details, cancel, or view invoice history.
         </p>
-        <ManageBillingButton label={recoveryRequired ? 'Fix payment' : 'Open billing portal'} />
+        <ManageBillingButton label={billingPortalLabel} />
       </PricingPanel>
 
       <PricingPanel className="space-y-3">
@@ -459,18 +462,16 @@ export default async function BillingSettingsPage(props: {
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          <ManageBillingButton
-            label={recoveryRequired ? 'Fix payment' : 'Open billing portal'}
-            fullWidth={false}
-          />
           {recoveryRequired && canRunSelfCheck ? <SendRecoveryEmailButton /> : null}
         </div>
-        <Link
-          href="/dashboard/settings/billing-events"
-          className={`${secondaryButtonClasses} w-fit rounded-full`}
-        >
-          Open billing events
-        </Link>
+        {canRunSelfCheck ? (
+          <Link
+            href="/dashboard/settings/billing-events"
+            className={`${secondaryButtonClasses} w-fit rounded-full`}
+          >
+            Open billing events
+          </Link>
+        ) : null}
       </PricingPanel>
 
       {canRunSelfCheck ? (
@@ -497,16 +498,6 @@ export default async function BillingSettingsPage(props: {
           />
         </PricingPanel>
       ) : null}
-
-      {!connectStatus.hasAccount && (
-        <PricingPanel className="space-y-3">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Stripe payouts</h3>
-          <p className="text-sm text-slate-600 dark:text-neutral-300">
-            Connect your Stripe account to receive payouts directly.
-          </p>
-          <ConnectStripeButton />
-        </PricingPanel>
-      )}
 
       <PricingPanel className="space-y-3">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Stripe payouts</h3>
