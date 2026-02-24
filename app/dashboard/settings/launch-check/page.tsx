@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { redirect } from 'next/navigation';
+import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 import { getLaunchCheckAccessContext, getLatestLaunchCheckRun } from '@/app/lib/launch-check';
 import { PageShell, SectionCard } from '@/app/ui/page-layout';
 import LaunchCheckPanel from './launch-check-panel';
@@ -13,9 +15,22 @@ export const metadata: Metadata = {
 };
 
 export default async function LaunchCheckPage() {
+  let workspaceContext;
+  try {
+    workspaceContext = await ensureWorkspaceContextForCurrentUser();
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      redirect('/login?callbackUrl=/dashboard/settings/launch-check');
+    }
+    throw error;
+  }
+  if (!isInternalAdminEmail(workspaceContext.userEmail)) {
+    redirect('/dashboard/settings');
+  }
+
   const context = await getLaunchCheckAccessContext();
   if (!context) {
-    notFound();
+    redirect('/dashboard/settings');
   }
 
   const lastRun = await getLatestLaunchCheckRun();

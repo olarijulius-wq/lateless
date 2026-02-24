@@ -6,6 +6,7 @@ import {
   isTeamMigrationRequiredError,
 } from '@/app/lib/workspaces';
 import { isReminderManualRunAdmin } from '@/app/lib/reminder-admin';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 import type { FunnelEventName } from '@/app/lib/funnel-events';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
@@ -81,11 +82,19 @@ export default async function FunnelSettingsPage() {
     const context = await ensureWorkspaceContextForCurrentUser();
     const hasWorkspaceAccess =
       context.userRole === 'owner' || context.userRole === 'admin';
-    canView = hasWorkspaceAccess && isReminderManualRunAdmin(context.userEmail);
-
-    if (canView) {
-      counts = await fetchFunnelCounts();
+    if (!hasWorkspaceAccess) {
+      redirect('/dashboard/settings');
     }
+    if (!isInternalAdminEmail(context.userEmail)) {
+      redirect('/dashboard/settings');
+    }
+    canView = isReminderManualRunAdmin(context.userEmail);
+
+    if (!canView) {
+      redirect('/dashboard/settings');
+    }
+
+    counts = await fetchFunnelCounts();
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       redirect('/login?callbackUrl=/dashboard/settings/funnel');
@@ -99,20 +108,8 @@ export default async function FunnelSettingsPage() {
     }
   }
 
-  if (!canView && !migrationWarning) {
-    return (
-      <div className="rounded-2xl border border-rose-300 bg-rose-100 p-4 text-sm text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
-        Funnel analytics are restricted to admin users.
-      </div>
-    );
-  }
-
   if (!canView) {
-    return (
-      <p className="rounded-xl border border-amber-300 bg-amber-100 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-        {migrationWarning}
-      </p>
-    );
+    redirect('/dashboard/settings');
   }
 
   const rows = counts?.rows ?? [];

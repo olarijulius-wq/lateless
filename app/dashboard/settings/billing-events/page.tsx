@@ -41,7 +41,7 @@ export default async function BillingEventsPage(props: {
 
   const canView = context.userRole === 'owner' || context.userRole === 'admin';
   if (!canView) {
-    notFound();
+    redirect('/dashboard/settings');
   }
 
   if (!isInternalAdminEmail(context.userEmail)) {

@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import postgres from 'postgres';
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -17,6 +17,7 @@ import {
   type ReminderRunsQueryTriggeredBy,
 } from '@/app/lib/reminder-run-logs';
 import { isSettingsRemindersAdminEmail } from '@/app/lib/admin-gates';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 import {
   countBadRows,
   countScopeRuns,
@@ -109,12 +110,20 @@ export default async function RemindersAdminPage(props: {
     const canView = context.userRole === 'owner' || context.userRole === 'admin';
 
     if (!canView) {
-      notFound();
+      redirect('/dashboard/settings');
+    }
+
+    if (!isInternalAdminEmail(context.userEmail)) {
+      redirect('/dashboard/settings');
+    }
+
+    if (!isSettingsRemindersAdminEmail(context.userEmail)) {
+      redirect('/dashboard/settings');
     }
 
     activeWorkspaceId = context.workspaceId;
     activeUserEmail = context.userEmail;
-    canUseAllScope = isSettingsRemindersAdminEmail(context.userEmail);
+    canUseAllScope = true;
     const requestedScope = searchParams?.scope?.trim().toLowerCase();
     selectedScope = requestedScope === 'all' && canUseAllScope ? 'all' : 'workspace';
 

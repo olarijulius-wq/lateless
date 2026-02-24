@@ -175,23 +175,9 @@ async function fetchUpcomingReminders(
         ON customer_pauses.workspace_id = wm.workspace_id
        AND customer_pauses.normalized_email = lower(trim(customers.email))
       WHERE
-        users.plan IN ('solo', 'pro', 'studio')
-        AND users.subscription_status IN ('active', 'trialing')
-        AND invoices.status IN ('pending', 'overdue', 'failed')
+        lower(coalesce(invoices.status, '')) NOT IN ('paid', 'void', 'draft')
         AND invoices.due_date IS NOT NULL
         AND invoices.due_date < ((now() at time zone 'Europe/Tallinn')::date)
-        AND invoices.reminder_level < 3
-        AND (
-          (invoices.reminder_level = 0 AND ((now() at time zone 'Europe/Tallinn')::date) > invoices.due_date)
-          OR (
-            invoices.reminder_level = 1
-            AND invoices.last_reminder_sent_at <= now() - interval '7 days'
-          )
-          OR (
-            invoices.reminder_level = 2
-            AND invoices.last_reminder_sent_at <= now() - interval '14 days'
-          )
-        )
       ORDER BY
         next_send_date ASC,
         invoices.id ASC
@@ -255,23 +241,9 @@ async function fetchUpcomingReminders(
         ON unsub.workspace_id = wm.workspace_id
        AND unsub.normalized_email = lower(trim(customers.email))
       WHERE
-        users.plan IN ('solo', 'pro', 'studio')
-        AND users.subscription_status IN ('active', 'trialing')
-        AND invoices.status IN ('pending', 'overdue', 'failed')
+        lower(coalesce(invoices.status, '')) NOT IN ('paid', 'void', 'draft')
         AND invoices.due_date IS NOT NULL
         AND invoices.due_date < ((now() at time zone 'Europe/Tallinn')::date)
-        AND invoices.reminder_level < 3
-        AND (
-          (invoices.reminder_level = 0 AND ((now() at time zone 'Europe/Tallinn')::date) > invoices.due_date)
-          OR (
-            invoices.reminder_level = 1
-            AND invoices.last_reminder_sent_at <= now() - interval '7 days'
-          )
-          OR (
-            invoices.reminder_level = 2
-            AND invoices.last_reminder_sent_at <= now() - interval '14 days'
-          )
-        )
       ORDER BY
         next_send_date ASC,
         invoices.id ASC
@@ -323,23 +295,9 @@ async function fetchUpcomingReminders(
       ON wm.user_id = users.id
       AND wm.workspace_id = ${workspaceId}
     WHERE
-      users.plan IN ('solo', 'pro', 'studio')
-      AND users.subscription_status IN ('active', 'trialing')
-      AND invoices.status IN ('pending', 'overdue', 'failed')
+      lower(coalesce(invoices.status, '')) NOT IN ('paid', 'void', 'draft')
       AND invoices.due_date IS NOT NULL
       AND invoices.due_date < ((now() at time zone 'Europe/Tallinn')::date)
-      AND invoices.reminder_level < 3
-      AND (
-        (invoices.reminder_level = 0 AND ((now() at time zone 'Europe/Tallinn')::date) > invoices.due_date)
-        OR (
-          invoices.reminder_level = 1
-          AND invoices.last_reminder_sent_at <= now() - interval '7 days'
-        )
-        OR (
-          invoices.reminder_level = 2
-          AND invoices.last_reminder_sent_at <= now() - interval '14 days'
-        )
-      )
     ORDER BY
       next_send_date ASC,
       invoices.id ASC

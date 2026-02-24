@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { diagnosticsEnabled } from '@/app/lib/admin-gates';
+import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 import {
   getSmokeCheckAccessDecision,
   getLatestSmokeCheckRun,
@@ -18,6 +20,19 @@ export const metadata: Metadata = {
 };
 
 export default async function SmokeCheckPage() {
+  let context;
+  try {
+    context = await ensureWorkspaceContextForCurrentUser();
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      redirect('/login?callbackUrl=/dashboard/settings/smoke-check');
+    }
+    throw error;
+  }
+  if (!isInternalAdminEmail(context.userEmail)) {
+    redirect('/dashboard/settings');
+  }
+
   if (!diagnosticsEnabled()) {
     notFound();
   }

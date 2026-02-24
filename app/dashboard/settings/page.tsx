@@ -5,74 +5,38 @@ import {
   fetchStripeConnectStatusForUser,
   requireUserEmail,
 } from '@/app/lib/data';
-import {
-  diagnosticsEnabled,
-  isLaunchCheckAdminEmail,
-  isSmokeCheckAdminEmail,
-} from '@/app/lib/admin-gates';
+import { diagnosticsEnabled } from '@/app/lib/admin-gates';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { primaryButtonClasses } from '@/app/ui/button';
 import { RevealOnScroll } from '@/app/ui/motion/reveal';
 import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
 import { CARD_INTERACTIVE, LIGHT_SURFACE } from '@/app/ui/theme/tokens';
 import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
+import { buildSettingsSections } from '@/app/lib/settings-sections';
+import { isReminderManualRunAdmin } from '@/app/lib/reminder-admin';
 
 export const metadata: Metadata = {
   title: 'Settings',
 };
 
-const settingCards = [
-  {
-    title: 'Usage',
-    href: '/dashboard/settings/usage',
-    description: 'Track workspace usage and plan limits.',
-  },
-  {
-    title: 'Billing',
-    href: '/dashboard/settings/billing',
-    description: 'Manage plan, subscription, and Stripe billing.',
-  },
-  {
-    title: 'Billing events',
-    href: '/dashboard/settings/billing-events',
-    description: 'Inspect payment failures, recoveries, and portal activity.',
-  },
-  {
-    title: 'Team',
-    href: '/dashboard/settings/team',
-    description: 'Invite teammates and manage roles.',
-  },
-  {
-    title: 'Company profile',
-    href: '/dashboard/settings/company-profile',
-    description: 'Manage team billing identity, logo, and invoice footer.',
-  },
-  {
-    title: 'Email setup',
-    href: '/dashboard/settings/smtp',
-    description: 'Configure deliverability-safe sender identity and provider.',
-  },
-  {
-    title: 'Unsubscribe',
-    href: '/dashboard/settings/unsubscribe',
-    description: 'Set unsubscribe pages and email preferences.',
-  },
-  {
-    title: 'Reminders admin',
-    href: '/dashboard/settings/reminders',
-    description: 'Run reminders manually and inspect run logs.',
-  },
-  {
-    title: 'Documents',
-    href: '/dashboard/settings/documents',
-    description: 'Document templates and storage configuration.',
-  },
-  {
-    title: 'Refund requests',
-    href: '/dashboard/settings/refunds',
-    description: 'Review and process payer refund requests.',
-  },
-];
+const cardDescriptions: Record<string, string> = {
+  '/dashboard/settings/usage': 'Track workspace usage and plan limits.',
+  '/dashboard/settings/billing': 'Manage plan, subscription, and Stripe billing.',
+  '/dashboard/settings/pricing-fees': 'Review invoice fee model and platform fee settings.',
+  '/dashboard/settings/payouts': 'Manage Stripe Connect payouts and account status.',
+  '/dashboard/settings/refunds': 'Review and process payer refund requests.',
+  '/dashboard/settings/team': 'Invite teammates and manage roles.',
+  '/dashboard/settings/company-profile': 'Manage team billing identity, logo, and invoice footer.',
+  '/dashboard/settings/smtp': 'Configure deliverability-safe sender identity and provider.',
+  '/dashboard/settings/unsubscribe': 'Set unsubscribe pages and email preferences.',
+  '/dashboard/settings/documents': 'Document templates and storage configuration.',
+  '/dashboard/settings/billing-events': 'Inspect payment failures, recoveries, and portal activity.',
+  '/dashboard/settings/launch-check': 'Run SEO, robots, and metadata launch checks.',
+  '/dashboard/settings/all-checks': 'Run launch + smoke checks and copy a markdown report.',
+  '/dashboard/settings/smoke-check': 'Run payments, email, webhook, schema, and env sanity checks.',
+  '/dashboard/settings/migrations': 'Read-only migration tracking report for deploy safety.',
+  '/dashboard/settings/funnel': 'Inspect lifecycle funnel events and conversion steps.',
+};
 
 export default async function SettingsPage(props: {
   searchParams?: Promise<{
@@ -101,23 +65,37 @@ export default async function SettingsPage(props: {
 
   const userEmail = await requireUserEmail();
   let hasWorkspaceAdminRole = false;
-  let workspaceEmail = userEmail;
+  let isInternalAdmin = false;
   let canViewSmokeDiagnostics = false;
+  let canViewLaunchCheck = false;
+  let canViewBillingEvents = false;
+  let canViewFunnel = false;
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
     hasWorkspaceAdminRole = context.userRole === 'owner' || context.userRole === 'admin';
-    workspaceEmail = context.userEmail;
-    canViewSmokeDiagnostics =
-      diagnosticsEnabledFlag &&
-      hasWorkspaceAdminRole &&
-      isSmokeCheckAdminEmail(context.userEmail);
+    isInternalAdmin = isInternalAdminEmail(context.userEmail);
+    canViewBillingEvents = hasWorkspaceAdminRole && isInternalAdmin;
+    canViewLaunchCheck = hasWorkspaceAdminRole && isInternalAdmin;
+    canViewSmokeDiagnostics = diagnosticsEnabledFlag && hasWorkspaceAdminRole && isInternalAdmin;
+    canViewFunnel =
+      hasWorkspaceAdminRole && isInternalAdmin && isReminderManualRunAdmin(context.userEmail);
   } catch {
     hasWorkspaceAdminRole = false;
-    workspaceEmail = userEmail;
+    isInternalAdmin = false;
     canViewSmokeDiagnostics = false;
+    canViewLaunchCheck = false;
+    canViewBillingEvents = false;
+    canViewFunnel = false;
   }
-  const canViewLaunchCheck = hasWorkspaceAdminRole && isLaunchCheckAdminEmail(workspaceEmail);
-  const canViewBillingEvents = hasWorkspaceAdminRole && isInternalAdminEmail(workspaceEmail);
+  const sections = buildSettingsSections({
+    isInternalAdmin,
+    canViewBillingEvents,
+    canViewLaunchCheck,
+    canViewSmokeCheck: canViewSmokeDiagnostics,
+    canViewAllChecks: diagnosticsEnabledFlag && canViewLaunchCheck && canViewSmokeDiagnostics,
+    canViewFunnel,
+    diagnosticsEnabled: diagnosticsEnabledFlag,
+  });
   const connectStatus = await fetchStripeConnectStatusForUser(userEmail);
   const payoutsBadge = connectStatus.isReadyForTransfers
     ? {
@@ -166,49 +144,17 @@ export default async function SettingsPage(props: {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-      {[
-        ...settingCards,
-        ...(canViewLaunchCheck
-          ? [{
-              title: 'Launch readiness',
-              href: '/dashboard/settings/launch-check',
-              description: 'Run SEO, robots, and metadata launch checks.',
-            }]
-          : []),
-        ...(canViewLaunchCheck && canViewSmokeDiagnostics
-          ? [{
-              title: 'All checks',
-              href: '/dashboard/settings/all-checks',
-              description: 'Run launch + smoke checks and copy a markdown report.',
-            }]
-          : []),
-        ...(canViewSmokeDiagnostics
-          ? [{
-              title: 'Smoke check',
-              href: '/dashboard/settings/smoke-check',
-              description: 'Run payments, email, webhook, schema, and env sanity checks.',
-            }]
-          : []),
-        ...(canViewSmokeDiagnostics
-          ? [{
-              title: 'Migrations',
-              href: '/dashboard/settings/migrations',
-              description: 'Read-only migration tracking report for deploy safety.',
-            }]
-          : []),
-      ]
-        .filter((card) => (card.href === '/dashboard/settings/billing-events' ? canViewBillingEvents : true))
-        .map((card, index) => (
+      {sections.map((card, index) => (
         <RevealOnScroll key={card.href} delay={index * 0.04}>
           <Link
             href={card.href}
             className={`group block rounded-2xl border p-5 ${LIGHT_SURFACE} ${CARD_INTERACTIVE} dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)] dark:hover:border-neutral-700 dark:hover:shadow-[0_26px_44px_rgba(0,0,0,0.55)] dark:focus-visible:border-neutral-700 dark:focus-visible:shadow-[0_26px_44px_rgba(0,0,0,0.55)] ${NEUTRAL_FOCUS_RING_CLASSES}`}
           >
             <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-              {card.title}
+              {card.name}
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              {card.description}
+              {cardDescriptions[card.href] ?? 'Manage workspace settings.'}
             </p>
           </Link>
         </RevealOnScroll>

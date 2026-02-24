@@ -27,7 +27,6 @@ export async function GET() {
         { status: 403 },
       );
     }
-
     const runs = await listReminderRuns(context.workspaceId, 25);
     return NextResponse.json({ ok: true, runs });
   } catch (error) {

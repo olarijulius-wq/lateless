@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { diagnosticsEnabled } from '@/app/lib/admin-gates';
+import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 import {
   getLaunchCheckAccessDecision,
   getLatestLaunchCheckRun,
@@ -18,6 +20,19 @@ export const metadata: Metadata = {
 };
 
 export default async function AllChecksPage() {
+  let context;
+  try {
+    context = await ensureWorkspaceContextForCurrentUser();
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      redirect('/login?callbackUrl=/dashboard/settings/all-checks');
+    }
+    throw error;
+  }
+  if (!isInternalAdminEmail(context.userEmail)) {
+    redirect('/dashboard/settings');
+  }
+
   if (!diagnosticsEnabled()) {
     notFound();
   }
@@ -36,7 +51,7 @@ export default async function AllChecksPage() {
         .join(' | ');
       console.warn(`[diag-gate] /dashboard/settings/all-checks denied: ${reason}`);
     }
-    notFound();
+    redirect('/dashboard/settings');
   }
 
   const [launchLastRun, smokeLastRun] = await Promise.all([

@@ -163,7 +163,13 @@ async function authorizeRunRequest(
   const expectedCronToken = process.env.REMINDER_CRON_TOKEN?.trim() || '';
   const providedCronToken = getCronAuthToken(req, query)?.trim() || '';
   if (expectedCronToken && providedCronToken === expectedCronToken) {
-    return { ok: true as const, source: 'cron' as const, userEmail: null };
+    return {
+      ok: true as const,
+      source: 'cron' as const,
+      userEmail: null,
+      workspaceId: null,
+      actorEmail: null,
+    };
   }
 
   const session = await auth();
@@ -182,6 +188,13 @@ async function authorizeRunRequest(
         response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
       };
     }
+    return {
+      ok: true as const,
+      source: 'manual' as const,
+      userEmail: context.userEmail.trim().toLowerCase(),
+      workspaceId: context.workspaceId,
+      actorEmail: context.userEmail.trim().toLowerCase(),
+    };
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return {
@@ -191,12 +204,6 @@ async function authorizeRunRequest(
     }
     throw error;
   }
-
-  return {
-    ok: true as const,
-    source: 'manual' as const,
-    userEmail: session.user.email.trim().toLowerCase(),
-  };
 }
 
 function formatAmount(amount: number) {
@@ -350,7 +357,7 @@ async function fetchReminderCandidates(
         invoices.status,
         customers.name AS customer_name,
         customers.email AS customer_email,
-        workspaces.id AS workspace_id,
+        workspace_scope.workspace_id AS workspace_id,
         users.is_verified AS owner_verified,
         (invoice_pauses.invoice_id IS NOT NULL) AS invoice_paused,
         (customer_pauses.normalized_email IS NOT NULL) AS customer_paused
@@ -359,37 +366,25 @@ async function fetchReminderCandidates(
         ON customers.id = invoices.customer_id
       JOIN users
         ON lower(users.email) = lower(invoices.user_email)
-      LEFT JOIN LATERAL (
-        SELECT id
-        FROM workspaces
-        WHERE owner_user_id = users.id
-        ORDER BY created_at ASC
+      JOIN LATERAL (
+        SELECT wm.workspace_id
+        FROM public.workspace_members wm
+        WHERE wm.user_id = users.id
+          AND (${scopeWorkspaceId}::uuid is null OR wm.workspace_id = ${scopeWorkspaceId}::uuid)
+        ORDER BY
+          CASE WHEN wm.workspace_id = users.active_workspace_id THEN 0 ELSE 1 END ASC,
+          wm.created_at ASC
         LIMIT 1
-      ) workspaces ON true
+      ) workspace_scope ON true
       LEFT JOIN public.invoice_reminder_pauses invoice_pauses
         ON invoice_pauses.invoice_id = invoices.id
       LEFT JOIN public.workspace_reminder_customer_pauses customer_pauses
-        ON customer_pauses.workspace_id = workspaces.id
+        ON customer_pauses.workspace_id = workspace_scope.workspace_id
        AND customer_pauses.normalized_email = lower(trim(customers.email))
       WHERE
-        users.plan in ('solo', 'pro', 'studio')
-        AND users.subscription_status in ('active', 'trialing')
-        AND invoices.status IN ('pending', 'overdue', 'failed')
+        lower(coalesce(invoices.status, '')) NOT IN ('paid', 'void', 'draft')
         AND invoices.due_date IS NOT NULL
         AND invoices.due_date < ((now() at time zone 'Europe/Tallinn')::date)
-        AND invoices.reminder_level < 3
-        AND (${scopeWorkspaceId}::uuid is null OR workspaces.id = ${scopeWorkspaceId}::uuid)
-        AND (
-          (invoices.reminder_level = 0 AND ((now() at time zone 'Europe/Tallinn')::date) > invoices.due_date)
-          OR (
-            invoices.reminder_level = 1
-            AND invoices.last_reminder_sent_at <= now() - interval '7 days'
-          )
-          OR (
-            invoices.reminder_level = 2
-            AND invoices.last_reminder_sent_at <= now() - interval '14 days'
-          )
-        )
       ORDER BY invoices.due_date ASC, invoices.id ASC
       LIMIT ${selectionLimit}
     `;
@@ -407,7 +402,7 @@ async function fetchReminderCandidates(
       invoices.status,
       customers.name AS customer_name,
       customers.email AS customer_email,
-      workspaces.id AS workspace_id,
+      workspace_scope.workspace_id AS workspace_id,
       users.is_verified AS owner_verified,
       false AS invoice_paused,
       false AS customer_paused
@@ -416,32 +411,20 @@ async function fetchReminderCandidates(
       ON customers.id = invoices.customer_id
     JOIN users
       ON lower(users.email) = lower(invoices.user_email)
-    LEFT JOIN LATERAL (
-      SELECT id
-      FROM workspaces
-      WHERE owner_user_id = users.id
-      ORDER BY created_at ASC
+    JOIN LATERAL (
+      SELECT wm.workspace_id
+      FROM public.workspace_members wm
+      WHERE wm.user_id = users.id
+        AND (${scopeWorkspaceId}::uuid is null OR wm.workspace_id = ${scopeWorkspaceId}::uuid)
+      ORDER BY
+        CASE WHEN wm.workspace_id = users.active_workspace_id THEN 0 ELSE 1 END ASC,
+        wm.created_at ASC
       LIMIT 1
-    ) workspaces ON true
+    ) workspace_scope ON true
     WHERE
-      users.plan in ('solo', 'pro', 'studio')
-      AND users.subscription_status in ('active', 'trialing')
-      AND invoices.status IN ('pending', 'overdue', 'failed')
+      lower(coalesce(invoices.status, '')) NOT IN ('paid', 'void', 'draft')
       AND invoices.due_date IS NOT NULL
       AND invoices.due_date < ((now() at time zone 'Europe/Tallinn')::date)
-      AND invoices.reminder_level < 3
-      AND (${scopeWorkspaceId}::uuid is null OR workspaces.id = ${scopeWorkspaceId}::uuid)
-      AND (
-        (invoices.reminder_level = 0 AND ((now() at time zone 'Europe/Tallinn')::date) > invoices.due_date)
-        OR (
-          invoices.reminder_level = 1
-          AND invoices.last_reminder_sent_at <= now() - interval '7 days'
-        )
-        OR (
-          invoices.reminder_level = 2
-          AND invoices.last_reminder_sent_at <= now() - interval '14 days'
-        )
-      )
     ORDER BY invoices.due_date ASC, invoices.id ASC
     LIMIT ${selectionLimit}
   `;
@@ -532,7 +515,10 @@ async function runReminderJob(req: Request) {
     maxRunMs,
     dryRun,
   };
-  const scopeWorkspaceId = runLogWorkspaceId?.trim() || null;
+  const scopeWorkspaceId =
+    runLogWorkspaceId?.trim() ||
+    (authorization.source === 'manual' ? authorization.workspaceId : null) ||
+    null;
   const lockKey = `reminders_run:${scopeWorkspaceId ?? 'global'}`;
   const lockHolder = `${triggeredBy}:${ranAtIso}:${Math.random().toString(36).slice(2, 10)}`;
 
@@ -599,7 +585,7 @@ async function runReminderJob(req: Request) {
     const senderConfigured = getEffectiveMailConfig().ok;
 
     if (reminders.length === 0) {
-      console.log('No overdue reminder candidates found.');
+      console.log('No overdue invoices found for reminder run.');
     }
 
     for (const reminder of reminders) {
@@ -931,7 +917,7 @@ async function runReminderJob(req: Request) {
     const hasMore = run.hasMore || hasMoreFromSelection;
     const runLogScope = resolveRunLogScope({
       headerWorkspaceId: runLogWorkspaceId,
-      headerUserEmail: runLogUserEmail,
+      headerUserEmail: runLogUserEmail || authorization.userEmail,
       candidates: reminders,
       eligibleCandidates: eligibleReminders,
     });
@@ -949,6 +935,14 @@ async function runReminderJob(req: Request) {
       );
     }
 
+    const eligibleCount = decisions.filter((decision) => decision.willSend).length;
+    const responseMessage =
+      reminders.length === 0
+        ? 'No overdue invoices found.'
+        : eligibleCount === 0
+          ? `No eligible reminders to send. Skipped ${skippedCount} overdue invoice(s).`
+          : null;
+
     const responsePayload = {
       ranAt: ranAtIso,
       attempted: run.attempted,
@@ -961,10 +955,14 @@ async function runReminderJob(req: Request) {
       dryRun,
       triggeredBy,
       durationMs,
-      actorEmail: triggeredBy === 'manual' ? runLogActorEmail : null,
+      actorEmail:
+        triggeredBy === 'manual'
+          ? runLogActorEmail || authorization.actorEmail
+          : null,
       workspaceId: runLogScope.workspaceId,
-      userEmail: runLogScope.userEmail,
+      userEmail: runLogScope.userEmail || authorization.userEmail,
       config: runConfig,
+      message: responseMessage,
       summary: {
         attempted: run.attempted,
         sent: sentCount,
@@ -975,7 +973,7 @@ async function runReminderJob(req: Request) {
         skippedCount,
         errorCount: errors.length,
         skippedBreakdown,
-        wouldSendCount: decisions.filter((decision) => decision.willSend).length,
+        wouldSendCount: eligibleCount,
       },
       candidates: decisions,
       errors: errors.slice(-10),
@@ -988,8 +986,11 @@ async function runReminderJob(req: Request) {
       await insertReminderRunLog({
         triggeredBy: triggeredBy === 'cron' ? 'cron' : 'manual',
         workspaceId: runLogScope.workspaceId,
-        userEmail: runLogScope.userEmail,
-        actorEmail: triggeredBy === 'manual' ? runLogActorEmail : null,
+        userEmail: runLogScope.userEmail || authorization.userEmail,
+        actorEmail:
+          triggeredBy === 'manual'
+            ? runLogActorEmail || authorization.actorEmail
+            : null,
         config: runConfig,
         attempted: run.attempted,
         sent: sentCount,

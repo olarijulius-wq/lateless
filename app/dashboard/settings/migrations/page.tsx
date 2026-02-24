@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { diagnosticsEnabled } from '@/app/lib/admin-gates';
 import { getMigrationReport } from '@/app/lib/migration-tracker';
 import { getSmokeCheckAccessDecision } from '@/app/lib/smoke-check';
+import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+import { isInternalAdminEmail } from '@/app/lib/internal-admin-email';
 import { SectionCard } from '@/app/ui/page-layout';
 import MigrationsPanel from './migrations-panel';
 
@@ -15,6 +17,19 @@ export const metadata: Metadata = {
 };
 
 export default async function MigrationsPage() {
+  let context;
+  try {
+    context = await ensureWorkspaceContextForCurrentUser();
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      redirect('/login?callbackUrl=/dashboard/settings/migrations');
+    }
+    throw error;
+  }
+  if (!isInternalAdminEmail(context.userEmail)) {
+    redirect('/dashboard/settings');
+  }
+
   if (!diagnosticsEnabled()) {
     notFound();
   }
@@ -24,7 +39,7 @@ export default async function MigrationsPage() {
     if (process.env.NODE_ENV === 'development') {
       console.warn(`[diag-gate] /dashboard/settings/migrations denied: ${decision.reason}`);
     }
-    notFound();
+    redirect('/dashboard/settings');
   }
 
   const report = await getMigrationReport();
