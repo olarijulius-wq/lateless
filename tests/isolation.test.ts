@@ -38,6 +38,13 @@ process.env.NODE_ENV = 'test';
 process.env.LATELLESS_TEST_MODE = '1';
 
 const sql = postgres(testDbUrl, { ssl: 'require', prepare: false });
+const sqlClients: Array<ReturnType<typeof postgres>> = [sql];
+
+async function closeSqlClients() {
+  await Promise.allSettled(
+    sqlClients.map((client) => client.end({ timeout: 5 })),
+  );
+}
 
 async function resetDb() {
   await sql`
@@ -166,149 +173,169 @@ async function seedFixtures(): Promise<TestContext> {
 }
 
 async function run() {
-  execSync('node scripts/assert-hooks-disabled.mjs', {
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      POSTGRES_URL: testDbUrl,
-      DATABASE_URL: testDbUrl,
-    },
-  });
-
-  execSync('pnpm db:migrate', {
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      POSTGRES_URL: testDbUrl,
-      DATABASE_URL: testDbUrl,
-    },
-  });
-
-  const dataModule = await import('@/app/lib/data');
-  const invoiceExportRoute = await import('@/app/api/invoices/export/route');
-  const customerExportRoute = await import('@/app/api/customers/export/route');
-  const sendInvoiceRoute = await import('@/app/api/invoices/[id]/send/route');
-
-  let failures = 0;
-
-  async function runCase(name: string, fn: () => Promise<void>) {
-    try {
-      await resetDb();
-      await fn();
-      console.log(`PASS ${name}`);
-    } catch (error) {
-      failures += 1;
-      console.error(`FAIL ${name}`);
-      console.error(error);
-    } finally {
-      dataModule.__testHooks.requireWorkspaceContextOverride = null;
-      invoiceExportRoute.__testHooks.authOverride = null;
-      invoiceExportRoute.__testHooks.requireWorkspaceContextOverride = null;
-      invoiceExportRoute.__testHooks.enforceRateLimitOverride = null;
-      customerExportRoute.__testHooks.authOverride = null;
-      customerExportRoute.__testHooks.requireWorkspaceContextOverride = null;
-      customerExportRoute.__testHooks.enforceRateLimitOverride = null;
-      sendInvoiceRoute.__testHooks.authOverride = null;
-      sendInvoiceRoute.__testHooks.enforceRateLimitOverride = null;
-      sendInvoiceRoute.__testHooks.requireWorkspaceRoleOverride = null;
-      sendInvoiceRoute.__testHooks.sendInvoiceEmailOverride = null;
-      sendInvoiceRoute.__testHooks.revalidatePathOverride = null;
-    }
-  }
-
-  await runCase('listing isolation (invoices + customers)', async () => {
-    const fixtures = await seedFixtures();
-    const workspaceAContext: WorkspaceContext = {
-      userEmail: fixtures.userEmail,
-      workspaceId: fixtures.workspaceA,
-    };
-
-    dataModule.__testHooks.requireWorkspaceContextOverride = async () => workspaceAContext;
-
-    const invoices = await dataModule.fetchFilteredInvoices('', 1, 'all', 'created_at', 'desc', 25);
-    const customers = await dataModule.fetchFilteredCustomers('', 1, 25, 'name', 'asc');
-
-    assert.equal(invoices.length, 1, 'workspace A should only see one invoice');
-    assert.equal(invoices[0].id, fixtures.invoiceA);
-    assert.equal(customers.length, 1, 'workspace A should only see one customer');
-    assert.equal(customers[0].id, fixtures.customerA);
-  });
-
-  await runCase('export isolation (invoices + customers)', async () => {
-    const fixtures = await seedFixtures();
-    const workspaceAContext: WorkspaceContext = {
-      userEmail: fixtures.userEmail,
-      workspaceId: fixtures.workspaceA,
-    };
-
-    const authSession = async () => ({ user: { email: fixtures.userEmail } });
-    const noRateLimit = async () => null;
-
-    invoiceExportRoute.__testHooks.authOverride = authSession;
-    invoiceExportRoute.__testHooks.requireWorkspaceContextOverride = async () => workspaceAContext;
-    invoiceExportRoute.__testHooks.enforceRateLimitOverride = noRateLimit;
-
-    customerExportRoute.__testHooks.authOverride = authSession;
-    customerExportRoute.__testHooks.requireWorkspaceContextOverride = async () => workspaceAContext;
-    customerExportRoute.__testHooks.enforceRateLimitOverride = noRateLimit;
-
-    const invoiceRes = await invoiceExportRoute.GET(
-      new Request('http://localhost/api/invoices/export'),
-    );
-    const invoiceCsv = await invoiceRes.text();
-    assert.equal(invoiceRes.status, 200, 'invoice export should succeed');
-    assert.match(invoiceCsv, new RegExp(fixtures.invoiceA));
-    assert.doesNotMatch(invoiceCsv, new RegExp(fixtures.invoiceB));
-
-    const customerRes = await customerExportRoute.GET(
-      new Request('http://localhost/api/customers/export'),
-    );
-    const customerCsv = await customerRes.text();
-    assert.equal(customerRes.status, 200, 'customer export should succeed');
-    assert.match(customerCsv, new RegExp(fixtures.customerA));
-    assert.doesNotMatch(customerCsv, new RegExp(fixtures.customerB));
-  });
-
-  await runCase('send isolation blocks cross-workspace invoice send', async () => {
-    const fixtures = await seedFixtures();
-    let sendCalled = false;
-
-    sendInvoiceRoute.__testHooks.authOverride = async () => ({ user: { email: fixtures.userEmail } });
-    sendInvoiceRoute.__testHooks.requireWorkspaceRoleOverride = async () => ({
-      workspaceId: fixtures.workspaceA,
-      role: 'owner',
+  try {
+    execSync('node scripts/assert-hooks-disabled.mjs', {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        POSTGRES_URL: testDbUrl,
+        DATABASE_URL: testDbUrl,
+      },
     });
-    sendInvoiceRoute.__testHooks.enforceRateLimitOverride = async () => null;
-    sendInvoiceRoute.__testHooks.sendInvoiceEmailOverride = async () => {
-      sendCalled = true;
-      return { provider: 'test', sentAt: new Date().toISOString() };
-    };
-    sendInvoiceRoute.__testHooks.revalidatePathOverride = () => {};
 
-    const res = await sendInvoiceRoute.POST(
-      new Request(`http://localhost/api/invoices/${fixtures.invoiceB}/send`, { method: 'POST' }),
-      { params: Promise.resolve({ id: fixtures.invoiceB }) },
-    );
+    execSync('pnpm db:migrate', {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        POSTGRES_URL: testDbUrl,
+        DATABASE_URL: testDbUrl,
+      },
+    });
 
-    assert.ok(
-      res.status === 403 || res.status === 404,
-      `expected 403 or 404 for cross-workspace send, got ${res.status}`,
-    );
-    assert.equal(sendCalled, false, 'cross-workspace invoice must not trigger email send');
-  });
+    const dataModule = await import('@/app/lib/data');
+    const invoiceExportRoute = await import('@/app/api/invoices/export/route');
+    const customerExportRoute = await import('@/app/api/customers/export/route');
+    const sendInvoiceRoute = await import('@/app/api/invoices/[id]/send/route');
 
-  await sql.end({ timeout: 5 });
+    let failures = 0;
 
-  if (failures > 0) {
-    process.exitCode = 1;
-    throw new Error(`${failures} isolation test(s) failed.`);
+    async function runCase(name: string, fn: () => Promise<void>) {
+      try {
+        await resetDb();
+        await fn();
+        console.log(`PASS ${name}`);
+      } catch (error) {
+        failures += 1;
+        console.error(`FAIL ${name}`);
+        console.error(error);
+      } finally {
+        dataModule.__testHooks.requireWorkspaceContextOverride = null;
+        invoiceExportRoute.__testHooks.authOverride = null;
+        invoiceExportRoute.__testHooks.requireWorkspaceContextOverride = null;
+        invoiceExportRoute.__testHooks.enforceRateLimitOverride = null;
+        customerExportRoute.__testHooks.authOverride = null;
+        customerExportRoute.__testHooks.requireWorkspaceContextOverride = null;
+        customerExportRoute.__testHooks.enforceRateLimitOverride = null;
+        sendInvoiceRoute.__testHooks.authOverride = null;
+        sendInvoiceRoute.__testHooks.enforceRateLimitOverride = null;
+        sendInvoiceRoute.__testHooks.requireWorkspaceRoleOverride = null;
+        sendInvoiceRoute.__testHooks.sendInvoiceEmailOverride = null;
+        sendInvoiceRoute.__testHooks.revalidatePathOverride = null;
+      }
+    }
+
+    await runCase('listing isolation (invoices + customers)', async () => {
+      const fixtures = await seedFixtures();
+      const workspaceAContext: WorkspaceContext = {
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceA,
+      };
+
+      dataModule.__testHooks.requireWorkspaceContextOverride = async () => workspaceAContext;
+
+      const invoices = await dataModule.fetchFilteredInvoices('', 1, 'all', 'created_at', 'desc', 25);
+      const customers = await dataModule.fetchFilteredCustomers('', 1, 25, 'name', 'asc');
+
+      assert.equal(invoices.length, 1, 'workspace A should only see one invoice');
+      assert.equal(invoices[0].id, fixtures.invoiceA);
+      assert.equal(customers.length, 1, 'workspace A should only see one customer');
+      assert.equal(customers[0].id, fixtures.customerA);
+    });
+
+    await runCase('export isolation (invoices + customers)', async () => {
+      const fixtures = await seedFixtures();
+      const workspaceAContext: WorkspaceContext = {
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceA,
+      };
+
+      const authSession = async () => ({ user: { email: fixtures.userEmail } });
+      const noRateLimit = async () => null;
+
+      invoiceExportRoute.__testHooks.authOverride = authSession;
+      invoiceExportRoute.__testHooks.requireWorkspaceContextOverride = async () => workspaceAContext;
+      invoiceExportRoute.__testHooks.enforceRateLimitOverride = noRateLimit;
+
+      customerExportRoute.__testHooks.authOverride = authSession;
+      customerExportRoute.__testHooks.requireWorkspaceContextOverride = async () => workspaceAContext;
+      customerExportRoute.__testHooks.enforceRateLimitOverride = noRateLimit;
+
+      const invoiceRes = await invoiceExportRoute.GET(
+        new Request('http://localhost/api/invoices/export'),
+      );
+      const invoiceCsv = await invoiceRes.text();
+      assert.equal(invoiceRes.status, 200, 'invoice export should succeed');
+      assert.match(invoiceCsv, new RegExp(fixtures.invoiceA));
+      assert.doesNotMatch(invoiceCsv, new RegExp(fixtures.invoiceB));
+
+      const customerRes = await customerExportRoute.GET(
+        new Request('http://localhost/api/customers/export'),
+      );
+      const customerCsv = await customerRes.text();
+      assert.equal(customerRes.status, 200, 'customer export should succeed');
+      assert.match(customerCsv, new RegExp(fixtures.customerA));
+      assert.doesNotMatch(customerCsv, new RegExp(fixtures.customerB));
+    });
+
+    await runCase('send isolation blocks cross-workspace invoice send', async () => {
+      const fixtures = await seedFixtures();
+      let sendCalled = false;
+
+      sendInvoiceRoute.__testHooks.authOverride = async () => ({ user: { email: fixtures.userEmail } });
+      sendInvoiceRoute.__testHooks.requireWorkspaceRoleOverride = async () => ({
+        workspaceId: fixtures.workspaceA,
+        role: 'owner',
+      });
+      sendInvoiceRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      sendInvoiceRoute.__testHooks.sendInvoiceEmailOverride = async () => {
+        sendCalled = true;
+        return { provider: 'test', sentAt: new Date().toISOString() };
+      };
+      sendInvoiceRoute.__testHooks.revalidatePathOverride = () => {};
+
+      const res = await sendInvoiceRoute.POST(
+        new Request(`http://localhost/api/invoices/${fixtures.invoiceB}/send`, { method: 'POST' }),
+        { params: Promise.resolve({ id: fixtures.invoiceB }) },
+      );
+
+      assert.ok(
+        res.status === 403 || res.status === 404,
+        `expected 403 or 404 for cross-workspace send, got ${res.status}`,
+      );
+      assert.equal(sendCalled, false, 'cross-workspace invoice must not trigger email send');
+    });
+
+    if (failures > 0) {
+      process.exitCode = 1;
+      throw new Error(`${failures} isolation test(s) failed.`);
+    }
+
+    console.log('All isolation tests passed.');
+
+    if (process.env.NODE_ENV === 'test') {
+      setTimeout(() => {
+        const proc = process as NodeJS.Process & {
+          _getActiveHandles?: () => unknown[];
+          _getActiveRequests?: () => unknown[];
+        };
+        const handles = proc._getActiveHandles?.() ?? [];
+        const requests = proc._getActiveRequests?.() ?? [];
+
+        if (handles.length > 0 || requests.length > 0) {
+          console.log('[isolation] Active handles before forced exit:', handles);
+          console.log('[isolation] Active requests before forced exit:', requests);
+        }
+
+        process.exit(0);
+      }, 1500);
+    }
+  } finally {
+    await closeSqlClients();
   }
-
-  console.log('All isolation tests passed.');
 }
 
 run().catch(async (error) => {
   console.error(error);
-  await sql.end({ timeout: 5 }).catch(() => {});
+  await closeSqlClients().catch(() => {});
   process.exit(1);
 });
