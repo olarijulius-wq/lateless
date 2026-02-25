@@ -44,7 +44,8 @@
     "baseline-browser-mapping": "^2.9.14",
     "bcryptjs": "^3.0.3",
     "eslint": "^9.39.2",
-    "eslint-config-next": "^16.1.1"
+    "eslint-config-next": "^16.1.1",
+    "jiti": "1.21.7"
   },
   "pnpm": {
     "overrides": {
