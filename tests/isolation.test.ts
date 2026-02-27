@@ -469,6 +469,62 @@ async function run() {
       assert.doesNotMatch(invoiceExportCsv, new RegExp(fixtures.invoiceB));
     });
 
+    await runCase('same-workspace member can create invoice for owner customer', async () => {
+      const fixtures = await seedFixtures();
+      const memberInvoiceId = 'cccccccc-5555-4555-8555-cccccccc5555';
+      const memberInvoiceNumber = 'A-002';
+
+      await sql`
+        insert into public.invoices (
+          id,
+          customer_id,
+          amount,
+          status,
+          date,
+          due_date,
+          user_email,
+          invoice_number,
+          workspace_id,
+          created_at
+        )
+        values (
+          ${memberInvoiceId},
+          ${fixtures.customerA},
+          22000,
+          'pending',
+          date '2026-01-12',
+          date '2026-01-22',
+          ${fixtures.teammateUserEmail},
+          ${memberInvoiceNumber},
+          ${fixtures.workspaceA},
+          now()
+        )
+      `;
+
+      const workspaceAOwnerContext: WorkspaceContext = {
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceA,
+      };
+      const workspaceAMemberContext: WorkspaceContext = {
+        userEmail: fixtures.teammateUserEmail,
+        workspaceId: fixtures.workspaceA,
+      };
+
+      dataModule.__testHooks.requireWorkspaceContextOverride = async () => workspaceAOwnerContext;
+      const ownerInvoices = await dataModule.fetchFilteredInvoices('', 1, 'all', 'created_at', 'desc', 25);
+      assert.ok(
+        ownerInvoices.some((invoice) => invoice.id === memberInvoiceId),
+        'owner should see member-created invoice in the same workspace',
+      );
+
+      dataModule.__testHooks.requireWorkspaceContextOverride = async () => workspaceAMemberContext;
+      const memberInvoices = await dataModule.fetchFilteredInvoices('', 1, 'all', 'created_at', 'desc', 25);
+      assert.ok(
+        memberInvoices.some((invoice) => invoice.id === memberInvoiceId),
+        'member should see their created invoice in the same workspace',
+      );
+    });
+
     await runCase('public branding resolves by invoice workspace (not user email)', async () => {
       const fixtures = await seedFixtures();
       const workspaceBUserEmail = fixtures.userEmail.replace('@', '+b@');
