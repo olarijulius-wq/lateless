@@ -7,15 +7,15 @@ import Link from 'next/link';
 import { formatDateToLocal } from '@/app/lib/utils';
 import {
   primaryButtonClasses,
-  secondaryButtonClasses,
 } from '@/app/ui/button';
 
 export default async function LatestInvoices() {
   const latestInvoices = await fetchLatestInvoices();
   const isEmpty = !latestInvoices || latestInvoices.length === 0;
+  const visibleInvoices = latestInvoices.slice(0, 5);
 
   return (
-    <div className="flex w-full flex-col md:col-span-4">
+    <div className="flex w-full flex-col self-start md:col-span-4">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h2 className={`${lusitana.className} text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}>
           Latest Invoices
@@ -28,29 +28,28 @@ export default async function LatestInvoices() {
         </Link>
       </div>
 
-      <div className="group relative flex min-h-[420px] grow flex-col justify-between rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] transition-colors transition-shadow hover:cursor-pointer hover:border-neutral-300 hover:bg-slate-50/50 hover:shadow-[0_16px_30px_rgba(15,23,42,0.08)] dark:border-zinc-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)] dark:hover:border-zinc-700 dark:hover:bg-neutral-950">
+      <div
+        className={clsx(
+          'group relative flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] transition-colors transition-shadow hover:cursor-pointer hover:border-neutral-300 hover:bg-slate-50/50 hover:shadow-[0_16px_30px_rgba(15,23,42,0.08)] dark:border-zinc-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)] dark:hover:border-zinc-700 dark:hover:bg-neutral-950',
+          { 'min-h-[420px] grow justify-between': !isEmpty },
+        )}
+      >
         <Link
           href="/dashboard/invoices"
           aria-label="Open invoices"
           className="absolute inset-0 z-10 rounded-2xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-black"
         />
-        <div className="relative z-20 flex grow flex-col justify-between">
+        <div className={clsx('relative z-20 flex flex-col', { 'grow justify-between': !isEmpty })}>
           {isEmpty ? (
             <div className="rounded-xl border border-neutral-200 bg-slate-50 p-6 dark:border-zinc-800 dark:bg-black">
-              <p className="text-sm text-slate-700 dark:text-slate-200">
-                No invoices yet. Create your first invoice to see activity here.
+              <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">No invoices yet</h3>
+              <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                Create your first invoice to see activity here.
               </p>
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Link
-                  href="/dashboard/customers"
-                  className={`${secondaryButtonClasses} relative z-20 px-3 py-2`}
-                >
-                  Add customer
-                </Link>
+              <div className="mt-4">
                 <Link
                   href="/dashboard/invoices/create"
-                  className={`${primaryButtonClasses} relative z-20 px-3 py-2`}
+                  className={`${primaryButtonClasses} relative z-20 inline-flex px-3 py-2`}
                 >
                   Create invoice
                 </Link>
@@ -59,7 +58,7 @@ export default async function LatestInvoices() {
           ) : (
             <div className="rounded-xl border border-neutral-200 bg-slate-50 px-4 py-3 dark:border-zinc-800 dark:bg-black">
               <div className="space-y-3 md:hidden">
-                {latestInvoices.map((invoice) => {
+                {visibleInvoices.map((invoice) => {
                   const invoiceLabel = invoice.invoice_number
                     ? `#${invoice.invoice_number}`
                     : `#${invoice.id.slice(0, 6).toUpperCase()}`;
@@ -104,7 +103,7 @@ export default async function LatestInvoices() {
                   <span className="text-right">Amount</span>
                   <span className="text-right">Status</span>
                 </div>
-                {latestInvoices.map((invoice, i) => {
+                {visibleInvoices.map((invoice, i) => {
                   const invoiceLabel = invoice.invoice_number
                     ? `#${invoice.invoice_number}`
                     : `#${invoice.id.slice(0, 6).toUpperCase()}`;
@@ -143,18 +142,20 @@ export default async function LatestInvoices() {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-2 pt-6">
-            <div className="flex items-center">
-              <ArrowPathIcon className="h-5 w-5 text-slate-500 dark:text-slate-400" />
-              <h3 className="ml-2 text-sm text-slate-500 dark:text-slate-400">Updated just now</h3>
+          {!isEmpty && (
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-2 pt-6">
+              <div className="flex items-center">
+                <ArrowPathIcon className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+                <h3 className="ml-2 text-sm text-slate-500 dark:text-slate-400">Updated just now</h3>
+              </div>
+              <Link
+                href="/dashboard/invoices"
+                className="relative z-20 text-xs text-slate-700 hover:underline dark:text-slate-200"
+              >
+                View all invoices
+              </Link>
             </div>
-            <Link
-              href="/dashboard/invoices"
-              className="relative z-20 text-xs text-slate-700 hover:underline dark:text-slate-200"
-            >
-              View all invoices
-            </Link>
-          </div>
+          )}
         </div>
       </div>
     </div>
