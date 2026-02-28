@@ -1,4 +1,4 @@
-import { isFeedbackAdminEmail } from '@/app/lib/feedback';
+import { isInternalAdmin } from '@/app/lib/internal-admin-email';
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -30,5 +30,5 @@ export function isReminderManualRunAdmin(userEmail?: string | null) {
     return configuredAdmins.includes(normalized);
   }
 
-  return isFeedbackAdminEmail(normalized);
+  return isInternalAdmin(normalized);
 }

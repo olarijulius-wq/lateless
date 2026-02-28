@@ -8,6 +8,7 @@ import {
   fetchWorkspaceDunningState,
   shouldShowDunningBanner,
 } from '@/app/lib/billing-dunning';
+import { isInternalAdmin } from '@/app/lib/internal-admin-email';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -22,8 +23,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   if (!session?.user?.email) {
     redirect('/login');
   }
-  const showFeedbackButton =
-    session.user.email.trim().toLowerCase() === 'user@nextmail.com';
+  const showFeedbackButton = isInternalAdmin(session.user.email);
   let showRecoveryBanner = false;
 
   try {

@@ -1,10 +1,10 @@
 import postgres from 'postgres';
+import { isInternalAdmin } from '@/app/lib/internal-admin-email';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const FEEDBACK_MIGRATION_REQUIRED_CODE = 'FEEDBACK_MIGRATION_REQUIRED';
 export const FEEDBACK_MIGRATION_FILE = '011_add_feedback.sql';
-const FEEDBACK_ADMIN_EMAIL = 'user@nextmail.com';
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -28,8 +28,8 @@ export function isFeedbackMigrationRequiredError(error: unknown): boolean {
   );
 }
 
-export function isFeedbackAdminEmail(userEmail?: string | null) {
-  return normalizeEmail(userEmail ?? '') === FEEDBACK_ADMIN_EMAIL;
+export function isInternalAdminEmail(userEmail?: string | null) {
+  return isInternalAdmin(userEmail);
 }
 
 export async function assertFeedbackSchemaReady(): Promise<void> {

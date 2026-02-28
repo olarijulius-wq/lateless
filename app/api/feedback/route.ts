@@ -6,7 +6,7 @@ import {
   FEEDBACK_MIGRATION_FILE,
   FEEDBACK_MIGRATION_REQUIRED_CODE,
   fetchLatestFeedback,
-  isFeedbackAdminEmail,
+  isInternalAdminEmail,
   isFeedbackMigrationRequiredError,
 } from '@/app/lib/feedback';
 import {
@@ -119,7 +119,7 @@ export async function GET() {
     );
   }
 
-  if (!isFeedbackAdminEmail(userEmail)) {
+  if (!isInternalAdminEmail(userEmail)) {
     return NextResponse.json(
       { ok: false, message: 'Forbidden.' },
       { status: 403 },

@@ -5,7 +5,7 @@ import { requireUserEmail } from '@/app/lib/data';
 import {
   FEEDBACK_MIGRATION_FILE,
   fetchLatestFeedback,
-  isFeedbackAdminEmail,
+  isInternalAdminEmail,
   isFeedbackMigrationRequiredError,
 } from '@/app/lib/feedback';
 
@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 
 export default async function Page() {
   const userEmail = await requireUserEmail();
-  if (!isFeedbackAdminEmail(userEmail)) {
+  if (!isInternalAdminEmail(userEmail)) {
     redirect('/dashboard');
   }
 
