@@ -4,7 +4,6 @@ const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const FEEDBACK_MIGRATION_REQUIRED_CODE = 'FEEDBACK_MIGRATION_REQUIRED';
 export const FEEDBACK_MIGRATION_FILE = '011_add_feedback.sql';
-const FEEDBACK_ADMIN_EMAIL = 'user@nextmail.com';
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -26,10 +25,6 @@ export function isFeedbackMigrationRequiredError(error: unknown): boolean {
     ((error as { code?: string }).code === FEEDBACK_MIGRATION_REQUIRED_CODE ||
       error.message === FEEDBACK_MIGRATION_REQUIRED_CODE)
   );
-}
-
-export function isFeedbackAdminEmail(userEmail?: string | null) {
-  return normalizeEmail(userEmail ?? '') === FEEDBACK_ADMIN_EMAIL;
 }
 
 export async function assertFeedbackSchemaReady(): Promise<void> {
@@ -121,62 +116,4 @@ export async function createFeedback(input: CreateFeedbackInput): Promise<void> 
   const placeholders = values.map((_, index) => `$${index + 1}`).join(', ');
   const query = `insert into public.feedback (${columnNames.join(', ')}) values (${placeholders})`;
   await sql.unsafe(query, values);
-}
-
-export type FeedbackItem = {
-  id: string;
-  userEmail: string;
-  message: string;
-  pagePath: string | null;
-  createdAt: string;
-};
-
-export async function fetchLatestFeedback(limit = 100): Promise<FeedbackItem[]> {
-  await assertFeedbackSchemaReady();
-  const { hasPagePath } = await getOptionalFeedbackColumns();
-  const normalizedLimit = Math.max(1, Math.min(limit, 100));
-
-  const rows = hasPagePath
-    ? await sql<{
-        id: string;
-        user_email: string;
-        message: string;
-        page_path: string | null;
-        created_at: Date;
-      }[]>`
-        select
-          id,
-          user_email,
-          message,
-          page_path,
-          created_at
-        from public.feedback
-        order by created_at desc
-        limit ${normalizedLimit}
-      `
-    : await sql<{
-        id: string;
-        user_email: string;
-        message: string;
-        page_path: string | null;
-        created_at: Date;
-      }[]>`
-        select
-          id,
-          user_email,
-          message,
-          null::text as page_path,
-          created_at
-        from public.feedback
-        order by created_at desc
-        limit ${normalizedLimit}
-      `;
-
-  return rows.map((row) => ({
-    id: row.id,
-    userEmail: normalizeEmail(row.user_email),
-    message: row.message,
-    pagePath: row.page_path,
-    createdAt: row.created_at.toISOString(),
-  }));
 }

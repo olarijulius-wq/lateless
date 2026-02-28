@@ -22,8 +22,6 @@ export default async function Layout({ children }: { children: React.ReactNode }
   if (!session?.user?.email) {
     redirect('/login');
   }
-  const showFeedbackButton =
-    session.user.email.trim().toLowerCase() === 'user@nextmail.com';
   let showRecoveryBanner = false;
 
   try {
@@ -49,11 +47,9 @@ export default async function Layout({ children }: { children: React.ReactNode }
             <BillingRecoveryBanner />
           </div>
         ) : null}
-        {showFeedbackButton ? (
-          <div className="mb-4 flex justify-end">
-            <FeedbackButton />
-          </div>
-        ) : null}
+        <div className="mb-4 flex justify-end">
+          <FeedbackButton />
+        </div>
         {children}
       </main>
     </div>
