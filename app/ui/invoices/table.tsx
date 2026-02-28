@@ -173,11 +173,7 @@ export default function InvoicesTable({
                       </p>
                     </div>
                     <div className="shrink-0 pl-2">
-                      <div
-                        className="flex flex-col items-end text-right leading-tight"
-                        onClickCapture={stopRowNavigation}
-                        onKeyDownCapture={stopRowNavigation}
-                      >
+                      <div className="flex flex-col items-end text-right leading-tight">
                         <InvoiceStatus status={invoice.status} />
                         {invoice.status === 'pending' && invoice.days_overdue > 0 && (
                           <span className={`mt-1 inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-xs text-amber-800 ${DARK_PILL}`}>
@@ -240,11 +236,7 @@ export default function InvoicesTable({
                         {invoice.due_date ? formatDateToLocal(invoice.due_date) : '—'}
                       </p>
                     </div>
-                    <div
-                      className="flex shrink-0 flex-col items-end gap-2 pl-2"
-                      onClickCapture={stopRowNavigation}
-                      onKeyDownCapture={stopRowNavigation}
-                    >
+                    <div className="flex shrink-0 flex-col items-end gap-2 pl-2">
                       <div className="flex items-center justify-end gap-2">
                         <UpdateInvoice id={invoice.id} returnTo={returnToPath} />
                         <DeleteInvoice id={invoice.id} />
@@ -340,11 +332,7 @@ export default function InvoicesTable({
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-4 py-5 text-center">
-                      <div
-                        className="flex justify-center gap-3"
-                        onClickCapture={stopRowNavigation}
-                        onKeyDownCapture={stopRowNavigation}
-                      >
+                      <div className="flex justify-center gap-3">
                         <SendInvoiceButton
                           invoiceId={invoice.id}
                           compact
