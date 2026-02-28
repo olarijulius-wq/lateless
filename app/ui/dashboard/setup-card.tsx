@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { primaryButtonClasses, secondaryButtonClasses } from '@/app/ui/button';
 import { CARD_INTERACTIVE, LIGHT_SURFACE } from '@/app/ui/theme/tokens';
 import { DASHBOARD_SETUP_HIDDEN_KEY } from '@/app/ui/dashboard/setup-visibility';
@@ -18,50 +18,57 @@ type SetupItem = {
 export default function DashboardSetupCard({ items }: { items: SetupItem[] }) {
   const doneCount = useMemo(() => items.filter((item) => item.done).length, [items]);
   const allDone = doneCount >= items.length;
-  const [hidden, setHidden] = useState(() => {
-    if (typeof window === 'undefined') {
-      return allDone;
-    }
-    const fromStorage = window.localStorage.getItem(DASHBOARD_SETUP_HIDDEN_KEY);
-    return fromStorage === '1' || allDone;
-  });
-
-  const showFloatingSetup = hidden;
+  const [hiddenOverride, setHiddenOverride] = useState<boolean | null>(null);
+  const hiddenFromStorage = useSyncExternalStore(
+    (onStoreChange) => {
+      window.addEventListener('storage', onStoreChange);
+      return () => window.removeEventListener('storage', onStoreChange);
+    },
+    () => window.localStorage.getItem(DASHBOARD_SETUP_HIDDEN_KEY) === '1',
+    () => false,
+  );
+  const hidden = allDone || hiddenOverride || (hiddenOverride === null && hiddenFromStorage);
 
   const hideSetup = () => {
-    setHidden(true);
+    setHiddenOverride(true);
     window.localStorage.setItem(DASHBOARD_SETUP_HIDDEN_KEY, '1');
   };
 
   const showSetup = () => {
-    setHidden(false);
+    setHiddenOverride(false);
     window.localStorage.removeItem(DASHBOARD_SETUP_HIDDEN_KEY);
   };
 
   return (
     <>
-      {!hidden ? (
-        <section
-          className={`rounded-2xl border p-5 ${LIGHT_SURFACE} ${CARD_INTERACTIVE} dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                Quick Setup
-              </h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                {doneCount}/{items.length} done
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+      <section
+        className={`hidden rounded-2xl border p-5 md:block ${LIGHT_SURFACE} ${CARD_INTERACTIVE} dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Quick Setup
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              {doneCount}/{items.length} done
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {hidden ? (
+              <button type="button" onClick={showSetup} className={`${secondaryButtonClasses} h-9 px-3 text-sm`}>
+                Show setup
+              </button>
+            ) : (
               <button type="button" onClick={hideSetup} className={`${secondaryButtonClasses} h-9 px-3 text-sm`}>
                 Hide setup
               </button>
-              <Link href="/dashboard/onboarding" className={`${primaryButtonClasses} h-9 px-3 text-sm`}>
-                Continue setup
-              </Link>
-            </div>
+            )}
+            <Link href="/dashboard/onboarding" className={`${primaryButtonClasses} h-9 px-3 text-sm`}>
+              Continue setup
+            </Link>
           </div>
+        </div>
+        {!hidden ? (
           <div className="mt-4 grid gap-3 md:grid-cols-2">
             {items.map((item) => (
               <div
@@ -90,26 +97,36 @@ export default function DashboardSetupCard({ items }: { items: SetupItem[] }) {
               </div>
             ))}
           </div>
-        </section>
-      ) : null}
+        ) : (
+          <p className="mt-4 text-sm text-slate-600 dark:text-slate-400">
+            Setup hidden. Use Show setup to bring back the checklist.
+          </p>
+        )}
+      </section>
 
-      {showFloatingSetup ? (
-        <div className="fixed bottom-5 right-5 z-40">
-          <div className="flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-2 shadow-lg dark:border-neutral-800 dark:bg-black">
-            {allDone ? (
-              <span className="text-xs text-emerald-700 dark:text-emerald-300">Setup complete</span>
-            ) : (
-              <span className="text-xs text-slate-600 dark:text-slate-300">Setup hidden</span>
-            )}
+      <div className="fixed bottom-5 right-5 z-40 md:hidden">
+        <div className="flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-3 py-2 shadow-lg dark:border-neutral-800 dark:bg-black">
+          {allDone ? (
+            <span className="text-xs text-emerald-700 dark:text-emerald-300">Setup complete</span>
+          ) : hidden ? (
+            <span className="text-xs text-slate-600 dark:text-slate-300">Setup hidden</span>
+          ) : (
+            <span className="text-xs text-slate-600 dark:text-slate-300">Setup in progress</span>
+          )}
+          {hidden ? (
             <button type="button" onClick={showSetup} className={`${secondaryButtonClasses} h-7 px-2 text-xs`}>
               Show
             </button>
-            <Link href="/dashboard/onboarding" className={`${primaryButtonClasses} h-7 px-2 text-xs`}>
-              Setup
-            </Link>
-          </div>
+          ) : (
+            <button type="button" onClick={hideSetup} className={`${secondaryButtonClasses} h-7 px-2 text-xs`}>
+              Hide
+            </button>
+          )}
+          <Link href="/dashboard/onboarding" className={`${primaryButtonClasses} h-7 px-2 text-xs`}>
+            Setup
+          </Link>
         </div>
-      ) : null}
+      </div>
     </>
   );
 }

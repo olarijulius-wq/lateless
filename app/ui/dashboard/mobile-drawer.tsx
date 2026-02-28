@@ -190,7 +190,6 @@ export default function MobileDrawer({
               }}
             >
               <NavLinks
-                userEmail={userEmail}
                 showBillingRecoveryWarning={showBillingRecoveryWarning}
               />
             </nav>

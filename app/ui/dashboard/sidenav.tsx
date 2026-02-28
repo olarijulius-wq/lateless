@@ -58,7 +58,6 @@ export default async function SideNav() {
         </Link>
         <div className="flex h-full flex-col">
           <NavLinks
-            userEmail={userEmail}
             showBillingRecoveryWarning={showBillingRecoveryWarning}
           />
           {shouldShowAccountMenu ? (

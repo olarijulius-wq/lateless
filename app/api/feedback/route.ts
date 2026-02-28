@@ -5,8 +5,6 @@ import {
   createFeedback,
   FEEDBACK_MIGRATION_FILE,
   FEEDBACK_MIGRATION_REQUIRED_CODE,
-  fetchLatestFeedback,
-  isFeedbackAdminEmail,
   isFeedbackMigrationRequiredError,
 } from '@/app/lib/feedback';
 import {
@@ -103,47 +101,6 @@ export async function POST(request: NextRequest) {
     console.error('Create feedback failed:', error);
     return NextResponse.json(
       { ok: false, message: 'Failed to submit feedback.' },
-      { status: 500 },
-    );
-  }
-}
-
-export async function GET() {
-  let userEmail: string;
-  try {
-    userEmail = await requireUserEmail();
-  } catch {
-    return NextResponse.json(
-      { ok: false, message: 'Unauthorized.' },
-      { status: 401 },
-    );
-  }
-
-  if (!isFeedbackAdminEmail(userEmail)) {
-    return NextResponse.json(
-      { ok: false, message: 'Forbidden.' },
-      { status: 403 },
-    );
-  }
-
-  try {
-    const items = await fetchLatestFeedback(100);
-    return NextResponse.json({ ok: true, items });
-  } catch (error) {
-    if (isFeedbackMigrationRequiredError(error)) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: FEEDBACK_MIGRATION_REQUIRED_CODE,
-          message: migrationMessage(),
-        },
-        { status: 503 },
-      );
-    }
-
-    console.error('Load feedback failed:', error);
-    return NextResponse.json(
-      { ok: false, message: 'Failed to load feedback.' },
       { status: 500 },
     );
   }

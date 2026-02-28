@@ -7,17 +7,15 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { getDashboardLinks } from '@/app/ui/dashboard/nav-links-data';
 
 type NavLinksProps = {
-  userEmail?: string;
   showBillingRecoveryWarning?: boolean;
 };
 
 export default function NavLinks({
-  userEmail = '',
   showBillingRecoveryWarning = false,
 }: NavLinksProps) {
   const pathname = usePathname();
   const prefersReducedMotion = useReducedMotion();
-  const dashboardLinks = getDashboardLinks(userEmail);
+  const dashboardLinks = getDashboardLinks();
   const MotionLink = motion(Link);
 
   return (
