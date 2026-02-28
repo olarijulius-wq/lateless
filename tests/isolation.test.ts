@@ -225,6 +225,7 @@ async function run() {
     const sendInvoiceRoute = await import('@/app/api/invoices/[id]/send/route');
     const remindersRunRoute = await import('@/app/api/reminders/run/route');
     const refundRequestRoute = await import('@/app/api/public/invoices/[token]/refund-request/route');
+    const refundApproveRoute = await import('@/app/api/dashboard/refund-requests/[id]/approve/route');
     const smokeCheckPingRoute = await import('@/app/api/settings/smoke-check/ping/route');
     const stripePortalRoute = await import('@/app/api/stripe/portal/route');
     const workspaceBillingModule = await import('@/app/lib/workspace-billing');
@@ -257,6 +258,11 @@ async function run() {
         sendInvoiceRoute.__testHooks.sendInvoiceEmailOverride = null;
         sendInvoiceRoute.__testHooks.revalidatePathOverride = null;
         remindersRunRoute.__testHooks.sendWorkspaceEmailOverride = null;
+        refundApproveRoute.__testHooks.ensureWorkspaceContextForCurrentUserOverride = null;
+        refundApproveRoute.__testHooks.enforceRateLimitOverride = null;
+        refundApproveRoute.__testHooks.paymentIntentRetrieveOverride = null;
+        refundApproveRoute.__testHooks.refundCreateOverride = null;
+        refundApproveRoute.__testHooks.chargeRetrieveOverride = null;
         smokeCheckPingRoute.__testHooks.ensureWorkspaceContextForCurrentUserOverride = null;
         smokeCheckPingRoute.__testHooks.getSmokeCheckAccessDecisionOverride = null;
         smokeCheckPingRoute.__testHooks.getSmokeCheckPingPayloadOverride = null;
@@ -897,6 +903,185 @@ async function run() {
         where invoice_id = ${fixtures.invoiceA}
       `;
       assert.equal(rows.length, 0, 'no refund request should be created');
+    });
+
+    await runCase('refund approve resolves stripe via invoice workspace billing', async () => {
+      const fixtures = await seedFixtures();
+      const ownerStripeAccount = 'acct_workspace_owner_for_refund';
+      const memberStripeAccount = 'acct_workspace_member_for_refund';
+      const positiveRequestId = 'f1f1f1f1-aaaa-4aaa-8aaa-f1f1f1f1f1f1';
+      const negativeRequestId = 'f2f2f2f2-bbbb-4bbb-8bbb-f2f2f2f2f2f2';
+      const paidMemberInvoiceId = 'eeeeeeee-7777-4777-8777-eeeeeeee7777';
+      const paidOwnerInvoiceId = 'eeeeeeee-8888-4888-8888-eeeeeeee8888';
+      let seenStripeAccount: string | null = null;
+
+      await sql`
+        update public.users
+        set
+          stripe_connect_account_id = case
+            when id = ${fixtures.userId} then ${ownerStripeAccount}
+            when id = ${fixtures.teammateUserId} then ${memberStripeAccount}
+            else stripe_connect_account_id
+          end,
+          stripe_connect_payouts_enabled = true,
+          stripe_connect_details_submitted = true
+        where id in (${fixtures.userId}, ${fixtures.teammateUserId})
+      `;
+
+      await sql`
+        insert into public.workspace_billing (
+          workspace_id,
+          plan,
+          subscription_status,
+          stripe_customer_id,
+          updated_at
+        )
+        values (
+          ${fixtures.workspaceA},
+          'solo',
+          'active',
+          'cus_refund_workspace_a',
+          now()
+        )
+      `;
+
+      await sql`
+        insert into public.invoices (
+          id,
+          customer_id,
+          amount,
+          status,
+          paid_at,
+          date,
+          due_date,
+          user_email,
+          invoice_number,
+          workspace_id,
+          stripe_payment_intent_id,
+          created_at
+        )
+        values
+          (
+            ${paidMemberInvoiceId},
+            ${fixtures.customerA},
+            21000,
+            'paid',
+            now(),
+            date '2026-01-14',
+            date '2026-01-24',
+            ${fixtures.teammateUserEmail},
+            'A-004',
+            ${fixtures.workspaceA},
+            'pi_refund_member_invoice',
+            now()
+          ),
+          (
+            ${paidOwnerInvoiceId},
+            ${fixtures.customerA},
+            22000,
+            'paid',
+            now(),
+            date '2026-01-15',
+            date '2026-01-25',
+            ${fixtures.userEmail},
+            'A-005',
+            ${fixtures.workspaceA},
+            'pi_refund_owner_invoice',
+            now()
+          )
+      `;
+
+      await sql`
+        insert into public.refund_requests (
+          id,
+          workspace_id,
+          invoice_id,
+          payer_email,
+          reason,
+          status
+        )
+        values
+          (
+            ${positiveRequestId},
+            ${fixtures.workspaceA},
+            ${paidMemberInvoiceId},
+            'payer@example.com',
+            'Approve member-created invoice refund.',
+            'pending'
+          ),
+          (
+            ${negativeRequestId},
+            ${fixtures.workspaceA},
+            ${paidOwnerInvoiceId},
+            'payer@example.com',
+            'Fail when workspace billing row is missing.',
+            'pending'
+          )
+      `;
+
+      refundApproveRoute.__testHooks.ensureWorkspaceContextForCurrentUserOverride = async () => ({
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceA,
+        userRole: 'owner',
+      });
+      refundApproveRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      refundApproveRoute.__testHooks.paymentIntentRetrieveOverride = async (
+        _paymentIntentId,
+        stripeAccount,
+      ) => {
+        seenStripeAccount = stripeAccount;
+        return {
+          latest_charge: 'ch_refund_member_invoice',
+        };
+      };
+      refundApproveRoute.__testHooks.refundCreateOverride = async () => ({
+        id: 're_refund_member_invoice',
+      });
+      refundApproveRoute.__testHooks.chargeRetrieveOverride = async () => ({
+        amount: 21000,
+        amount_refunded: 21000,
+        currency: 'eur',
+        refunds: {
+          data: [{ id: 're_refund_member_invoice', created: 1700000000, amount: 21000 }],
+        },
+      });
+
+      const positiveRes = await refundApproveRoute.POST(
+        new Request(`http://localhost/api/dashboard/refund-requests/${positiveRequestId}/approve`, {
+          method: 'POST',
+          headers: {
+            'x-forwarded-for': '203.0.113.12',
+          },
+        }),
+        { params: Promise.resolve({ id: positiveRequestId }) },
+      );
+
+      assert.equal(positiveRes.status, 200, 'owner approval should succeed');
+      const positiveBody = await positiveRes.json();
+      assert.equal(positiveBody.ok, true);
+      assert.equal(seenStripeAccount, ownerStripeAccount, 'must use workspace owner Stripe account');
+      assert.notEqual(seenStripeAccount, memberStripeAccount);
+
+      await sql`
+        delete from public.workspace_billing
+        where workspace_id = ${fixtures.workspaceA}
+      `;
+
+      const negativeRes = await refundApproveRoute.POST(
+        new Request(`http://localhost/api/dashboard/refund-requests/${negativeRequestId}/approve`, {
+          method: 'POST',
+          headers: {
+            'x-forwarded-for': '203.0.113.13',
+          },
+        }),
+        { params: Promise.resolve({ id: negativeRequestId }) },
+      );
+
+      assert.equal(negativeRes.status, 409, 'missing workspace billing should fail closed');
+      const negativeBody = await negativeRes.json();
+      assert.equal(negativeBody.ok, false);
+      assert.equal(negativeBody.code, 'WORKSPACE_BILLING_MISSING');
+      assert.notEqual(negativeBody.message, 'Connected Stripe account is not configured.');
     });
 
     if (failures > 0) {
