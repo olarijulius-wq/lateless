@@ -5,6 +5,7 @@ import { sql } from '@/app/lib/db';
 export type InvoiceWorkspaceBillingResolution = {
   invoiceId: string;
   workspaceId: string | null;
+  workspaceBillingExists: boolean;
   stripeAccountId: string | null;
   stripeCustomerId: string | null;
 };
@@ -21,12 +22,14 @@ export async function resolveStripeWorkspaceBillingForInvoice(
   const [row] = await sql<{
     invoice_id: string;
     workspace_id: string | null;
+    workspace_billing_workspace_id: string | null;
     stripe_account_id: string | null;
     stripe_customer_id: string | null;
   }[]>`
     select
       i.id as invoice_id,
       i.workspace_id,
+      wb.workspace_id as workspace_billing_workspace_id,
       owner_user.stripe_connect_account_id as stripe_account_id,
       wb.stripe_customer_id
     from public.invoices i
@@ -45,6 +48,7 @@ export async function resolveStripeWorkspaceBillingForInvoice(
   return {
     invoiceId: row.invoice_id,
     workspaceId: row.workspace_id,
+    workspaceBillingExists: Boolean(normalizeText(row.workspace_billing_workspace_id)),
     stripeAccountId: normalizeText(row.stripe_account_id),
     stripeCustomerId: normalizeText(row.stripe_customer_id),
   };

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import postgres from 'postgres';
 import { stripe } from '@/app/lib/stripe';
-import { fetchStripeConnectStatusForUser } from '@/app/lib/data';
+import { resolveStripeWorkspaceBillingForInvoice } from '@/app/lib/invoice-workspace-billing';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -23,6 +23,39 @@ export const runtime = 'nodejs';
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 const DEBUG = process.env.DEBUG_REFUNDS === 'true';
+const TEST_HOOKS_ENABLED =
+  process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';
+export const __testHooksEnabled = TEST_HOOKS_ENABLED;
+export const __testHooks = {
+  ensureWorkspaceContextForCurrentUserOverride: null as
+    | (null | (() => Promise<{
+      userEmail: string;
+      workspaceId: string;
+      userRole: 'owner' | 'admin' | 'member';
+    }>)),
+  enforceRateLimitOverride: null as
+    | (null | ((req: Request, input: {
+      bucket: string;
+      windowSec: number;
+      ipLimit: number;
+      userLimit: number;
+    }, opts: { userKey: string; failClosed: boolean }) => Promise<Response | null>)),
+  paymentIntentRetrieveOverride: null as
+    | (null | ((paymentIntentId: string, stripeAccount: string) => Promise<{
+      latest_charge: string | { id: string } | null;
+    }>)),
+  refundCreateOverride: null as
+    | (null | ((chargeId: string, stripeAccount: string, idempotencyKey: string) => Promise<{ id: string }>)),
+  chargeRetrieveOverride: null as
+    | (null | ((chargeId: string, stripeAccount: string) => Promise<{
+      amount: number;
+      amount_refunded: number;
+      currency: string;
+      refunds: {
+        data: Array<{ id: string; created: number; amount: number }>;
+      };
+    }>)),
+};
 
 function debugLog(...args: unknown[]) {
   if (DEBUG) {
@@ -117,7 +150,11 @@ export async function POST(
 
   try {
     await assertRefundRequestsSchemaReady();
-    const context = await ensureWorkspaceContextForCurrentUser();
+    const context = TEST_HOOKS_ENABLED
+      ? (__testHooks.ensureWorkspaceContextForCurrentUserOverride
+        ? await __testHooks.ensureWorkspaceContextForCurrentUserOverride()
+        : await ensureWorkspaceContextForCurrentUser())
+      : await ensureWorkspaceContextForCurrentUser();
 
     if (context.userRole !== 'owner' && context.userRole !== 'admin') {
       return NextResponse.json(
@@ -126,19 +163,47 @@ export async function POST(
       );
     }
 
-    const rl = await enforceRateLimit(
-      _request,
-      {
-        bucket: 'refund_approve',
-        windowSec: 300,
-        ipLimit: 20,
-        userLimit: 10,
-      },
-      {
-        userKey: context.userEmail,
-        failClosed: true,
-      },
-    );
+    const rl = TEST_HOOKS_ENABLED
+      ? (__testHooks.enforceRateLimitOverride
+        ? await __testHooks.enforceRateLimitOverride(
+          _request,
+          {
+            bucket: 'refund_approve',
+            windowSec: 300,
+            ipLimit: 20,
+            userLimit: 10,
+          },
+          {
+            userKey: context.userEmail,
+            failClosed: true,
+          },
+        )
+        : await enforceRateLimit(
+          _request,
+          {
+            bucket: 'refund_approve',
+            windowSec: 300,
+            ipLimit: 20,
+            userLimit: 10,
+          },
+          {
+            userKey: context.userEmail,
+            failClosed: true,
+          },
+        ))
+      : await enforceRateLimit(
+        _request,
+        {
+          bucket: 'refund_approve',
+          windowSec: 300,
+          ipLimit: 20,
+          userLimit: 10,
+        },
+        {
+          userKey: context.userEmail,
+          failClosed: true,
+        },
+      );
     if (rl) return rl;
 
     const [row] = await sql<{
@@ -147,15 +212,13 @@ export async function POST(
       invoice_id: string;
       invoice_status: string;
       stripe_payment_intent_id: string | null;
-      user_email: string;
     }[]>`
       select
         rr.id,
         rr.status,
         rr.invoice_id,
         i.status as invoice_status,
-        i.stripe_payment_intent_id,
-        i.user_email
+        i.stripe_payment_intent_id
       from public.refund_requests rr
       join public.invoices i
         on i.id = rr.invoice_id
@@ -200,8 +263,37 @@ export async function POST(
       );
     }
 
-    const stripeStatus = await fetchStripeConnectStatusForUser(row.user_email);
-    const stripeAccount = stripeStatus.accountId;
+    const invoiceBilling = await resolveStripeWorkspaceBillingForInvoice(row.invoice_id);
+    if (!invoiceBilling || !invoiceBilling.workspaceId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'INVOICE_WORKSPACE_MISSING',
+          message: 'Invoice workspace is missing; refund approval is blocked.',
+        },
+        { status: 409 },
+      );
+    }
+
+    if (invoiceBilling.workspaceId.trim() !== context.workspaceId.trim()) {
+      return NextResponse.json(
+        { ok: false, message: 'Refund request not found.' },
+        { status: 404 },
+      );
+    }
+
+    if (!invoiceBilling.workspaceBillingExists) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'WORKSPACE_BILLING_MISSING',
+          message: 'Workspace billing is not configured for this invoice workspace.',
+        },
+        { status: 409 },
+      );
+    }
+
+    const stripeAccount = invoiceBilling.stripeAccountId;
 
     if (!stripeAccount) {
       return NextResponse.json(
@@ -210,11 +302,16 @@ export async function POST(
       );
     }
 
-    const intent = await stripe.paymentIntents.retrieve(
-      row.stripe_payment_intent_id,
-      {},
-      { stripeAccount },
-    );
+    const intent = TEST_HOOKS_ENABLED && __testHooks.paymentIntentRetrieveOverride
+      ? await __testHooks.paymentIntentRetrieveOverride(
+        row.stripe_payment_intent_id,
+        stripeAccount,
+      )
+      : await stripe.paymentIntents.retrieve(
+        row.stripe_payment_intent_id,
+        {},
+        { stripeAccount },
+      );
     const chargeId = readChargeId(intent.latest_charge);
 
     if (!chargeId) {
@@ -231,13 +328,16 @@ export async function POST(
     let resolvedStripeRefundId: string | null = null;
 
     try {
-      const refund = await stripe.refunds.create(
-        { charge: chargeId },
-        {
-          stripeAccount,
-          idempotencyKey: `refund_request_${row.id}`,
-        },
-      );
+      const idempotencyKey = `refund_request_${row.id}`;
+      const refund = TEST_HOOKS_ENABLED && __testHooks.refundCreateOverride
+        ? await __testHooks.refundCreateOverride(chargeId, stripeAccount, idempotencyKey)
+        : await stripe.refunds.create(
+          { charge: chargeId },
+          {
+            stripeAccount,
+            idempotencyKey,
+          },
+        );
       resolvedStripeRefundId = refund.id;
     } catch (error) {
       if (!isChargeAlreadyRefundedError(error)) {
@@ -255,11 +355,13 @@ export async function POST(
       );
     }
 
-    const charge = await stripe.charges.retrieve(
-      chargeId,
-      { expand: ['refunds'] },
-      { stripeAccount },
-    );
+    const charge = TEST_HOOKS_ENABLED && __testHooks.chargeRetrieveOverride
+      ? await __testHooks.chargeRetrieveOverride(chargeId, stripeAccount)
+      : await stripe.charges.retrieve(
+        chargeId,
+        { expand: ['refunds'] },
+        { stripeAccount },
+      );
     const chargeSnapshot = readChargeRefundSnapshot(charge);
     const effectiveStripeRefundId =
       resolvedStripeRefundId ?? chargeSnapshot.latestRefundId;
