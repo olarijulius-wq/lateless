@@ -209,7 +209,7 @@ export default function InvoicesTable({
                             ) : hasConnectedPayoutAccount ? (
                               <PayInvoiceButton
                                 invoiceId={invoice.id}
-                                className="rounded-md px-2 py-1 text-xs whitespace-nowrap"
+                                className="whitespace-nowrap"
                               />
                             ) : null)}
                         </div>
@@ -358,7 +358,7 @@ export default function InvoicesTable({
                           ) : hasConnectedPayoutAccount ? (
                             <PayInvoiceButton
                               invoiceId={invoice.id}
-                              className="rounded-md px-2 py-1 text-xs"
+                              className="whitespace-nowrap"
                             />
                           ) : null)}
                         <UpdateInvoice id={invoice.id} returnTo={returnToPath} />
