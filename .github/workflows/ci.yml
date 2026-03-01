@@ -3,7 +3,8 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   ci:
@@ -34,17 +35,23 @@ jobs:
         with:
           version: 9
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: |
+          echo "::group::Install dependencies"
+          pnpm install --frozen-lockfile
+          echo "::endgroup::"
 
       - name: Lint
-        run: pnpm lint
+        run: |
+          echo "::group::Lint"
+          pnpm lint
+          echo "::endgroup::"
 
       - name: Build
         env:
@@ -57,7 +64,10 @@ jobs:
           NEXTAUTH_URL: "http://localhost:3000"
           POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
-        run: pnpm build
+        run: |
+          echo "::group::Build"
+          pnpm build
+          echo "::endgroup::"
 
       - name: Test
         env:
@@ -66,4 +76,7 @@ jobs:
           DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           NODE_ENV: test
           LATELLESS_TEST_MODE: "1"
-        run: pnpm test
+        run: |
+          echo "::group::Test"
+          pnpm test
+          echo "::endgroup::"
