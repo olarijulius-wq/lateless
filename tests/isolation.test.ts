@@ -28,6 +28,11 @@ function requireTestDatabaseUrl() {
   return url;
 }
 
+function resolveSslMode(dbUrl: string): false | 'require' {
+  const hostname = new URL(dbUrl).hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1' ? false : 'require';
+}
+
 const testDbUrl = requireTestDatabaseUrl();
 process.env.AUTH_SECRET ??= 'test-auth-secret';
 process.env.NEXTAUTH_SECRET ??= process.env.AUTH_SECRET;
@@ -35,7 +40,7 @@ process.env.NEXTAUTH_URL ??= 'http://localhost:3000';
 process.env.PAY_LINK_SECRET ??= 'test-pay-link-secret';
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000';
 
-const sql = postgres(testDbUrl, { ssl: 'require', prepare: false });
+const sql = postgres(testDbUrl, { ssl: resolveSslMode(testDbUrl), prepare: false });
 const sqlClients: Array<ReturnType<typeof postgres>> = [sql];
 
 async function closeSqlClients() {
@@ -223,6 +228,7 @@ async function run() {
     const invoiceExportRoute = await import('@/app/api/invoices/export/route');
     const customerExportRoute = await import('@/app/api/customers/export/route');
     const sendInvoiceRoute = await import('@/app/api/invoices/[id]/send/route');
+    const publicInvoicePayRoute = await import('@/app/api/public/invoices/[token]/pay/route');
     const remindersRunRoute = await import('@/app/api/reminders/run/route');
     const refundRequestRoute = await import('@/app/api/public/invoices/[token]/refund-request/route');
     const refundApproveRoute = await import('@/app/api/dashboard/refund-requests/[id]/approve/route');
@@ -257,6 +263,12 @@ async function run() {
         sendInvoiceRoute.__testHooks.requireWorkspaceRoleOverride = null;
         sendInvoiceRoute.__testHooks.sendInvoiceEmailOverride = null;
         sendInvoiceRoute.__testHooks.revalidatePathOverride = null;
+        publicInvoicePayRoute.__testHooks.enforceRateLimitOverride = null;
+        publicInvoicePayRoute.__testHooks.resolveStripeWorkspaceBillingForInvoiceOverride = null;
+        publicInvoicePayRoute.__testHooks.assertStripeConfigOverride = null;
+        publicInvoicePayRoute.__testHooks.checkConnectedAccountAccessOverride = null;
+        publicInvoicePayRoute.__testHooks.getConnectChargeCapabilityStatusOverride = null;
+        publicInvoicePayRoute.__testHooks.createInvoiceCheckoutSessionOverride = null;
         remindersRunRoute.__testHooks.sendWorkspaceEmailOverride = null;
         refundApproveRoute.__testHooks.ensureWorkspaceContextForCurrentUserOverride = null;
         refundApproveRoute.__testHooks.enforceRateLimitOverride = null;
@@ -747,6 +759,33 @@ async function run() {
       assert.equal(sendCalled, false, 'cross-workspace invoice must not trigger email send');
     });
 
+    await runCase('send invoice route triggers successfully for workspace invoice', async () => {
+      const fixtures = await seedFixtures();
+      let sendCalled = false;
+
+      sendInvoiceRoute.__testHooks.authOverride = async () => ({ user: { email: fixtures.userEmail } });
+      sendInvoiceRoute.__testHooks.requireWorkspaceRoleOverride = async () => ({
+        workspaceId: fixtures.workspaceA,
+        role: 'owner',
+      });
+      sendInvoiceRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      sendInvoiceRoute.__testHooks.sendInvoiceEmailOverride = async () => {
+        sendCalled = true;
+        return { provider: 'test', sentAt: new Date().toISOString() };
+      };
+      sendInvoiceRoute.__testHooks.revalidatePathOverride = () => {};
+
+      const res = await sendInvoiceRoute.POST(
+        new Request(`http://localhost/api/invoices/${fixtures.invoiceA}/send`, { method: 'POST' }),
+        { params: Promise.resolve({ id: fixtures.invoiceA }) },
+      );
+      const body = await res.json();
+
+      assert.equal(res.status, 200, 'workspace invoice send should succeed');
+      assert.equal(body.ok, true);
+      assert.equal(sendCalled, true, 'send route should trigger invoice email path');
+    });
+
     await runCase('reminder run sends via workspace provider selector path', async () => {
       const fixtures = await seedFixtures();
       let sendCalled = false;
@@ -903,6 +942,152 @@ async function run() {
         where invoice_id = ${fixtures.invoiceA}
       `;
       assert.equal(rows.length, 0, 'no refund request should be created');
+    });
+
+    await runCase('pay-link -> pay -> refund-request -> approve happy path for workspace', async () => {
+      const fixtures = await seedFixtures();
+      const ownerStripeAccount = 'acct_workspace_owner_pay_refund_happy';
+
+      await sql`
+        update public.users
+        set
+          stripe_connect_account_id = ${ownerStripeAccount},
+          stripe_connect_payouts_enabled = true,
+          stripe_connect_details_submitted = true
+        where id = ${fixtures.userId}
+      `;
+      await sql`
+        insert into public.workspace_billing (
+          workspace_id,
+          plan,
+          subscription_status,
+          stripe_customer_id,
+          updated_at
+        )
+        values (
+          ${fixtures.workspaceA},
+          'solo',
+          'active',
+          'cus_pay_refund_workspace_a',
+          now()
+        )
+      `;
+
+      const token = payLinkModule.generatePayToken(fixtures.invoiceA);
+
+      publicInvoicePayRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      publicInvoicePayRoute.__testHooks.assertStripeConfigOverride = () => {};
+      publicInvoicePayRoute.__testHooks.checkConnectedAccountAccessOverride = async () => ({
+        ok: true,
+        isModeMismatch: false,
+        message: 'ok',
+      });
+      publicInvoicePayRoute.__testHooks.getConnectChargeCapabilityStatusOverride = async () => ({
+        ok: true,
+        cardPayments: 'active',
+        chargesEnabled: true,
+        detailsSubmitted: true,
+      });
+      publicInvoicePayRoute.__testHooks.createInvoiceCheckoutSessionOverride = async () => ({
+        checkoutSession: {
+          id: 'cs_test_pay_refund_happy',
+          url: 'https://checkout.stripe.test/session',
+          payment_intent: 'pi_test_pay_refund_happy',
+        },
+        feeBreakdown: {
+          processingUpliftAmount: 0,
+          payableAmount: 15000,
+          platformFeeAmount: 0,
+        },
+      });
+
+      const payRes = await publicInvoicePayRoute.POST(
+        new Request(`http://localhost/api/public/invoices/${token}/pay`, {
+          method: 'POST',
+          headers: {
+            'x-forwarded-for': '203.0.113.31',
+          },
+        }),
+        { params: Promise.resolve({ token }) },
+      );
+      const payBody = await payRes.json();
+      assert.equal(payRes.status, 200, 'public pay route should return checkout URL');
+      assert.equal(payBody.url, 'https://checkout.stripe.test/session');
+
+      await sql`
+        update public.invoices
+        set
+          status = 'paid',
+          paid_at = now()
+        where id = ${fixtures.invoiceA}
+      `;
+
+      const requestRes = await refundRequestRoute.POST(
+        new Request(`http://localhost/api/public/invoices/${token}/refund-request`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-forwarded-for': '203.0.113.32',
+          },
+          body: JSON.stringify({
+            reason: 'Please refund this paid invoice from the happy path flow.',
+          }),
+        }),
+        { params: Promise.resolve({ token }) },
+      );
+      assert.equal(requestRes.status, 200, 'refund request should succeed after pay');
+
+      const [requestRow] = await sql<{ id: string }[]>`
+        select id
+        from public.refund_requests
+        where invoice_id = ${fixtures.invoiceA}
+        order by requested_at desc
+        limit 1
+      `;
+      assert.ok(requestRow?.id, 'refund request row should be present');
+
+      refundApproveRoute.__testHooks.ensureWorkspaceContextForCurrentUserOverride = async () => ({
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceA,
+        userRole: 'owner',
+      });
+      refundApproveRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      refundApproveRoute.__testHooks.paymentIntentRetrieveOverride = async () => ({
+        latest_charge: 'ch_test_pay_refund_happy',
+      });
+      refundApproveRoute.__testHooks.refundCreateOverride = async () => ({
+        id: 're_test_pay_refund_happy',
+      });
+      refundApproveRoute.__testHooks.chargeRetrieveOverride = async () => ({
+        amount: 15000,
+        amount_refunded: 15000,
+        currency: 'eur',
+        refunds: {
+          data: [{ id: 're_test_pay_refund_happy', created: 1700000000, amount: 15000 }],
+        },
+      });
+
+      const approveRes = await refundApproveRoute.POST(
+        new Request(`http://localhost/api/dashboard/refund-requests/${requestRow.id}/approve`, {
+          method: 'POST',
+          headers: {
+            'x-forwarded-for': '203.0.113.33',
+          },
+        }),
+        { params: Promise.resolve({ id: requestRow.id }) },
+      );
+      const approveBody = await approveRes.json();
+
+      assert.equal(approveRes.status, 200, 'refund approval should succeed');
+      assert.equal(approveBody.ok, true);
+
+      const [invoiceAfter] = await sql<{ status: string }[]>`
+        select status
+        from public.invoices
+        where id = ${fixtures.invoiceA}
+        limit 1
+      `;
+      assert.equal(invoiceAfter?.status, 'refunded');
     });
 
     await runCase('refund approve resolves stripe via invoice workspace billing', async () => {
