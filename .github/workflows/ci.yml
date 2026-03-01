@@ -11,6 +11,21 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lateless_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d lateless_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,28 +69,38 @@ jobs:
           pnpm build
           echo "::endgroup::"
 
+      # Make secret accessible to `if:` via env.* (can't use secrets.* in if)
+      - name: Export POSTGRES_URL_TEST to env
+        run: echo "POSTGRES_URL_TEST=${{ secrets.POSTGRES_URL_TEST }}" >> $GITHUB_ENV
+
       - name: PR test gate (skip when secret missing)
-        if: github.event_name == 'pull_request' && secrets.POSTGRES_URL_TEST == ''
+        if: github.event_name == 'pull_request' && env.POSTGRES_URL_TEST == ''
         run: echo "POSTGRES_URL_TEST not set; skipping tests on PR."
 
       - name: Guard required test secret on main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          POSTGRES_URL_TEST: ${{ secrets.POSTGRES_URL_TEST }}
         run: |
-          if [ -z "$POSTGRES_URL_TEST" ]; then
+          if [ -z "${POSTGRES_URL_TEST}" ]; then
             echo "POSTGRES_URL_TEST is required for pushes to main."
             exit 1
           fi
 
       - name: Test
-        if: (github.event_name == 'pull_request' && secrets.POSTGRES_URL_TEST != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        if: (github.event_name == 'pull_request' && env.POSTGRES_URL_TEST != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
-          POSTGRES_URL_TEST: ${{ secrets.POSTGRES_URL_TEST }}
-          POSTGRES_URL: ${{ secrets.POSTGRES_URL_TEST }}
-          DATABASE_URL: ${{ secrets.POSTGRES_URL_TEST }}
+          # Use local postgres service for the actual test DB
+          POSTGRES_URL_TEST: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           NODE_ENV: test
           LATELLESS_TEST_MODE: "1"
+          STRIPE_SECRET_KEY: "sk_test_dummy"
+          STRIPE_WEBHOOK_SECRET: "whsec_dummy"
+          NEXTAUTH_SECRET: "test-auth-secret"
+          AUTH_SECRET: "test-auth-secret"
+          PAY_LINK_SECRET: "test-pay-link-secret"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          NEXTAUTH_URL: "http://localhost:3000"
         run: |
           echo "::group::Test"
           pnpm test
