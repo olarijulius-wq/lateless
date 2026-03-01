@@ -28,28 +28,37 @@ type DbConfig = {
   ssl: false | 'require';
 };
 
+function resolveHostname(connectionString: string): string {
+  try {
+    return new URL(connectionString).hostname.toLowerCase();
+  } catch {
+    return 'unknown';
+  }
+}
+
 function resolveSslMode(connectionString: string): false | 'require' {
   if (process.env.PGSSLMODE?.toLowerCase() === 'disable') {
     return false;
   }
 
-  if (process.env.NODE_ENV === 'test') {
-    try {
-      const host = new URL(connectionString).hostname.toLowerCase();
-      if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
-        return false;
-      }
-    } catch {
-      // Fall through to default SSL requirement.
-    }
+  const host = resolveHostname(connectionString);
+  if (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host === 'postgres'
+  ) {
+    return false;
   }
 
   return 'require';
 }
 
 export function resolveDbConnectionConfig(): DbConfig {
+  const isTestMode =
+    process.env.LATELLESS_TEST_MODE === '1' || process.env.NODE_ENV === 'test';
   const useTestUrl =
-    process.env.NODE_ENV === 'test' &&
+    isTestMode &&
     typeof process.env.POSTGRES_URL_TEST === 'string' &&
     process.env.POSTGRES_URL_TEST.trim() !== '';
   const sourceEnvVar = useTestUrl
@@ -62,10 +71,16 @@ export function resolveDbConnectionConfig(): DbConfig {
     throw new Error('Missing POSTGRES_URL_TEST, POSTGRES_URL, or DATABASE_URL');
   }
 
+  const ssl = resolveSslMode(connectionString);
+  const hostname = resolveHostname(connectionString);
+  if (isTestMode) {
+    console.info(`[db] source=${sourceEnvVar} host=${hostname} ssl=${ssl}`);
+  }
+
   return {
     connectionString,
     sourceEnvVar,
-    ssl: resolveSslMode(connectionString),
+    ssl,
   };
 }
 
