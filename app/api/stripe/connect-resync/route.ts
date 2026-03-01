@@ -5,7 +5,7 @@ import {
   fetchStripeConnectStatusForUser,
   requireUserEmail,
 } from '@/app/lib/data';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import {
   assertStripeConfig,
   createStripeRequestVerifier,
@@ -38,6 +38,7 @@ export async function POST(request: Request) {
   if (rl) return rl;
 
   try {
+    const stripe = getStripe();
     assertStripeConfig();
 
     const [user] = await sql<

@@ -12,7 +12,7 @@ import {
 } from "@/app/lib/config";
 import { allowedPayStatuses, canPayInvoiceStatus } from "@/app/lib/invoice-status";
 import { logFunnelEvent } from "@/app/lib/funnel-events";
-import { stripe } from "@/app/lib/stripe";
+import { getStripe } from "@/app/lib/stripe";
 import {
   readLegacyWorkspaceIdFromStripeMetadata,
   readWorkspaceIdFromStripeMetadata,
@@ -535,6 +535,7 @@ async function retrievePaymentIntentWithAccountContext(
   paymentIntentId: string,
   eventAccount?: string,
 ): Promise<Stripe.PaymentIntent | null> {
+  const stripe = getStripe();
   try {
     return await stripe.paymentIntents.retrieve(
       paymentIntentId,
@@ -563,6 +564,7 @@ async function retrieveCheckoutSessionByPaymentIntentWithAccountContext(
   paymentIntentId: string,
   eventAccount?: string,
 ): Promise<Stripe.Checkout.Session | null> {
+  const stripe = getStripe();
   try {
     const list = await stripe.checkout.sessions.list(
       { payment_intent: paymentIntentId, limit: 1 },
@@ -581,6 +583,7 @@ async function retrieveChargeWithAccountContext(
   chargeId: string,
   eventAccount?: string,
 ): Promise<Stripe.Charge | null> {
+  const stripe = getStripe();
   try {
     return await stripe.charges.retrieve(
       chargeId,
@@ -605,6 +608,7 @@ async function retrieveChargeWithBalanceTransactionWithAccountContext(
   chargeId: string,
   eventAccount?: string,
 ): Promise<Stripe.Charge | null> {
+  const stripe = getStripe();
   try {
     return await stripe.charges.retrieve(
       chargeId,
@@ -1264,6 +1268,7 @@ async function updateInvoiceActualFeeDetailsFromCharge({
 }
 
 async function processEvent(event: Stripe.Event): Promise<void> {
+  const stripe = getStripe();
   let resolvedInvoiceId: string | null = null;
   let invoiceUpdateRows = 0;
   let billingStatusSignal: string | null = null;
@@ -2415,6 +2420,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
 }
 
 export async function POST(req: Request) {
+  const stripe = getStripe();
   const rateLimitResponse = await enforceRateLimit(
     req,
     {

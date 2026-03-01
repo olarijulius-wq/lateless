@@ -3,7 +3,7 @@ import type Stripe from 'stripe';
 import { z } from 'zod';
 import { auth } from '@/auth';
 import { sql } from '@/app/lib/db';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import { resolvePaidPlanFromStripe } from '@/app/lib/config';
 import { applyPlanSync, readCanonicalWorkspacePlanSource } from '@/app/lib/billing-sync';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
@@ -112,6 +112,7 @@ function jsonFailure(input: {
 export async function POST(req: Request) {
   const build = buildStamp();
   try {
+    const stripe = getStripe();
     const session = await auth();
     const userId = (session?.user as { id?: string } | undefined)?.id ?? null;
     const userEmail = session?.user?.email?.trim().toLowerCase() ?? null;

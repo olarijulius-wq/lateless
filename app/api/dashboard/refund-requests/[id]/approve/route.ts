@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import { sql } from '@/app/lib/db';
 import { resolveStripeWorkspaceBillingForInvoice } from '@/app/lib/invoice-workspace-billing';
 import {
@@ -148,6 +148,7 @@ export async function POST(
   const requestId = parsedParams.data.id;
 
   try {
+    const stripe = getStripe();
     await assertRefundRequestsSchemaReady();
     const context = TEST_HOOKS_ENABLED
       ? (__testHooks.ensureWorkspaceContextForCurrentUserOverride
