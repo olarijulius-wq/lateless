@@ -47,13 +47,24 @@ jobs:
           pnpm install --frozen-lockfile
           echo "::endgroup::"
 
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
       - name: Wait for local Postgres
         env:
           PGPASSWORD: postgres
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done
-          psql -h localhost -U postgres -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'lateless_ci'" | grep -q 1 || \
-            psql -h localhost -U postgres -d postgres -c "CREATE DATABASE lateless_ci;"
+
+      - name: CI debug versions and DB check
+        env:
+          PGPASSWORD: postgres
+        run: |
+          node -v
+          pnpm -v
+          psql -h localhost -U postgres -d lateless_ci -c "SELECT 1;"
 
       - name: Lint
         run: |
