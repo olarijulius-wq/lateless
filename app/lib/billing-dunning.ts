@@ -1,7 +1,5 @@
-import postgres from 'postgres';
 import { sendBillingRecoveryEmail } from '@/app/lib/email';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { sql } from '@/app/lib/db';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
