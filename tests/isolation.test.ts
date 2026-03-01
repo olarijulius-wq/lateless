@@ -28,6 +28,11 @@ function requireTestDatabaseUrl() {
   return url;
 }
 
+function resolveSslMode(dbUrl: string): false | 'require' {
+  const hostname = new URL(dbUrl).hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1' ? false : 'require';
+}
+
 const testDbUrl = requireTestDatabaseUrl();
 process.env.AUTH_SECRET ??= 'test-auth-secret';
 process.env.NEXTAUTH_SECRET ??= process.env.AUTH_SECRET;
@@ -35,7 +40,7 @@ process.env.NEXTAUTH_URL ??= 'http://localhost:3000';
 process.env.PAY_LINK_SECRET ??= 'test-pay-link-secret';
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000';
 
-const sql = postgres(testDbUrl, { ssl: 'require', prepare: false });
+const sql = postgres(testDbUrl, { ssl: resolveSslMode(testDbUrl), prepare: false });
 const sqlClients: Array<ReturnType<typeof postgres>> = [sql];
 
 async function closeSqlClients() {

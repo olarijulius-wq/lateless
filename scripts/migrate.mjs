@@ -5,11 +5,22 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import postgres from 'postgres';
 
-const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-if (!dbUrl) {
-  console.error('Missing DATABASE_URL or POSTGRES_URL.');
-  process.exit(1);
+function resolveDbUrl() {
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!url) {
+    console.error('Missing DATABASE_URL or POSTGRES_URL.');
+    process.exit(1);
+  }
+  return url;
 }
+
+function resolveSslMode(dbUrl) {
+  const hostname = new URL(dbUrl).hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1' ? false : 'require';
+}
+
+const dbUrl = resolveDbUrl();
+const ssl = resolveSslMode(dbUrl);
 
 const dryRun = process.env.DRY_RUN === '1';
 const allowBaseline = process.env.ALLOW_BASELINE === '1';
@@ -19,7 +30,7 @@ const appVersion =
   (process.env.APP_VERSION || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || '')
     .trim() || null;
 
-const sql = postgres(dbUrl, { ssl: 'require' });
+const sql = postgres(dbUrl, { ssl });
 const migrationsDir = resolve(process.cwd(), 'migrations');
 
 function sha256(content) {
