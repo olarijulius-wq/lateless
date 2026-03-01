@@ -21,7 +21,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d lateless_ci"
+          --health-cmd="pg_isready -U postgres"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -47,6 +47,14 @@ jobs:
           pnpm install --frozen-lockfile
           echo "::endgroup::"
 
+      - name: Wait for local Postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done
+          psql -h localhost -U postgres -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'lateless_ci'" | grep -q 1 || \
+            psql -h localhost -U postgres -d postgres -c "CREATE DATABASE lateless_ci;"
+
       - name: Lint
         run: |
           echo "::group::Lint"
@@ -64,34 +72,28 @@ jobs:
           NEXTAUTH_URL: "http://localhost:3000"
           POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL_TEST: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL_NON_POOLING: ""
+          POSTGRES_PRISMA_URL: ""
+          SUPABASE_DB_URL: ""
+          NEON_DATABASE_URL: ""
+          PGSSLMODE: disable
         run: |
           echo "::group::Build"
           pnpm build
           echo "::endgroup::"
 
-      # Make secret accessible to `if:` via env.* (can't use secrets.* in if)
-      - name: Export POSTGRES_URL_TEST to env
-        run: echo "POSTGRES_URL_TEST=${{ secrets.POSTGRES_URL_TEST }}" >> $GITHUB_ENV
-
-      - name: PR test gate (skip when secret missing)
-        if: github.event_name == 'pull_request' && env.POSTGRES_URL_TEST == ''
-        run: echo "POSTGRES_URL_TEST not set; skipping tests on PR."
-
-      - name: Guard required test secret on main
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          if [ -z "${POSTGRES_URL_TEST}" ]; then
-            echo "POSTGRES_URL_TEST is required for pushes to main."
-            exit 1
-          fi
-
       - name: Test
-        if: (github.event_name == 'pull_request' && env.POSTGRES_URL_TEST != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
           # Use local postgres service for the actual test DB
           POSTGRES_URL_TEST: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL_NON_POOLING: ""
+          POSTGRES_PRISMA_URL: ""
+          SUPABASE_DB_URL: ""
+          NEON_DATABASE_URL: ""
+          PGSSLMODE: disable
           NODE_ENV: test
           LATELLESS_TEST_MODE: "1"
           STRIPE_SECRET_KEY: "sk_test_dummy"

@@ -19,7 +19,7 @@ import { resolveBillingContext } from '@/app/lib/workspace-billing';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
-import { sql } from './db';
+import { resolveDbConnectionConfig, sql } from './db';
 
 const TEST_HOOKS_ENABLED =
   process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';
@@ -30,6 +30,26 @@ export const __testHooks = {
     | (() => Promise<{ userEmail: string; workspaceId: string }>)
     | null,
 };
+
+function redactConnectionString(connectionString: string) {
+  try {
+    const parsed = new URL(connectionString);
+    if (parsed.password) {
+      parsed.password = '***';
+    }
+    return parsed.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
+if (process.env.NODE_ENV === 'test') {
+  const dbConfig = resolveDbConnectionConfig();
+  console.info(
+    `[db][test] resolved url = ${dbConfig.sourceEnvVar}:${redactConnectionString(dbConfig.connectionString)}`,
+  );
+  console.info(`[db][test] ssl = ${dbConfig.ssl}`);
+}
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
