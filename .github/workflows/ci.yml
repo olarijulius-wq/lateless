@@ -3,27 +3,13 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   ci:
     name: ci
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: lateless_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres -d lateless_ci"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
 
     steps:
       - name: Checkout
@@ -40,11 +26,17 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: |
+          echo "::group::Install dependencies"
+          pnpm install --frozen-lockfile
+          echo "::endgroup::"
 
       - name: Lint
-        run: pnpm lint
+        run: |
+          echo "::group::Lint"
+          pnpm lint
+          echo "::endgroup::"
 
       - name: Build
         env:
@@ -57,13 +49,34 @@ jobs:
           NEXTAUTH_URL: "http://localhost:3000"
           POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
-        run: pnpm build
+        run: |
+          echo "::group::Build"
+          pnpm build
+          echo "::endgroup::"
+
+      - name: PR test gate (skip when secret missing)
+        if: github.event_name == 'pull_request' && secrets.POSTGRES_URL_TEST == ''
+        run: echo "POSTGRES_URL_TEST not set; skipping tests on PR."
+
+      - name: Guard required test secret on main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          POSTGRES_URL_TEST: ${{ secrets.POSTGRES_URL_TEST }}
+        run: |
+          if [ -z "$POSTGRES_URL_TEST" ]; then
+            echo "POSTGRES_URL_TEST is required for pushes to main."
+            exit 1
+          fi
 
       - name: Test
+        if: (github.event_name == 'pull_request' && secrets.POSTGRES_URL_TEST != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
-          POSTGRES_URL_TEST: "postgres://postgres:postgres@localhost:5432/lateless_ci"
-          POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
-          DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL_TEST: ${{ secrets.POSTGRES_URL_TEST }}
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL_TEST }}
+          DATABASE_URL: ${{ secrets.POSTGRES_URL_TEST }}
           NODE_ENV: test
           LATELLESS_TEST_MODE: "1"
-        run: pnpm test
+        run: |
+          echo "::group::Test"
+          pnpm test
+          echo "::endgroup::"
