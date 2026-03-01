@@ -98,6 +98,19 @@ async function requireInvoiceCustomerScope(): Promise<InvoiceCustomerScope> {
   };
 }
 
+async function requireDataWorkspaceContext() {
+  const context = TEST_HOOKS_ENABLED
+    ? (__testHooks.requireWorkspaceContextOverride
+      ? await __testHooks.requireWorkspaceContextOverride()
+      : await requireWorkspaceContext())
+    : await requireWorkspaceContext();
+
+  return {
+    userEmail: normalizeEmail(context.userEmail),
+    workspaceId: context.workspaceId.trim(),
+  };
+}
+
 function getInvoicesWorkspaceFilter(scope: InvoiceCustomerScope, qualified = false) {
   const workspaceId = scope.workspaceId?.trim();
   if (scope.hasInvoicesWorkspaceId && workspaceId) {
@@ -177,7 +190,7 @@ function getTallinnYear(date: Date = new Date()) {
 }
 
 export async function fetchCompanyProfile(): Promise<CompanyProfile | null> {
-  const userEmail = await requireUserEmail();
+  const { workspaceId } = await requireDataWorkspaceContext();
 
   try {
     const data = await sql<CompanyProfile[]>`
@@ -197,7 +210,7 @@ export async function fetchCompanyProfile(): Promise<CompanyProfile | null> {
         created_at,
         updated_at
       FROM company_profiles
-      WHERE lower(user_email) = ${userEmail}
+      WHERE workspace_id = ${workspaceId}
       LIMIT 1
     `;
 
@@ -302,11 +315,12 @@ export async function fetchStripeConnectStatusForUser(
 export async function upsertCompanyProfile(
   profile: Omit<CompanyProfile, 'id' | 'user_email' | 'created_at' | 'updated_at'>,
 ): Promise<CompanyProfile> {
-  const userEmail = await requireUserEmail();
+  const { userEmail, workspaceId } = await requireDataWorkspaceContext();
 
   try {
     const data = await sql<CompanyProfile[]>`
       INSERT INTO company_profiles (
+        workspace_id,
         user_email,
         company_name,
         reg_code,
@@ -320,6 +334,7 @@ export async function upsertCompanyProfile(
         logo_url
       )
       VALUES (
+        ${workspaceId},
         ${userEmail},
         ${profile.company_name},
         ${profile.reg_code},
@@ -332,8 +347,9 @@ export async function upsertCompanyProfile(
         ${profile.billing_email},
         ${profile.logo_url}
       )
-      ON CONFLICT (user_email)
+      ON CONFLICT (workspace_id)
       DO UPDATE SET
+        user_email = EXCLUDED.user_email,
         company_name = EXCLUDED.company_name,
         reg_code = EXCLUDED.reg_code,
         vat_number = EXCLUDED.vat_number,
@@ -375,15 +391,16 @@ export async function upsertCompanyProfile(
 }
 
 export async function getNextInvoiceNumber() {
-  const userEmail = await requireUserEmail();
+  const { userEmail, workspaceId } = await requireDataWorkspaceContext();
   const year = getTallinnYear();
 
   try {
     const [counter] = await sql<{ current_year: number; last_seq: number }[]>`
-      INSERT INTO invoice_counters (user_email, current_year, last_seq)
-      VALUES (${userEmail}, ${year}, 1)
-      ON CONFLICT (user_email)
+      INSERT INTO invoice_counters (workspace_id, user_email, current_year, last_seq)
+      VALUES (${workspaceId}, ${userEmail}, ${year}, 1)
+      ON CONFLICT (workspace_id)
       DO UPDATE SET
+        user_email = excluded.user_email,
         current_year = CASE
           WHEN invoice_counters.current_year = ${year}
           THEN invoice_counters.current_year
