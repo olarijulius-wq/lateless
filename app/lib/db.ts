@@ -22,16 +22,78 @@ export function isPoolerUrl(connectionString: string) {
   }
 }
 
-function createSqlClient() {
-  const connectionString = process.env.POSTGRES_URL ?? process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error('Missing POSTGRES_URL or DATABASE_URL');
+type DbConfig = {
+  connectionString: string;
+  sourceEnvVar: 'POSTGRES_URL_TEST' | 'POSTGRES_URL' | 'DATABASE_URL';
+  ssl: false | 'require';
+};
+
+function resolveHostname(connectionString: string): string {
+  try {
+    return new URL(connectionString).hostname.toLowerCase();
+  } catch {
+    return 'unknown';
+  }
+}
+
+function resolveSslMode(connectionString: string): false | 'require' {
+  if (process.env.LATELLESS_TEST_MODE === '1') {
+    return false;
   }
 
+  if (process.env.PGSSLMODE?.toLowerCase() === 'disable') {
+    return false;
+  }
+
+  const host = resolveHostname(connectionString);
+  if (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host === 'postgres'
+  ) {
+    return false;
+  }
+
+  return 'require';
+}
+
+export function resolveDbConnectionConfig(): DbConfig {
+  const isTestMode =
+    process.env.LATELLESS_TEST_MODE === '1' || process.env.NODE_ENV === 'test';
+  const useTestUrl =
+    isTestMode &&
+    typeof process.env.POSTGRES_URL_TEST === 'string' &&
+    process.env.POSTGRES_URL_TEST.trim() !== '';
+  const sourceEnvVar = useTestUrl
+    ? 'POSTGRES_URL_TEST'
+    : process.env.POSTGRES_URL
+      ? 'POSTGRES_URL'
+      : 'DATABASE_URL';
+  const connectionString = process.env[sourceEnvVar];
+  if (!connectionString) {
+    throw new Error('Missing POSTGRES_URL_TEST, POSTGRES_URL, or DATABASE_URL');
+  }
+
+  const ssl = resolveSslMode(connectionString);
+  const hostname = resolveHostname(connectionString);
+  if (isTestMode) {
+    console.info(`[db] source=${sourceEnvVar} host=${hostname} ssl=${ssl}`);
+  }
+
+  return {
+    connectionString,
+    sourceEnvVar,
+    ssl,
+  };
+}
+
+function createSqlClient() {
+  const { connectionString, ssl } = resolveDbConnectionConfig();
   const disablePreparedStatements = isPoolerUrl(connectionString);
 
   return postgres(connectionString, {
-    ssl: 'require',
+    ssl,
     prepare: disablePreparedStatements ? false : undefined,
     max: maxConnections,
     idle_timeout: 20,
@@ -39,8 +101,25 @@ function createSqlClient() {
   });
 }
 
-export const sql = globalForDb.__latelessSql ?? createSqlClient();
+function getOrCreateSqlClient() {
+  if (!globalForDb.__latelessSql) {
+    globalForDb.__latelessSql = createSqlClient();
+  }
 
-if (!globalForDb.__latelessSql) {
-  globalForDb.__latelessSql = sql;
+  return globalForDb.__latelessSql;
 }
+
+export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof postgres>, {
+  apply(_target, thisArg, argArray) {
+    return Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray);
+  },
+  get(_target, property, receiver) {
+    const client = getOrCreateSqlClient() as unknown as Record<PropertyKey, unknown>;
+    const value = Reflect.get(client, property, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+  set(_target, property, value, receiver) {
+    const client = getOrCreateSqlClient() as unknown as Record<PropertyKey, unknown>;
+    return Reflect.set(client, property, value, receiver);
+  },
+});

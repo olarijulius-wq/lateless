@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import postgres from 'postgres';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import {
   assertStripeConfig,
@@ -96,6 +96,7 @@ export async function GET() {
 
 export async function POST() {
   try {
+    const stripe = getStripe();
     const context = await requireBillingSelfCheckAccess();
     const connectStatus = await fetchStripeConnectStatusForUser(context.userEmail);
     const latestWebhook = await readLatestWebhookStatus();

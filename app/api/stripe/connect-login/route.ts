@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import postgres from 'postgres';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import { requireUserEmail } from '@/app/lib/data';
 import {
   assertStripeConfig,
@@ -33,6 +33,7 @@ export async function GET(request: Request) {
   if (rl) return rl;
 
   try {
+    const stripe = getStripe();
     assertStripeConfig();
 
     const [user] = await sql<{ stripe_connect_account_id: string | null }[]>`

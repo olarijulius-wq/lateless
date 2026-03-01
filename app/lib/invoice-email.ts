@@ -1,11 +1,9 @@
 import 'server-only';
 
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { generatePayLink } from '@/app/lib/pay-link';
 import { sendWorkspaceEmail } from '@/app/lib/smtp-settings';
 import { formatCurrency, formatDateToLocal } from '@/app/lib/utils';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export type InvoiceEmailLogStatus = 'sent' | 'failed';
 

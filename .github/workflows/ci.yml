@@ -11,6 +11,21 @@ jobs:
     name: ci
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lateless_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,7 +35,7 @@ jobs:
         with:
           version: 9
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -31,6 +46,37 @@ jobs:
           echo "::group::Install dependencies"
           pnpm install --frozen-lockfile
           echo "::endgroup::"
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Wait for local Postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          ready=false
+          for i in {1..90}; do
+            if pg_isready -h localhost -p 5432 -U postgres >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            echo "localhost:5432 -- no response"
+            sleep 1
+          done
+          if [ "$ready" != "true" ]; then
+            echo "ERROR: Postgres did not become ready at localhost:5432 within 90 seconds"
+            exit 1
+          fi
+
+      - name: CI debug versions and DB check
+        env:
+          PGPASSWORD: postgres
+        run: |
+          node -v
+          pnpm -v
+          psql -h localhost -U postgres -d lateless_ci -c "SELECT 1;"
 
       - name: Lint
         run: |
@@ -49,33 +95,37 @@ jobs:
           NEXTAUTH_URL: "http://localhost:3000"
           POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL_TEST: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL_NON_POOLING: ""
+          POSTGRES_PRISMA_URL: ""
+          SUPABASE_DB_URL: ""
+          NEON_DATABASE_URL: ""
+          PGSSLMODE: disable
         run: |
           echo "::group::Build"
           pnpm build
           echo "::endgroup::"
 
-      - name: PR test gate (skip when secret missing)
-        if: github.event_name == 'pull_request' && secrets.POSTGRES_URL_TEST == ''
-        run: echo "POSTGRES_URL_TEST not set; skipping tests on PR."
-
-      - name: Guard required test secret on main
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          POSTGRES_URL_TEST: ${{ secrets.POSTGRES_URL_TEST }}
-        run: |
-          if [ -z "$POSTGRES_URL_TEST" ]; then
-            echo "POSTGRES_URL_TEST is required for pushes to main."
-            exit 1
-          fi
-
       - name: Test
-        if: (github.event_name == 'pull_request' && secrets.POSTGRES_URL_TEST != '') || (github.event_name == 'push' && github.ref == 'refs/heads/main')
         env:
-          POSTGRES_URL_TEST: ${{ secrets.POSTGRES_URL_TEST }}
-          POSTGRES_URL: ${{ secrets.POSTGRES_URL_TEST }}
-          DATABASE_URL: ${{ secrets.POSTGRES_URL_TEST }}
+          # Use local postgres service for the actual test DB
+          POSTGRES_URL_TEST: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL_NON_POOLING: ""
+          POSTGRES_PRISMA_URL: ""
+          SUPABASE_DB_URL: ""
+          NEON_DATABASE_URL: ""
+          PGSSLMODE: disable
           NODE_ENV: test
           LATELLESS_TEST_MODE: "1"
+          STRIPE_SECRET_KEY: "sk_test_dummy"
+          STRIPE_WEBHOOK_SECRET: "whsec_dummy"
+          NEXTAUTH_SECRET: "test-auth-secret"
+          AUTH_SECRET: "test-auth-secret"
+          PAY_LINK_SECRET: "test-pay-link-secret"
+          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+          NEXTAUTH_URL: "http://localhost:3000"
         run: |
           echo "::group::Test"
           pnpm test

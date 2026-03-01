@@ -1,6 +1,4 @@
-import postgres from 'postgres';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { sql } from './db';
 
 export const REMINDER_RUNS_MIGRATION_REQUIRED_CODE =
   'REMINDER_RUNS_MIGRATION_REQUIRED';

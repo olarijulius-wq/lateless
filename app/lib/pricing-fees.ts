@@ -1,8 +1,6 @@
-import postgres from 'postgres';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config.ts';
+import { sql } from './db';
 import { resolveBillingContext } from './workspace-billing.ts';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const PRICING_FEES_MIGRATION_REQUIRED_CODE =
   'PRICING_FEES_MIGRATION_REQUIRED';

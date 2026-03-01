@@ -1,6 +1,6 @@
 // app/api/stripe/portal/route.ts
 import { NextResponse } from 'next/server';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import { auth } from '@/auth';
 import {
   assertStripeConfig,
@@ -100,6 +100,7 @@ export async function POST(req: Request) {
       : 'http://localhost:3000');
 
   try {
+    const stripe = getStripe();
     if (TEST_HOOKS_ENABLED && __testHooks.assertStripeConfigOverride) {
       __testHooks.assertStripeConfigOverride();
     } else {

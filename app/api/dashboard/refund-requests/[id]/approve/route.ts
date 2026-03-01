@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
+import { sql } from '@/app/lib/db';
 import { resolveStripeWorkspaceBillingForInvoice } from '@/app/lib/invoice-workspace-billing';
 import {
   ensureWorkspaceContextForCurrentUser,
@@ -21,7 +21,6 @@ import {
 
 export const runtime = 'nodejs';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 const DEBUG = process.env.DEBUG_REFUNDS === 'true';
 const TEST_HOOKS_ENABLED =
   process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';
@@ -149,6 +148,7 @@ export async function POST(
   const requestId = parsedParams.data.id;
 
   try {
+    const stripe = getStripe();
     await assertRefundRequestsSchemaReady();
     const context = TEST_HOOKS_ENABLED
       ? (__testHooks.ensureWorkspaceContextForCurrentUserOverride
