@@ -56,7 +56,19 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          until pg_isready -h postgres -p 5432 -U postgres; do sleep 1; done
+          ready=false
+          for i in {1..90}; do
+            if pg_isready -h localhost -p 5432 -U postgres >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            echo "localhost:5432 -- no response"
+            sleep 1
+          done
+          if [ "$ready" != "true" ]; then
+            echo "ERROR: Postgres did not become ready at localhost:5432 within 90 seconds"
+            exit 1
+          fi
 
       - name: CI debug versions and DB check
         env:
@@ -64,7 +76,7 @@ jobs:
         run: |
           node -v
           pnpm -v
-          psql -h postgres -U postgres -d lateless_ci -c "SELECT 1;"
+          psql -h localhost -U postgres -d lateless_ci -c "SELECT 1;"
 
       - name: Lint
         run: |
@@ -81,9 +93,9 @@ jobs:
           PAY_LINK_SECRET: "test-pay-link-secret"
           NEXT_PUBLIC_APP_URL: "http://localhost:3000"
           NEXTAUTH_URL: "http://localhost:3000"
-          POSTGRES_URL: "postgres://postgres:postgres@postgres:5432/lateless_ci"
-          DATABASE_URL: "postgres://postgres:postgres@postgres:5432/lateless_ci"
-          POSTGRES_URL_TEST: "postgres://postgres:postgres@postgres:5432/lateless_ci"
+          POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL_TEST: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           POSTGRES_URL_NON_POOLING: ""
           POSTGRES_PRISMA_URL: ""
           SUPABASE_DB_URL: ""
@@ -97,9 +109,9 @@ jobs:
       - name: Test
         env:
           # Use local postgres service for the actual test DB
-          POSTGRES_URL_TEST: "postgres://postgres:postgres@postgres:5432/lateless_ci"
-          POSTGRES_URL: "postgres://postgres:postgres@postgres:5432/lateless_ci"
-          DATABASE_URL: "postgres://postgres:postgres@postgres:5432/lateless_ci"
+          POSTGRES_URL_TEST: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          POSTGRES_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
+          DATABASE_URL: "postgres://postgres:postgres@localhost:5432/lateless_ci"
           POSTGRES_URL_NON_POOLING: ""
           POSTGRES_PRISMA_URL: ""
           SUPABASE_DB_URL: ""
