@@ -1,4 +1,3 @@
-import postgres from 'postgres';
 import {
   CustomerField,
   CustomerForm,
@@ -20,11 +19,7 @@ import { resolveBillingContext } from '@/app/lib/workspace-billing';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
-
-const sql = postgres(process.env.POSTGRES_URL!, {
-  ssl: 'require',
-  prepare: false,
-});
+import { sql } from './db';
 
 const TEST_HOOKS_ENABLED =
   process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';
