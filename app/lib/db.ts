@@ -37,6 +37,10 @@ function resolveHostname(connectionString: string): string {
 }
 
 function resolveSslMode(connectionString: string): false | 'require' {
+  if (process.env.LATELLESS_TEST_MODE === '1') {
+    return false;
+  }
+
   if (process.env.PGSSLMODE?.toLowerCase() === 'disable') {
     return false;
   }
