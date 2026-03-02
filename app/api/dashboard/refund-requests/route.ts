@@ -7,6 +7,7 @@ import {
 } from '@/app/lib/workspaces';
 import {
   assertRefundRequestsSchemaReady,
+  hasRefundRequestsRequestedAtColumn,
   isRefundRequestsMigrationRequiredError,
   REFUND_REQUESTS_MIGRATION_REQUIRED_CODE,
 } from '@/app/lib/refund-requests';
@@ -28,9 +29,11 @@ export async function GET() {
       );
     }
 
+    const hasRequestedAt = await hasRefundRequestsRequestedAtColumn();
+
     const rows = await sql<{
       id: string;
-      created_at: Date;
+      requested_at: Date;
       invoice_id: string;
       invoice_number: string | null;
       amount: number;
@@ -44,7 +47,7 @@ export async function GET() {
     }[]>`
       select
         rr.id,
-        rr.created_at,
+        ${hasRequestedAt ? sql`rr.requested_at` : sql`rr.created_at`} as requested_at,
         rr.invoice_id,
         i.invoice_number,
         i.amount,
@@ -59,7 +62,7 @@ export async function GET() {
       join public.invoices i
         on i.id = rr.invoice_id
       where rr.workspace_id = ${context.workspaceId}
-      order by rr.created_at desc
+      order by ${hasRequestedAt ? sql`rr.requested_at` : sql`rr.created_at`} desc
       limit 50
     `;
 
@@ -67,7 +70,7 @@ export async function GET() {
       ok: true,
       requests: rows.map((row) => ({
         id: row.id,
-        createdAt: row.created_at.toISOString(),
+        createdAt: row.requested_at.toISOString(),
         invoiceId: row.invoice_id,
         invoiceNumber: row.invoice_number,
         amount: row.amount,
