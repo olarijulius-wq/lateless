@@ -40,8 +40,6 @@ function resolveHostname(connectionString: string): string {
 }
 
 export function resolveSslMode(connectionString: string): false | 'require' {
-  void connectionString;
-
   if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
     return false;
   }
@@ -55,6 +53,15 @@ export function resolveSslMode(connectionString: string): false | 'require' {
   }
 
   if (process.env.PGSSLMODE?.toLowerCase() === 'disable') {
+    return false;
+  }
+
+  const hostname = resolveHostname(connectionString);
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1'
+  ) {
     return false;
   }
 
@@ -75,6 +82,11 @@ function sanitizeConnectionStringForNoSsl(connectionString: string): string {
     const parsed = new URL(connectionString);
     parsed.searchParams.delete('sslmode');
     parsed.searchParams.delete('ssl');
+    parsed.searchParams.delete('sslrootcert');
+    parsed.searchParams.delete('sslcert');
+    parsed.searchParams.delete('sslkey');
+    parsed.searchParams.delete('sslpassword');
+    parsed.searchParams.delete('options');
     return parsed.toString();
   } catch {
     return connectionString;
@@ -126,9 +138,10 @@ function createSqlClient() {
 
   const { connectionString, ssl } = dbConfig;
   const disablePreparedStatements = isPoolerUrl(connectionString);
+  const clientSsl = ssl === false ? false : 'require';
 
   return postgres(connectionString, {
-    ssl,
+    ssl: clientSsl,
     prepare: disablePreparedStatements ? false : undefined,
     max: maxConnections,
     idle_timeout: 20,

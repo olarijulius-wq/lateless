@@ -21,7 +21,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres"
+          --health-cmd="pg_isready -h localhost -p 5432 -U postgres"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -62,7 +62,7 @@ jobs:
               ready=true
               break
             fi
-            echo "postgres:5432 -- no response"
+            echo "localhost:5432 -- no response"
             sleep 1
           done
           if [ "$ready" != "true" ]; then
@@ -76,6 +76,10 @@ jobs:
         run: |
           node -v
           pnpm -v
+          (getent hosts localhost || ping -c 1 localhost)
+          psql --version
+          psql -h localhost -U postgres -d lateless_ci -c "SHOW ssl; SHOW ssl_min_protocol_version;"
+          psql -h localhost -U postgres -d lateless_ci -c "SELECT inet_server_addr(), inet_server_port();"
           psql -h localhost -U postgres -d lateless_ci -c "SELECT 1;"
 
       - name: Lint

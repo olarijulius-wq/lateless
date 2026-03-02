@@ -1,4 +1,4 @@
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import {
@@ -12,8 +12,6 @@ import {
   encryptString,
   isEncryptionKeyConfigured,
 } from '@/app/lib/crypto';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const SMTP_MIGRATION_REQUIRED_CODE = 'SMTP_MIGRATION_REQUIRED';
 

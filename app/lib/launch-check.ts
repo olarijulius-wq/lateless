@@ -1,10 +1,8 @@
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { ensureWorkspaceContextForCurrentUser, type WorkspaceContext } from '@/app/lib/workspaces';
 import { getLaunchCheckAdminEmailDecision } from '@/app/lib/admin-gates';
 import { isInternalAdmin } from '@/app/lib/internal-admin-email';
 import { resolveSiteUrlDebug } from '@/app/lib/seo/site-url';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 const REQUIRED_SITEMAP_PATHS = ['/', '/pricing', '/faq', '/help', '/privacy', '/terms', '/security'];
 const PRIVATE_NOINDEX_PATHS = [

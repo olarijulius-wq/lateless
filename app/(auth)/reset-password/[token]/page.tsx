@@ -1,11 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import AcmeLogo from '@/app/ui/acme-logo';
 import ResetPasswordForm from './reset-password-form';
 import { secondaryButtonClasses } from '@/app/ui/button';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const metadata: Metadata = {
   title: 'Reset password',

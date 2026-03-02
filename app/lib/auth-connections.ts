@@ -1,4 +1,4 @@
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 
 export type AuthProvider = 'google' | 'github';
 
@@ -10,8 +10,6 @@ export type AuthConnection = {
 type DisconnectProviderResult =
   | { ok: true; removed: boolean }
   | { ok: false; message: string };
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export async function fetchAuthConnections(userId: string): Promise<AuthConnection[]> {
   const rows = await sql<{ provider: AuthProvider; connected_at: Date }[]>`

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import {
   fetchStripeConnectStatusForUser,
   requireUserEmail,
@@ -14,8 +14,6 @@ import {
 import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export async function POST(request: Request) {
   let userEmail = '';

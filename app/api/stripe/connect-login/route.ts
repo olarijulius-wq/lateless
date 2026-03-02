@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { getStripe } from '@/app/lib/stripe';
 import { requireUserEmail } from '@/app/lib/data';
 import {
@@ -9,8 +9,6 @@ import {
 import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export async function GET(request: Request) {
   let userEmail = '';

@@ -1,13 +1,11 @@
 import bcrypt from 'bcrypt';
 import { NextRequest, NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { z } from 'zod';
 import { requireUserEmail } from '@/app/lib/data';
 import { enforceRateLimit, parseJsonBody } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();

@@ -1,6 +1,4 @@
-import postgres from 'postgres';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { sql } from '@/app/lib/db';
 
 const SAMPLE_LIMIT = 50;
 const MIN_SAMPLE_COUNT = 10;

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { z } from 'zod';
 import { auth } from '@/auth';
 import { enforceRateLimit, parseQuery } from '@/app/lib/security/api-guard';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 const linkProviderQuerySchema = z
   .object({

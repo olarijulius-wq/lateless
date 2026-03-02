@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { auth } from '@/auth';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import {
@@ -14,8 +14,6 @@ import { enforceRateLimit } from '@/app/lib/security/api-guard';
 import { isInternalAdmin } from '@/app/lib/internal-admin-email';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export async function POST(req: Request) {
   try {

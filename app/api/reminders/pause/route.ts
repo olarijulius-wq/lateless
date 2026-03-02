@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { z } from 'zod';
 import {
   ensureWorkspaceContextForCurrentUser,
@@ -20,8 +20,6 @@ import {
 } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 const migrationMessage =
   'Reminder pauses require DB migration 015_add_reminder_pauses.sql. Run migrations and retry.';

@@ -1,7 +1,5 @@
 import crypto from 'crypto';
-import postgres from 'postgres';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { sql } from '@/app/lib/db';
 
 export const UNSUBSCRIBE_MIGRATION_REQUIRED_CODE =
   'UNSUBSCRIBE_MIGRATION_REQUIRED';

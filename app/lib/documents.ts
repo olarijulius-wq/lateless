@@ -1,12 +1,10 @@
 import crypto from 'crypto';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import {
   clearCompanyProfileLogo,
   fetchCompanyProfileForWorkspace,
   setCompanyProfileLogo,
 } from './company-profile';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const DOCUMENTS_MIGRATION_REQUIRED_CODE = 'DOCUMENTS_MIGRATION_REQUIRED';
 

@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { redirect } from 'next/navigation';
 import {
   ensureWorkspaceContextForCurrentUser,
@@ -29,8 +29,6 @@ import RemindersAdminPanel from './reminders-admin-panel';
 export const metadata: Metadata = {
   title: 'Reminders Admin',
 };
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export default async function RemindersAdminPage(props: {
   searchParams?: Promise<{

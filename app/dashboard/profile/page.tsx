@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { disableTwoFactor, enableTwoFactor } from '@/app/lib/actions';
 import { primaryButtonClasses } from '@/app/ui/button';
 import { fetchAuthConnections } from '@/app/lib/auth-connections';
@@ -10,8 +10,6 @@ import {
   EmailPasswordPanel,
 } from './profile-security-panel';
 import { AuthenticationProvidersPanel } from './authentication-providers-panel';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const metadata: Metadata = {
   title: 'My Profile',
