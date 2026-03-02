@@ -25,22 +25,87 @@ import {
 } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
+const TEST_HOOKS_ENABLED =
+  process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';
+export const __testHooksEnabled = TEST_HOOKS_ENABLED;
+export const __testHooks = {
+  enforceRateLimitOverride: null as
+    | (null | ((req: Request, input: {
+      bucket: string;
+      windowSec: number;
+      ipLimit: number;
+    }, opts: { failClosed: boolean }) => Promise<Response | null>)),
+  resolveStripeWorkspaceBillingForInvoiceOverride: null as
+    | (null | ((invoiceId: string) => Promise<{
+      workspaceId: string;
+      stripeAccountId: string | null;
+      stripeCustomerId: string | null;
+      workspaceBillingExists: boolean;
+    } | null>)),
+  assertStripeConfigOverride: null as (null | (() => void)),
+  checkConnectedAccountAccessOverride: null as
+    | (null | ((accountId: string) => Promise<{
+      ok: boolean;
+      isModeMismatch: boolean;
+      message: string;
+    }>)),
+  getConnectChargeCapabilityStatusOverride: null as
+    | (null | ((accountId: string) => Promise<{
+      ok: boolean;
+      cardPayments: string | null;
+      chargesEnabled: boolean;
+      detailsSubmitted: boolean;
+    }>)),
+  createInvoiceCheckoutSessionOverride: null as
+    | (null | ((invoice: {
+      id: string;
+      amount: number;
+      invoice_number: string | null;
+      customer_email: string | null;
+      workspace_id: string;
+      stripe_account_id: string;
+      stripe_customer_id?: string | null;
+    }, baseUrl: string, options: { successUrl: string; cancelUrl: string }) => Promise<{
+      checkoutSession: {
+        id: string;
+        url: string | null;
+        payment_intent: string | { id: string } | null;
+      };
+      feeBreakdown: {
+        processingUpliftAmount: number;
+        payableAmount: number;
+        platformFeeAmount: number;
+      };
+    }>)),
+};
 
 export async function POST(
   req: Request,
   props: { params: Promise<{ token: string }> },
 ) {
-  const rateLimitResponse = await enforceRateLimit(
-    req,
-    {
-      bucket: 'public_invoice_pay',
-      windowSec: 60,
-      ipLimit: 20,
-    },
-    {
-      failClosed: true,
-    },
-  );
+  const rateLimitResponse = TEST_HOOKS_ENABLED && __testHooks.enforceRateLimitOverride
+    ? await __testHooks.enforceRateLimitOverride(
+      req,
+      {
+        bucket: 'public_invoice_pay',
+        windowSec: 60,
+        ipLimit: 20,
+      },
+      {
+        failClosed: true,
+      },
+    )
+    : await enforceRateLimit(
+      req,
+      {
+        bucket: 'public_invoice_pay',
+        windowSec: 60,
+        ipLimit: 20,
+      },
+      {
+        failClosed: true,
+      },
+    );
   if (rateLimitResponse) {
     return rateLimitResponse;
   }
@@ -108,7 +173,10 @@ export async function POST(
   const payoutsSetupUrl = '/dashboard/settings/payouts';
 
   try {
-    const billing = await resolveStripeWorkspaceBillingForInvoice(invoice.id);
+    const billing =
+      TEST_HOOKS_ENABLED && __testHooks.resolveStripeWorkspaceBillingForInvoiceOverride
+        ? await __testHooks.resolveStripeWorkspaceBillingForInvoiceOverride(invoice.id)
+        : await resolveStripeWorkspaceBillingForInvoice(invoice.id);
     if (!billing) {
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
@@ -122,7 +190,11 @@ export async function POST(
       return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
     }
 
-    assertStripeConfig();
+    if (TEST_HOOKS_ENABLED && __testHooks.assertStripeConfigOverride) {
+      __testHooks.assertStripeConfigOverride();
+    } else {
+      assertStripeConfig();
+    }
 
     const connectedAccountId = billing.stripeAccountId;
     if (!connectedAccountId) {
@@ -137,7 +209,10 @@ export async function POST(
       );
     }
 
-    const accessCheck = await checkConnectedAccountAccess(connectedAccountId);
+    const accessCheck =
+      TEST_HOOKS_ENABLED && __testHooks.checkConnectedAccountAccessOverride
+        ? await __testHooks.checkConnectedAccountAccessOverride(connectedAccountId)
+        : await checkConnectedAccountAccess(connectedAccountId);
     if (!accessCheck.ok && accessCheck.isModeMismatch) {
       if (process.env.NODE_ENV !== 'production') {
         console.log('[public invoice checkout blocked] Stripe Connect mode mismatch', {
@@ -159,9 +234,12 @@ export async function POST(
       throw new Error(accessCheck.message);
     }
 
-    const capabilityStatus = await getConnectChargeCapabilityStatus(
-      connectedAccountId,
-    );
+    const capabilityStatus =
+      TEST_HOOKS_ENABLED && __testHooks.getConnectChargeCapabilityStatusOverride
+        ? await __testHooks.getConnectChargeCapabilityStatusOverride(connectedAccountId)
+        : await getConnectChargeCapabilityStatus(
+          connectedAccountId,
+        );
     if (!capabilityStatus.ok) {
       if (process.env.NODE_ENV !== 'production') {
         console.log('[public invoice checkout blocked] Stripe Connect not ready', {
@@ -183,22 +261,40 @@ export async function POST(
       );
     }
 
-    const { checkoutSession, feeBreakdown } = await createInvoiceCheckoutSession(
-      {
-        id: invoice.id,
-        amount: invoice.amount,
-        invoice_number: invoice.invoice_number,
-        customer_email: invoice.customer_email,
-        workspace_id: billing.workspaceId,
-        stripe_account_id: connectedAccountId,
-        stripe_customer_id: billing.stripeCustomerId,
-      },
-      baseUrl,
-      {
-        successUrl: `${payPageUrl}?paid=1`,
-        cancelUrl: `${payPageUrl}?canceled=1`,
-      },
-    );
+    const { checkoutSession, feeBreakdown } =
+      TEST_HOOKS_ENABLED && __testHooks.createInvoiceCheckoutSessionOverride
+        ? await __testHooks.createInvoiceCheckoutSessionOverride(
+          {
+            id: invoice.id,
+            amount: invoice.amount,
+            invoice_number: invoice.invoice_number,
+            customer_email: invoice.customer_email,
+            workspace_id: billing.workspaceId,
+            stripe_account_id: connectedAccountId,
+            stripe_customer_id: billing.stripeCustomerId,
+          },
+          baseUrl,
+          {
+            successUrl: `${payPageUrl}?paid=1`,
+            cancelUrl: `${payPageUrl}?canceled=1`,
+          },
+        )
+        : await createInvoiceCheckoutSession(
+          {
+            id: invoice.id,
+            amount: invoice.amount,
+            invoice_number: invoice.invoice_number,
+            customer_email: invoice.customer_email,
+            workspace_id: billing.workspaceId,
+            stripe_account_id: connectedAccountId,
+            stripe_customer_id: billing.stripeCustomerId,
+          },
+          baseUrl,
+          {
+            successUrl: `${payPageUrl}?paid=1`,
+            cancelUrl: `${payPageUrl}?canceled=1`,
+          },
+        );
 
     const paymentIntentId =
       typeof checkoutSession.payment_intent === 'string'

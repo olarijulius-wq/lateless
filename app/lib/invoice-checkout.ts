@@ -1,4 +1,4 @@
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import {
   computeInvoiceFeeBreakdownForWorkspace,
   type InvoiceFeeBreakdown,
@@ -43,6 +43,7 @@ export async function createInvoiceCheckoutSession(
   checkoutSession: Stripe.Checkout.Session;
   feeBreakdown: InvoiceFeeBreakdown;
 }> {
+  const stripe = getStripe();
   const invoiceLabel =
     invoice.invoice_number ?? `#${invoice.id.slice(0, 8)}`;
   const successUrl =

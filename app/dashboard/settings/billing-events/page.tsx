@@ -1,11 +1,9 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import BillingEventsPanel from './billing-events-panel';
 import { isInternalAdmin } from '@/app/lib/internal-admin-email';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const metadata: Metadata = {
   title: 'Billing Events',

@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { redirect } from 'next/navigation';
 import {
   ensureWorkspaceContextForCurrentUser,
@@ -8,8 +8,6 @@ import {
 import { isReminderManualRunAdmin } from '@/app/lib/reminder-admin';
 import { isInternalAdmin } from '@/app/lib/internal-admin-email';
 import type { FunnelEventName } from '@/app/lib/funnel-events';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const metadata: Metadata = {
   title: 'Funnel (Last 7 Days)',

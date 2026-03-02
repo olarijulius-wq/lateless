@@ -1,7 +1,5 @@
-import postgres from 'postgres';
+import { sql } from './db';
 import { normalizeVat } from './vat';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export type WorkspaceCompanyProfile = {
   workspaceId: string;

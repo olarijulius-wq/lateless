@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { auth } from '@/auth';
 import {
   fetchSetupStateForCurrentUser,
@@ -11,8 +11,6 @@ import {
 } from '@/app/lib/workspaces';
 import OnboardingChecklist, { type OnboardingStep } from './onboarding-checklist';
 import { PageShell } from '@/app/ui/page-layout';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const metadata: Metadata = {
   title: 'Guided Setup',

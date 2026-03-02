@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import {
   fetchStripeConnectStatusForUser,
   requireUserEmail,
 } from '@/app/lib/data';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import {
   assertStripeConfig,
   createStripeRequestVerifier,
@@ -14,8 +14,6 @@ import {
 import { enforceRateLimit } from '@/app/lib/security/api-guard';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export async function POST(request: Request) {
   let userEmail = '';
@@ -38,6 +36,7 @@ export async function POST(request: Request) {
   if (rl) return rl;
 
   try {
+    const stripe = getStripe();
     assertStripeConfig();
 
     const [user] = await sql<

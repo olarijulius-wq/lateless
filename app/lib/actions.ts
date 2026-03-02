@@ -2,7 +2,6 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import postgres from 'postgres';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { signIn, auth } from '@/auth';
@@ -22,8 +21,7 @@ import { logFunnelEvent } from '@/app/lib/funnel-events';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveBillingContext } from '@/app/lib/workspace-billing';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { sql } from '@/app/lib/db';
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();

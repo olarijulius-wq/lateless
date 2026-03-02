@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
-import { stripe } from '@/app/lib/stripe';
+import { sql } from '@/app/lib/db';
+import { getStripe } from '@/app/lib/stripe';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import {
   assertStripeConfig,
@@ -12,8 +12,6 @@ import { fetchStripeConnectStatusForUser } from '@/app/lib/data';
 import { isInternalAdmin } from '@/app/lib/internal-admin-email';
 
 export const runtime = 'nodejs';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 type LatestWebhookStatus = {
   eventId: string;
@@ -96,6 +94,7 @@ export async function GET() {
 
 export async function POST() {
   try {
+    const stripe = getStripe();
     const context = await requireBillingSelfCheckAccess();
     const connectStatus = await fetchStripeConnectStatusForUser(context.userEmail);
     const latestWebhook = await readLatestWebhookStatus();

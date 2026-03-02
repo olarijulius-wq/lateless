@@ -1,6 +1,4 @@
-import postgres from 'postgres';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { sql } from '@/app/lib/db';
 
 export const FEEDBACK_MIGRATION_REQUIRED_CODE = 'FEEDBACK_MIGRATION_REQUIRED';
 export const FEEDBACK_MIGRATION_FILE = '011_add_feedback.sql';

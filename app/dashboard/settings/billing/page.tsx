@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import UpgradeButton from '../upgrade-button';
 import ManageBillingButton from '../manage-billing-button';
 import BillingSelfCheckPanel from './billing-self-check-panel';
@@ -36,8 +36,6 @@ import {
 import SendRecoveryEmailButton from './send-recovery-email-button';
 import BillingSyncToast from './billing-sync-toast';
 import { isInternalAdmin } from '@/app/lib/internal-admin-email';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export const metadata: Metadata = {
   title: 'Billing Settings',

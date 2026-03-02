@@ -1,5 +1,5 @@
 import type Stripe from 'stripe';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import {
   createStripeRequestVerifier,
   normalizeStripeConfigError,
@@ -41,6 +41,7 @@ export function isStripePermissionOrNoAccessError(error: unknown): boolean {
 export async function checkConnectedAccountAccess(
   connectedAccountId: string,
 ): Promise<ConnectedAccountAccessCheck> {
+  const stripe = getStripe();
   const verifier = createStripeRequestVerifier(stripe);
   try {
     const account = await verifier.verifyConnectedAccountAccess(connectedAccountId);
@@ -67,6 +68,7 @@ export type StripeConnectChargeCapabilityStatus = {
 export async function getConnectChargeCapabilityStatus(
   connectedAccountId: string,
 ): Promise<StripeConnectChargeCapabilityStatus> {
+  const stripe = getStripe();
   const account = (await stripe.accounts.retrieve(
     connectedAccountId,
   )) as Stripe.Account;

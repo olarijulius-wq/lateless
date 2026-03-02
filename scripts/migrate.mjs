@@ -5,12 +5,6 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import postgres from 'postgres';
 
-const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-if (!dbUrl) {
-  console.error('Missing DATABASE_URL or POSTGRES_URL.');
-  process.exit(1);
-}
-
 const dryRun = process.env.DRY_RUN === '1';
 const allowBaseline = process.env.ALLOW_BASELINE === '1';
 const forceBaseline = process.env.FORCE_BASELINE === '1';
@@ -19,8 +13,76 @@ const appVersion =
   (process.env.APP_VERSION || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || '')
     .trim() || null;
 
-const sql = postgres(dbUrl, { ssl: 'require' });
 const migrationsDir = resolve(process.cwd(), 'migrations');
+
+function resolveHostname(connectionString) {
+  try {
+    return new URL(connectionString).hostname.toLowerCase();
+  } catch {
+    return 'unknown';
+  }
+}
+
+function shouldDisableSsl(connectionString) {
+  if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') return true;
+  if (process.env.LATELLESS_TEST_MODE === '1') return true;
+  if (process.env.NODE_ENV === 'test') return true;
+  if (process.env.PGSSLMODE?.toLowerCase() === 'disable') return true;
+
+  const hostname = resolveHostname(connectionString);
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function sanitizeConnectionStringForNoSsl(connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+    parsed.searchParams.delete('sslmode');
+    parsed.searchParams.delete('ssl');
+    parsed.searchParams.delete('sslrootcert');
+    parsed.searchParams.delete('sslcert');
+    parsed.searchParams.delete('sslkey');
+    parsed.searchParams.delete('sslpassword');
+    parsed.searchParams.delete('options');
+    return parsed.toString();
+  } catch {
+    return connectionString;
+  }
+}
+
+function resolveConnectionString() {
+  const isTestMode =
+    process.env.LATELLESS_TEST_MODE === '1' || process.env.NODE_ENV === 'test';
+  const useTestUrl =
+    isTestMode &&
+    typeof process.env.POSTGRES_URL_TEST === 'string' &&
+    process.env.POSTGRES_URL_TEST.trim() !== '';
+  const sourceEnvVar = useTestUrl
+    ? 'POSTGRES_URL_TEST'
+    : process.env.POSTGRES_URL
+      ? 'POSTGRES_URL'
+      : 'DATABASE_URL';
+  const connectionStringRaw = process.env[sourceEnvVar];
+  if (!connectionStringRaw) {
+    throw new Error('Missing POSTGRES_URL_TEST, POSTGRES_URL, or DATABASE_URL');
+  }
+
+  const sslOff = shouldDisableSsl(connectionStringRaw);
+  const connectionString = sslOff
+    ? sanitizeConnectionStringForNoSsl(connectionStringRaw)
+    : connectionStringRaw;
+
+  return {
+    connectionString,
+    ssl: sslOff ? false : true,
+    sourceEnvVar,
+  };
+}
+
+const db = resolveConnectionString();
+console.error(
+  `[migrate][db] env=${process.env.NODE_ENV ?? ''} ci=${process.env.CI ?? ''} gha=${process.env.GITHUB_ACTIONS ?? ''} test_mode=${process.env.LATELLESS_TEST_MODE ?? ''} source=${db.sourceEnvVar} host=${resolveHostname(db.connectionString)} ssl=${String(db.ssl)}`,
+);
+const sql = postgres(db.connectionString, { ssl: db.ssl, connect_timeout: 15 });
 
 function sha256(content) {
   return createHash('sha256').update(content, 'utf8').digest('hex');

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import Stripe from 'stripe';
 import { z } from 'zod';
 import { requireUserEmail } from '@/app/lib/data';
@@ -8,8 +8,6 @@ import {
   enforceRateLimit,
   parseQuery,
 } from '@/app/lib/security/api-guard';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 const STRIPE_CONFIG_INVALID = 'STRIPE_CONFIG_INVALID';
 const STRIPE_CONNECT_ACCOUNTS_CREATE_FAILED = 'STRIPE_CONNECT_ACCOUNTS_CREATE_FAILED';

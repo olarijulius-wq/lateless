@@ -1,4 +1,4 @@
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import PublicPayButton from '@/app/ui/invoices/public-pay-button';
 import PublicRefundRequest from '@/app/ui/invoices/public-refund-request';
 import InvoiceStatus from '@/app/ui/invoices/status';
@@ -19,8 +19,6 @@ export const metadata: Metadata = {
     follow: false,
   },
 };
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 function formatDate(value: string | null) {
   if (!value) return '—';

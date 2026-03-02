@@ -1,6 +1,4 @@
-import postgres from 'postgres';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { sql } from '@/app/lib/db';
 
 export const REFUND_REQUESTS_MIGRATION_REQUIRED_CODE =
   'REFUND_REQUESTS_MIGRATION_REQUIRED';
@@ -24,6 +22,7 @@ export function isRefundRequestsMigrationRequiredError(error: unknown): boolean 
 }
 
 let refundRequestsSchemaReadyPromise: Promise<void> | null = null;
+let refundRequestsRequestedAtColumnPromise: Promise<boolean> | null = null;
 
 export async function assertRefundRequestsSchemaReady(): Promise<void> {
   if (!refundRequestsSchemaReadyPromise) {
@@ -41,6 +40,25 @@ export async function assertRefundRequestsSchemaReady(): Promise<void> {
   }
 
   return refundRequestsSchemaReadyPromise;
+}
+
+export async function hasRefundRequestsRequestedAtColumn(): Promise<boolean> {
+  if (!refundRequestsRequestedAtColumnPromise) {
+    refundRequestsRequestedAtColumnPromise = (async () => {
+      const [result] = await sql<{ has_requested_at: boolean }[]>`
+        select exists (
+          select 1
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'refund_requests'
+            and column_name = 'requested_at'
+        ) as has_requested_at
+      `;
+      return Boolean(result?.has_requested_at);
+    })();
+  }
+
+  return refundRequestsRequestedAtColumnPromise;
 }
 
 export function isRefundWindowOpen(paidAt: Date | null) {

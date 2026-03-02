@@ -2,7 +2,8 @@ import 'server-only';
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import postgres from 'postgres';
+import type { JSONValue } from 'postgres';
+import { sql } from '@/app/lib/db';
 import Stripe from 'stripe';
 import {
   ensureWorkspaceContextForCurrentUser,
@@ -26,7 +27,6 @@ import {
 import { getMigrationReport } from '@/app/lib/migration-tracker';
 import { resolveSiteUrlDebug } from '@/app/lib/seo/site-url';
 
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 const TEST_EMAIL_WINDOW_MS = 10 * 60 * 1000;
 
 type CheckStatus = 'pass' | 'warn' | 'fail' | 'manual';
@@ -408,8 +408,8 @@ async function persistSmokeCheckRow(input: {
       values (
         ${normalizeEmail(input.actorEmail)},
         ${input.workspaceId},
-        ${sql.json(input.env as unknown as postgres.JSONValue)},
-        ${sql.json(input.payload as unknown as postgres.JSONValue)},
+        ${sql.json(input.env as unknown as JSONValue)},
+        ${sql.json(input.payload as unknown as JSONValue)},
         ${input.ok}
       )
     `;

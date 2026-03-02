@@ -1,13 +1,11 @@
 // app/api/invoices/export/route.ts
 import { NextResponse } from 'next/server';
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import { auth } from '@/auth';
 import { PLAN_CONFIG, resolveEffectivePlan } from '@/app/lib/config';
 import { enforceRateLimit } from '@/app/lib/security/api-guard';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveBillingContext } from '@/app/lib/workspace-billing';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 const TEST_HOOKS_ENABLED =
   process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';

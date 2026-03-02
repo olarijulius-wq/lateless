@@ -1,7 +1,7 @@
 // app/api/stripe/checkout/route.ts
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { stripe } from '@/app/lib/stripe';
+import { getStripe } from '@/app/lib/stripe';
 import { auth } from '@/auth';
 import {
   STRIPE_PRICE_ID_BY_PLAN_AND_INTERVAL,
@@ -109,6 +109,7 @@ export async function POST(req: Request) {
       : 'http://localhost:3000');
 
   try {
+    const stripe = getStripe();
     const workspaceContext = await ensureWorkspaceContextForCurrentUser();
     const workspaceId = workspaceContext.workspaceId;
 

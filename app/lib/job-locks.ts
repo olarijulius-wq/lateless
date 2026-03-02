@@ -1,8 +1,6 @@
 import 'server-only';
 
-import postgres from 'postgres';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
+import { sql } from '@/app/lib/db';
 
 const JOB_LOCKS_MIGRATION_REQUIRED_CODE = 'JOB_LOCKS_MIGRATION_REQUIRED';
 

@@ -1,4 +1,4 @@
-import postgres from 'postgres';
+import { sql } from '@/app/lib/db';
 import clsx from 'clsx';
 import {
   fetchStripeConnectStatusForUser,
@@ -7,8 +7,6 @@ import {
 import { formatCurrencySuffix } from '@/app/lib/utils';
 import { RevealOnScroll } from '@/app/ui/motion/reveal';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 type LiveStats = {
   pendingThisWeekCents: number;
