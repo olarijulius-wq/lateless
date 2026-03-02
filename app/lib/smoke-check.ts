@@ -2,6 +2,7 @@ import 'server-only';
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { JSONValue } from 'postgres';
 import { sql } from '@/app/lib/db';
 import Stripe from 'stripe';
 import {
@@ -407,8 +408,8 @@ async function persistSmokeCheckRow(input: {
       values (
         ${normalizeEmail(input.actorEmail)},
         ${input.workspaceId},
-        ${sql.json(input.env as unknown as postgres.JSONValue)},
-        ${sql.json(input.payload as unknown as postgres.JSONValue)},
+        ${sql.json(input.env as unknown as JSONValue)},
+        ${sql.json(input.payload as unknown as JSONValue)},
         ${input.ok}
       )
     `;
