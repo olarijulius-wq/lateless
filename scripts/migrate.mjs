@@ -3,7 +3,8 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createJiti } from 'jiti';
+import jitiPkg from 'jiti';
+const { createJiti } = jitiPkg;
 
 const jiti = createJiti(import.meta.url);
 const { sql } = jiti('../app/lib/db.ts');

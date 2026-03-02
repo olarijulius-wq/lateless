@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { createJiti } from "jiti";
+import jitiPkg from "jiti";
+const { createJiti } = jitiPkg;
 
 function usage() {
   console.error(
