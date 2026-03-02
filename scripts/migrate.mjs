@@ -3,11 +3,10 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import jitiPkg from 'jiti';
-const { createJiti } = jitiPkg;
+import jiti from 'jiti';
 
-const jiti = createJiti(import.meta.url);
-const { sql } = jiti('../app/lib/db.ts');
+const j = jiti(import.meta.url, { interopDefault: true });
+const { sql } = j('../app/lib/db.ts');
 
 const dryRun = process.env.DRY_RUN === '1';
 const allowBaseline = process.env.ALLOW_BASELINE === '1';
