@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import postgres from "postgres";
+import { createJiti } from "jiti";
 
 function usage() {
   console.error(
@@ -79,11 +79,8 @@ assert.equal(event?.data?.object?.mode, "subscription");
 assert.equal(event?.data?.object?.payment_status, "paid");
 assert.ok(readObjectId(event?.data?.object?.subscription));
 
-if (!process.env.POSTGRES_URL) {
-  throw new Error("POSTGRES_URL is required");
-}
-
-const sql = postgres(process.env.POSTGRES_URL, { ssl: "require" });
+const jiti = createJiti(import.meta.url);
+const { sql } = jiti("../app/lib/db.ts");
 
 try {
   const session = event.data.object;

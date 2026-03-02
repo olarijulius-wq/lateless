@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import postgres from 'postgres';
+import { resolveDbConnectionConfig, sql } from '@/app/lib/db';
 
 type WorkspaceContext = {
   userEmail: string;
@@ -20,33 +20,15 @@ type TestContext = {
   invoiceB: string;
 };
 
-function requireTestDatabaseUrl() {
-  const url = process.env.POSTGRES_URL_TEST?.trim();
-  if (!url) {
-    throw new Error('Missing POSTGRES_URL_TEST.');
-  }
-  return url;
-}
-
-function resolveSslMode(dbUrl: string): false | 'require' {
-  const hostname = new URL(dbUrl).hostname;
-  return hostname === 'localhost' || hostname === '127.0.0.1' ? false : 'require';
-}
-
-const testDbUrl = requireTestDatabaseUrl();
+const { connectionString: testDbUrl } = resolveDbConnectionConfig();
 process.env.AUTH_SECRET ??= 'test-auth-secret';
 process.env.NEXTAUTH_SECRET ??= process.env.AUTH_SECRET;
 process.env.NEXTAUTH_URL ??= 'http://localhost:3000';
 process.env.PAY_LINK_SECRET ??= 'test-pay-link-secret';
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000';
 
-const sql = postgres(testDbUrl, { ssl: resolveSslMode(testDbUrl), prepare: false });
-const sqlClients: Array<ReturnType<typeof postgres>> = [sql];
-
 async function closeSqlClients() {
-  await Promise.allSettled(
-    sqlClients.map((client) => client.end({ timeout: 5 })),
-  );
+  await Promise.allSettled([sql.end({ timeout: 5 })]);
 }
 
 async function resetDb() {

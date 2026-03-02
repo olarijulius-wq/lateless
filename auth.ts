@@ -7,8 +7,8 @@ import type { Adapter } from 'next-auth/adapters';
 import { authConfig } from './auth.config';
 import { z } from 'zod';
 import type { User } from '@/app/lib/definitions';
+import { sql } from '@/app/lib/db';
 import bcrypt from 'bcrypt';
-import postgres from 'postgres';
 import crypto from 'crypto';
 
 /**
@@ -21,8 +21,6 @@ function compute2FaBypassHmac(nonce: string): string {
 }
 
 export { compute2FaBypassHmac };
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();

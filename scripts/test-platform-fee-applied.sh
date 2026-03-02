@@ -25,15 +25,14 @@ done
 
 node --experimental-strip-types <<'NODE'
 import assert from 'node:assert/strict';
-import postgres from 'postgres';
 import Stripe from 'stripe';
+import { sql } from './app/lib/db.ts';
 import { computeInvoiceFeeBreakdown } from './app/lib/pricing-fees.ts';
 import { resolveEffectivePlan } from './app/lib/config.ts';
 
 const invoiceId = process.env.INVOICE_ID;
 if (!invoiceId) throw new Error('INVOICE_ID is required');
 
-const sql = postgres(process.env.POSTGRES_URL, { ssl: 'require' });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const rows = await sql`

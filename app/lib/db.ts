@@ -3,6 +3,7 @@ import postgres from 'postgres';
 
 const globalForDb = globalThis as unknown as {
   __latelessSql?: ReturnType<typeof postgres>;
+  __latelessDbBootLogged?: boolean;
 };
 
 const poolMaxRaw = process.env.POSTGRES_POOL_MAX;
@@ -26,6 +27,8 @@ type DbConfig = {
   connectionString: string;
   sourceEnvVar: 'POSTGRES_URL_TEST' | 'POSTGRES_URL' | 'DATABASE_URL';
   ssl: false | 'require';
+  host: string;
+  urlHasSslmode: boolean;
 };
 
 function resolveHostname(connectionString: string): string {
@@ -36,8 +39,18 @@ function resolveHostname(connectionString: string): string {
   }
 }
 
-function resolveSslMode(connectionString: string): false | 'require' {
+export function resolveSslMode(connectionString: string): false | 'require' {
+  void connectionString;
+
+  if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
+    return false;
+  }
+
   if (process.env.LATELLESS_TEST_MODE === '1') {
+    return false;
+  }
+
+  if (process.env.NODE_ENV === 'test') {
     return false;
   }
 
@@ -45,17 +58,27 @@ function resolveSslMode(connectionString: string): false | 'require' {
     return false;
   }
 
-  const host = resolveHostname(connectionString);
-  if (
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    host === '::1' ||
-    host === 'postgres'
-  ) {
+  return 'require';
+}
+
+function hasSslQueryParam(connectionString: string): boolean {
+  try {
+    const parsed = new URL(connectionString);
+    return parsed.searchParams.has('sslmode') || parsed.searchParams.has('ssl');
+  } catch {
     return false;
   }
+}
 
-  return 'require';
+function sanitizeConnectionStringForNoSsl(connectionString: string): string {
+  try {
+    const parsed = new URL(connectionString);
+    parsed.searchParams.delete('sslmode');
+    parsed.searchParams.delete('ssl');
+    return parsed.toString();
+  } catch {
+    return connectionString;
+  }
 }
 
 export function resolveDbConnectionConfig(): DbConfig {
@@ -70,26 +93,38 @@ export function resolveDbConnectionConfig(): DbConfig {
     : process.env.POSTGRES_URL
       ? 'POSTGRES_URL'
       : 'DATABASE_URL';
-  const connectionString = process.env[sourceEnvVar];
-  if (!connectionString) {
+  const connectionStringRaw = process.env[sourceEnvVar];
+  if (!connectionStringRaw) {
     throw new Error('Missing POSTGRES_URL_TEST, POSTGRES_URL, or DATABASE_URL');
   }
 
-  const ssl = resolveSslMode(connectionString);
-  const hostname = resolveHostname(connectionString);
-  if (isTestMode) {
-    console.info(`[db] source=${sourceEnvVar} host=${hostname} ssl=${ssl}`);
-  }
+  const ssl = resolveSslMode(connectionStringRaw);
+  const connectionString =
+    ssl === false
+      ? sanitizeConnectionStringForNoSsl(connectionStringRaw)
+      : connectionStringRaw;
+  const host = resolveHostname(connectionString);
+  const urlHasSslmode = hasSslQueryParam(connectionStringRaw);
 
   return {
     connectionString,
     sourceEnvVar,
     ssl,
+    host,
+    urlHasSslmode,
   };
 }
 
 function createSqlClient() {
-  const { connectionString, ssl } = resolveDbConnectionConfig();
+  const dbConfig = resolveDbConnectionConfig();
+  if (!globalForDb.__latelessDbBootLogged) {
+    globalForDb.__latelessDbBootLogged = true;
+    console.error(
+      `[db][boot] env=${process.env.NODE_ENV ?? ''} ci=${process.env.CI ?? ''} gha=${process.env.GITHUB_ACTIONS ?? ''} test_mode=${process.env.LATELLESS_TEST_MODE ?? ''} source=${dbConfig.sourceEnvVar} host=${dbConfig.host} ssl=${dbConfig.ssl} url_has_sslmode=${dbConfig.urlHasSslmode}`,
+    );
+  }
+
+  const { connectionString, ssl } = dbConfig;
   const disablePreparedStatements = isPoolerUrl(connectionString);
 
   return postgres(connectionString, {
