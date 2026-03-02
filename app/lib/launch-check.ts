@@ -3,7 +3,7 @@ import { ensureWorkspaceContextForCurrentUser, type WorkspaceContext } from '@/a
 import { getLaunchCheckAdminEmailDecision } from '@/app/lib/admin-gates';
 import { isInternalAdmin } from '@/app/lib/internal-admin-email';
 import { resolveSiteUrlDebug } from '@/app/lib/seo/site-url';
-import { JSONValue } from 'postgres';
+import type { JSONValue } from 'postgres';
 
 const REQUIRED_SITEMAP_PATHS = ['/', '/pricing', '/faq', '/help', '/privacy', '/terms', '/security'];
 const PRIVATE_NOINDEX_PATHS = [
