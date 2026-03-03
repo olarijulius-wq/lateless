@@ -629,6 +629,55 @@ async function run() {
       assert.notEqual(workspaceABranding.companyName, 'Workspace B Brand');
     });
 
+    await runCase('fetchCompanyProfile scopes to workspace_id (not user_email)', async () => {
+      const fixtures = await seedFixtures();
+      const workspaceBUserEmail = fixtures.userEmail.replace('@', '+b@');
+
+      await sql`
+        insert into public.company_profiles (
+          user_email,
+          workspace_id,
+          company_name,
+          billing_email
+        )
+        values
+          (${fixtures.userEmail}, ${fixtures.workspaceA}, 'Company A', 'billing-a@example.com'),
+          (${workspaceBUserEmail}, ${fixtures.workspaceB}, 'Company B', 'billing-b@example.com')
+      `;
+
+      // Workspace owner → workspace A profile
+      const ownerContext: WorkspaceContext = {
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceA,
+      };
+      dataModule.__testHooks.requireWorkspaceContextOverride = async () => ownerContext;
+      const ownerProfile = await dataModule.fetchCompanyProfile();
+      assert.equal(ownerProfile?.company_name, 'Company A', 'owner should see workspace A company profile');
+
+      // Workspace member (different email, same workspace) → must NOT get null
+      const memberContext: WorkspaceContext = {
+        userEmail: fixtures.teammateUserEmail,
+        workspaceId: fixtures.workspaceA,
+      };
+      dataModule.__testHooks.requireWorkspaceContextOverride = async () => memberContext;
+      const memberProfile = await dataModule.fetchCompanyProfile();
+      assert.equal(
+        memberProfile?.company_name,
+        'Company A',
+        'workspace member must see shared company profile, not null',
+      );
+
+      // Cross-workspace isolation: workspace B context must not leak workspace A profile
+      const workspaceBContext: WorkspaceContext = {
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceB,
+      };
+      dataModule.__testHooks.requireWorkspaceContextOverride = async () => workspaceBContext;
+      const workspaceBProfile = await dataModule.fetchCompanyProfile();
+      assert.equal(workspaceBProfile?.company_name, 'Company B', 'workspace B context returns workspace B profile');
+      assert.notEqual(workspaceBProfile?.company_name, 'Company A', 'no cross-workspace profile leak');
+    });
+
     await runCase('export isolation (invoices + customers)', async () => {
       const fixtures = await seedFixtures();
       const workspaceAContext: WorkspaceContext = {
