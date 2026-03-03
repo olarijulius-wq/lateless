@@ -16,6 +16,18 @@ export type SetupState = {
   invoiceSentDone: boolean;
 };
 
+export type SetupStateResolution =
+  | {
+      ok: true;
+      state: SetupState;
+    }
+  | {
+      ok: false;
+      code: 'UNAUTHORIZED' | 'NO_ACTIVE_WORKSPACE';
+      needsAuth: boolean;
+      needsSetup: boolean;
+    };
+
 type SetupSchemaCapabilities = {
   hasCompanyProfilesTable: boolean;
   hasCompanyProfilesWorkspaceId: boolean;
@@ -55,28 +67,32 @@ async function getSetupSchemaCapabilities(): Promise<SetupSchemaCapabilities> {
   };
 }
 
-export async function fetchSetupStateForCurrentUser(): Promise<SetupState> {
+export async function fetchSetupStateForCurrentUser(): Promise<SetupStateResolution> {
   const session = await auth();
-  const sessionEmail = session?.user?.email;
-  if (!sessionEmail) {
-    return {
-      companyDone: false,
-      customerDone: false,
-      invoiceDone: false,
-      invoiceSentDone: false,
-    };
+  const sessionUser = session?.user as { id?: string; email?: string } | undefined;
+  if (!sessionUser?.id?.trim() && !sessionUser?.email?.trim()) {
+    return { ok: false, code: 'UNAUTHORIZED', needsAuth: true, needsSetup: false };
   }
 
-  const userEmail = normalizeEmail(sessionEmail);
+  let userEmail = sessionUser.email?.trim() ? normalizeEmail(sessionUser.email) : null;
   let workspaceId: string | null = null;
 
   try {
     const workspaceContext = await ensureWorkspaceContextForCurrentUser();
+    userEmail = workspaceContext.userEmail;
     workspaceId = workspaceContext.workspaceId;
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return { ok: false, code: 'UNAUTHORIZED', needsAuth: true, needsSetup: false };
+    }
     if (!isTeamMigrationRequiredError(error)) {
       console.error('Failed to resolve workspace context for setup state:', error);
     }
+    return { ok: false, code: 'NO_ACTIVE_WORKSPACE', needsAuth: false, needsSetup: true };
+  }
+
+  if (!userEmail?.trim() || !workspaceId?.trim()) {
+    return { ok: false, code: 'NO_ACTIVE_WORKSPACE', needsAuth: false, needsSetup: true };
   }
 
   const schema = await getSetupSchemaCapabilities();
@@ -160,9 +176,12 @@ export async function fetchSetupStateForCurrentUser(): Promise<SetupState> {
   ]);
 
   return {
-    companyDone: Boolean(companyRow[0]?.done),
-    customerDone: Boolean(customerRow[0]?.done),
-    invoiceDone: Boolean(invoiceRow[0]?.done),
-    invoiceSentDone: Boolean(invoiceSentRow[0]?.done),
+    ok: true,
+    state: {
+      companyDone: Boolean(companyRow[0]?.done),
+      customerDone: Boolean(customerRow[0]?.done),
+      invoiceDone: Boolean(invoiceRow[0]?.done),
+      invoiceSentDone: Boolean(invoiceSentRow[0]?.done),
+    },
   };
 }

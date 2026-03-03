@@ -218,6 +218,7 @@ async function run() {
     const smokeCheckPingRoute = await import('@/app/api/settings/smoke-check/ping/route');
     const stripePortalRoute = await import('@/app/api/stripe/portal/route');
     const workspaceBillingModule = await import('@/app/lib/workspace-billing');
+    const workspacesModule = await import('@/app/lib/workspaces');
     const stripeWorkspaceMetadataModule = await import('@/app/lib/stripe-workspace-metadata');
     const invoiceWorkspaceBillingModule = await import('@/app/lib/invoice-workspace-billing');
     const { authConfig } = await import('@/auth.config');
@@ -382,6 +383,72 @@ async function run() {
         }),
         'legacy-workspace-id',
       );
+    });
+
+    await runCase('workspace bootstrap creates personal workspace and active membership', async () => {
+      const userId = '99999999-9999-4999-8999-999999999999';
+      const userEmail = 'bootstrap-user@example.com';
+
+      await sql`
+        insert into public.users (
+          id,
+          name,
+          email,
+          password,
+          is_verified,
+          plan,
+          subscription_status
+        )
+        values (
+          ${userId},
+          'Bootstrap User',
+          ${userEmail},
+          '$2b$10$uD50r8jflxRQQ6MShwbVVuAVrkMtk0iA0WIMRqjYOEoTP0TO.Zi5q',
+          true,
+          'solo',
+          'active'
+        )
+      `;
+
+      const context = await workspacesModule.ensureActiveWorkspaceForUser({
+        id: userId,
+        email: userEmail,
+        name: 'Bootstrap User',
+      });
+      assert.ok(context.workspaceId, 'workspace should be created');
+      assert.equal(context.userRole, 'owner');
+
+      const [membership] = await sql<{ role: 'owner' | 'admin' | 'member' }[]>`
+        select role
+        from public.workspace_members
+        where workspace_id = ${context.workspaceId}
+          and user_id = ${userId}
+        limit 1
+      `;
+      assert.equal(membership?.role, 'owner');
+
+      const [userRow] = await sql<{ active_workspace_id: string | null }[]>`
+        select active_workspace_id
+        from public.users
+        where id = ${userId}
+        limit 1
+      `;
+      assert.equal(userRow?.active_workspace_id, context.workspaceId);
+
+      const secondContext = await workspacesModule.ensureActiveWorkspaceForUser({
+        id: userId,
+        email: userEmail,
+        name: 'Bootstrap User',
+      });
+      assert.equal(secondContext.workspaceId, context.workspaceId);
+
+      const [membershipCount] = await sql<{ count: string }[]>`
+        select count(*)::text as count
+        from public.workspace_members
+        where workspace_id = ${context.workspaceId}
+          and user_id = ${userId}
+      `;
+      assert.equal(membershipCount?.count, '1');
     });
 
     await runCase('listing isolation (invoices + customers)', async () => {

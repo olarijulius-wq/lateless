@@ -13,6 +13,7 @@ import {
 import { Metadata } from 'next';
 import { fetchSetupStateForCurrentUser } from '@/app/lib/setup-state';
 import DashboardSetupCard from '@/app/ui/dashboard/setup-card';
+import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -28,7 +29,14 @@ export default async function Page(props: {
   }>;
 }) {
   const searchParams = await props.searchParams;
-  const setup = await fetchSetupStateForCurrentUser();
+  const setupResolution = await fetchSetupStateForCurrentUser();
+  if (!setupResolution.ok) {
+    if (setupResolution.needsAuth) {
+      redirect('/login');
+    }
+    redirect('/dashboard/setup');
+  }
+  const setup = setupResolution.state;
 
   const setupItems: Array<{
     key: string;

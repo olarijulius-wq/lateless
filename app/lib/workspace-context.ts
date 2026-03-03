@@ -14,13 +14,17 @@ export type ResolvedWorkspaceContext = {
 };
 
 export class WorkspaceContextError extends Error {
-  code: 'UNAUTHORIZED' | 'FORBIDDEN';
-  status: 401 | 403;
+  code: 'UNAUTHORIZED' | 'FORBIDDEN' | 'NO_ACTIVE_WORKSPACE';
+  status: 401 | 403 | 409;
 
-  constructor(code: 'UNAUTHORIZED' | 'FORBIDDEN', message: string) {
+  constructor(
+    code: 'UNAUTHORIZED' | 'FORBIDDEN' | 'NO_ACTIVE_WORKSPACE',
+    message: string,
+  ) {
     super(message);
     this.code = code;
-    this.status = code === 'UNAUTHORIZED' ? 401 : 403;
+    this.status =
+      code === 'UNAUTHORIZED' ? 401 : code === 'FORBIDDEN' ? 403 : 409;
   }
 }
 
@@ -31,6 +35,12 @@ export function isWorkspaceContextError(error: unknown): error is WorkspaceConte
 export async function requireWorkspaceContext(): Promise<ResolvedWorkspaceContext> {
   try {
     const context = await ensureWorkspaceContextForCurrentUser();
+    if (!context.workspaceId?.trim()) {
+      throw new WorkspaceContextError(
+        'NO_ACTIVE_WORKSPACE',
+        'No active workspace is configured for the current user.',
+      );
+    }
     return {
       userId: context.userId,
       userEmail: context.userEmail,
@@ -39,6 +49,9 @@ export async function requireWorkspaceContext(): Promise<ResolvedWorkspaceContex
       role: context.userRole,
     };
   } catch (error) {
+    if (isWorkspaceContextError(error)) {
+      throw error;
+    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       throw new WorkspaceContextError('UNAUTHORIZED', 'Unauthorized');
     }
