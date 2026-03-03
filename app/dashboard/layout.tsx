@@ -16,10 +16,11 @@ export const metadata: Metadata = {
     follow: false,
   },
 };
- 
+
 export default async function Layout({ children }: { children: React.ReactNode }) {
   const session = await auth();
-  if (!session?.user?.email) {
+  const sessionUser = session?.user as { id?: string; email?: string } | undefined;
+  if (!sessionUser?.email?.trim() && !sessionUser?.id?.trim()) {
     redirect('/login');
   }
   let showRecoveryBanner = false;

@@ -11,6 +11,7 @@ import {
 } from '@/app/lib/workspaces';
 import OnboardingChecklist, { type OnboardingStep } from './onboarding-checklist';
 import { PageShell } from '@/app/ui/page-layout';
+import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = {
   title: 'Guided Setup',
@@ -64,7 +65,14 @@ async function fetchNextSendInvoiceHref(userEmail: string) {
 export default async function OnboardingPage() {
   const session = await auth();
   const userEmail = session?.user?.email ? normalizeEmail(session.user.email) : null;
-  const setup = await fetchSetupStateForCurrentUser();
+  const setupResolution = await fetchSetupStateForCurrentUser();
+  if (!setupResolution.ok) {
+    if (setupResolution.needsAuth) {
+      redirect('/login');
+    }
+    redirect('/dashboard/setup');
+  }
+  const setup = setupResolution.state;
   const connectStatus = userEmail
     ? await fetchStripeConnectStatusForUser(userEmail)
     : {

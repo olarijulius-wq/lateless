@@ -138,20 +138,34 @@ export async function assertWorkspaceSchemaReady(): Promise<void> {
 
 export async function requireCurrentUser() {
   const session = await auth();
-  const sessionEmail = session?.user?.email;
-  if (!sessionEmail) {
+  const sessionUser = session?.user as { id?: string; email?: string } | undefined;
+  const sessionEmail = sessionUser?.email?.trim() || null;
+  const sessionUserId = sessionUser?.id?.trim() || null;
+
+  if (!sessionEmail && !sessionUserId) {
     throw new Error('Unauthorized');
   }
+  const emptyUserRows: { id: string; name: string | null; email: string }[] = [];
+  const userByEmailPromise = sessionEmail
+    ? sql<{ id: string; name: string | null; email: string }[]>`
+        select id, name, email
+        from public.users
+        where lower(email) = ${normalizeEmail(sessionEmail)}
+        limit 1
+      `
+    : Promise.resolve(emptyUserRows);
+  const userByIdPromise = sessionUserId
+    ? sql<{ id: string; name: string | null; email: string }[]>`
+        select id, name, email
+        from public.users
+        where id = ${sessionUserId}
+        limit 1
+      `
+    : Promise.resolve(emptyUserRows);
 
-  const email = normalizeEmail(sessionEmail);
-  const [user] = await sql<{ id: string; name: string | null; email: string }[]>`
-    select id, name, email
-    from public.users
-    where lower(email) = ${email}
-    limit 1
-  `;
-
-  if (!user) {
+  const [userByEmailRows, userByIdRows] = await Promise.all([userByEmailPromise, userByIdPromise]);
+  const user = userByEmailRows[0] ?? userByIdRows[0];
+  if (!user?.email?.trim()) {
     throw new Error('Unauthorized');
   }
 
@@ -162,129 +176,159 @@ export async function requireCurrentUser() {
   };
 }
 
-async function ensureOwnedWorkspace(user: {
+export async function ensureActiveWorkspaceForUser(user: {
   id: string;
   email: string;
   name: string | null;
-}) {
-  const [owned] = await sql<{ id: string; name: string }[]>`
-    select id, name
-    from public.workspaces
-    where owner_user_id = ${user.id}
-    order by created_at asc
-    limit 1
-  `;
+}): Promise<WorkspaceContext> {
+  await assertWorkspaceSchemaReady();
 
-  if (owned) {
-    await sql`
-      insert into public.workspace_members (workspace_id, user_id, role)
-      values (${owned.id}, ${user.id}, 'owner')
-      on conflict (workspace_id, user_id)
-      do update set role = 'owner'
-    `;
+  return sql.begin(async (tx) => {
+    const userRows = (await tx.unsafe(
+      `
+      select active_workspace_id
+      from public.users
+      where id = $1
+      limit 1
+      `,
+      [user.id],
+    )) as { active_workspace_id: string | null }[];
+    const [userRow] = userRows;
 
-    return owned;
-  }
+    const memberships = (await tx.unsafe(
+      `
+      select
+        w.id as workspace_id,
+        w.name as workspace_name,
+        wm.role,
+        w.owner_user_id,
+        w.created_at
+      from public.workspace_members wm
+      join public.workspaces w on w.id = wm.workspace_id
+      where wm.user_id = $1
+      order by
+        case when w.owner_user_id = $1 then 0 else 1 end asc,
+        w.created_at asc
+      `,
+      [user.id],
+    )) as {
+      workspace_id: string;
+      workspace_name: string;
+      role: WorkspaceRole;
+      owner_user_id: string;
+      created_at: Date;
+    }[];
 
-  const [created] = await sql<{ id: string; name: string }[]>`
-    insert into public.workspaces (name, owner_user_id)
-    values (${buildWorkspaceName(user.name, user.email)}, ${user.id})
-    returning id, name
-  `;
+    let resolvedMembership = memberships.find(
+      (membership) => membership.workspace_id === userRow?.active_workspace_id,
+    );
 
-  await sql`
-    insert into public.workspace_members (workspace_id, user_id, role)
-    values (${created.id}, ${user.id}, 'owner')
-    on conflict (workspace_id, user_id)
-    do update set role = 'owner'
-  `;
+    if (!resolvedMembership && memberships.length > 0) {
+      resolvedMembership = memberships[0];
+      await tx.unsafe(
+        `
+        update public.users
+        set active_workspace_id = $1
+        where id = $2
+        `,
+        [resolvedMembership.workspace_id, user.id],
+      );
+    }
 
-  return created;
+    if (!resolvedMembership) {
+      const ownedRows = (await tx.unsafe(
+        `
+        select id, name
+        from public.workspaces
+        where owner_user_id = $1
+        order by created_at asc
+        limit 1
+        `,
+        [user.id],
+      )) as { id: string; name: string }[];
+      const [owned] = ownedRows;
+
+      const ownedWorkspace =
+        owned ??
+        (
+          (await tx.unsafe(
+            `
+            insert into public.workspaces (name, owner_user_id)
+            values ($1, $2)
+            returning id, name
+            `,
+            [buildWorkspaceName(user.name, user.email), user.id],
+          )) as { id: string; name: string }[]
+        )[0];
+
+      await tx.unsafe(
+        `
+        insert into public.workspace_members (workspace_id, user_id, role)
+        values ($1, $2, 'owner')
+        on conflict (workspace_id, user_id)
+        do nothing
+        `,
+        [ownedWorkspace.id, user.id],
+      );
+      await tx.unsafe(
+        `
+        update public.workspace_members
+        set role = 'owner'
+        where workspace_id = $1
+          and user_id = $2
+          and role <> 'owner'
+        `,
+        [ownedWorkspace.id, user.id],
+      );
+      await tx.unsafe(
+        `
+        update public.users
+        set active_workspace_id = $1
+        where id = $2
+        `,
+        [ownedWorkspace.id, user.id],
+      );
+
+      return {
+        workspaceId: ownedWorkspace.id,
+        workspaceName: ownedWorkspace.name,
+        userId: user.id,
+        userEmail: user.email,
+        userRole: 'owner',
+      };
+    }
+
+    if (
+      resolvedMembership.owner_user_id === user.id &&
+      resolvedMembership.role !== 'owner'
+    ) {
+      await tx.unsafe(
+        `
+        update public.workspace_members
+        set role = 'owner'
+        where workspace_id = $1
+          and user_id = $2
+        `,
+        [resolvedMembership.workspace_id, user.id],
+      );
+    }
+
+    return {
+      workspaceId: resolvedMembership.workspace_id,
+      workspaceName: resolvedMembership.workspace_name,
+      userId: user.id,
+      userEmail: user.email,
+      userRole:
+        resolvedMembership.owner_user_id === user.id
+          ? 'owner'
+          : resolvedMembership.role,
+    };
+  });
 }
 
 export async function ensureWorkspaceContextForCurrentUser(): Promise<WorkspaceContext> {
-  await assertWorkspaceSchemaReady();
   const user = await requireCurrentUser();
-
-  const [userRow] = await sql<{ active_workspace_id: string | null }[]>`
-    select active_workspace_id
-    from public.users
-    where id = ${user.id}
-    limit 1
-  `;
-
-  const memberships = await sql<{
-    workspace_id: string;
-    workspace_name: string;
-    role: WorkspaceRole;
-    owner_user_id: string;
-    created_at: Date;
-  }[]>`
-    select
-      w.id as workspace_id,
-      w.name as workspace_name,
-      wm.role,
-      w.owner_user_id,
-      w.created_at
-    from public.workspace_members wm
-    join public.workspaces w on w.id = wm.workspace_id
-    where wm.user_id = ${user.id}
-    order by
-      case when w.owner_user_id = ${user.id} then 0 else 1 end asc,
-      w.created_at asc
-  `;
-
-  let resolvedMembership = memberships.find(
-    (membership) => membership.workspace_id === userRow?.active_workspace_id,
-  );
-
-  if (!resolvedMembership && memberships.length > 0) {
-    resolvedMembership = memberships[0];
-    await sql`
-      update public.users
-      set active_workspace_id = ${resolvedMembership.workspace_id}
-      where id = ${user.id}
-    `;
-  }
-
-  if (!resolvedMembership) {
-    const owned = await ensureOwnedWorkspace(user);
-    await sql`
-      update public.users
-      set active_workspace_id = ${owned.id}
-      where id = ${user.id}
-    `;
-    return {
-      workspaceId: owned.id,
-      workspaceName: owned.name,
-      userId: user.id,
-      userEmail: user.email,
-      userRole: 'owner',
-    };
-  }
-
-  if (
-    resolvedMembership.owner_user_id === user.id &&
-    resolvedMembership.role !== 'owner'
-  ) {
-    await sql`
-      update public.workspace_members
-      set role = 'owner'
-      where workspace_id = ${resolvedMembership.workspace_id}
-        and user_id = ${user.id}
-    `;
-  }
-
-  return {
-    workspaceId: resolvedMembership.workspace_id,
-    workspaceName: resolvedMembership.workspace_name,
-    userId: user.id,
-    userEmail: user.email,
-    userRole:
-      resolvedMembership.owner_user_id === user.id
-        ? 'owner'
-        : resolvedMembership.role,
-  };
+  return ensureActiveWorkspaceForUser(user);
 }
 
 export async function fetchWorkspaceMembershipsForCurrentUser(): Promise<
