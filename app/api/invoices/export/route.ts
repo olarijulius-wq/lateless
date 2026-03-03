@@ -7,6 +7,8 @@ import { enforceRateLimit } from '@/app/lib/security/api-guard';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveBillingContext } from '@/app/lib/workspace-billing';
 
+const MAX_ROWS = 50_000;
+
 const TEST_HOOKS_ENABLED =
   process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';
 export const __testHooksEnabled = TEST_HOOKS_ENABLED;
@@ -154,7 +156,10 @@ export async function GET(req: Request) {
       or (${useCustomersWorkspaceScope} = false and lower(customers.user_email) = ${email})
     )
     order by invoices.date desc
+    limit ${MAX_ROWS + 1}
   `;
+  const truncated = rows.length > MAX_ROWS;
+  const exportRows = truncated ? rows.slice(0, MAX_ROWS) : rows;
 
   // Header rida
   const header = [
@@ -168,7 +173,7 @@ export async function GET(req: Request) {
 
   const lines = [header.map(toCsvValue).join(',')];
 
-  for (const row of rows) {
+  for (const row of exportRows) {
     const dollars = (row.amount ?? 0) / 100;
     const line = [
       row.id,
@@ -189,6 +194,10 @@ export async function GET(req: Request) {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': 'attachment; filename="invoices.csv"',
+      ...(truncated ? {
+        Warning: `299 - "Export truncated to ${MAX_ROWS} rows"`,
+        'X-Export-Truncated': '1',
+      } : {}),
     },
   });
 }

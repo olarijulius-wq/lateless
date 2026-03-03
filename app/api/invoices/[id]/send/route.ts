@@ -258,16 +258,12 @@ export async function POST(
       provider: sent.provider,
     });
   } catch (error) {
-    const message =
-      error instanceof Error && error.message
-        ? error.message
-        : 'Failed to send invoice email.';
+    console.error('[invoices][send] failed to send invoice email', error);
     return NextResponse.json(
       {
         ok: false,
-        code: 'INVOICE_SEND_FAILED',
-        error: message,
-        actionHint: 'Check email provider settings in Settings -> SMTP.',
+        code: 'EMAIL_SEND_FAILED',
+        error: 'Failed to send invoice email.',
       },
       { status: 500 },
     );

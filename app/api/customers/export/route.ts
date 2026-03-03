@@ -8,6 +8,7 @@ import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveBillingContext } from '@/app/lib/workspace-billing';
 
 export const runtime = 'nodejs';
+const MAX_ROWS = 50_000;
 
 const TEST_HOOKS_ENABLED =
   process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';
@@ -118,7 +119,10 @@ export async function GET(req: Request) {
       (${useWorkspaceScope} = true and workspace_id = ${workspaceId})
       or (${useWorkspaceScope} = false and lower(user_email) = ${email})
     order by name asc
+    limit ${MAX_ROWS + 1}
   `;
+  const truncated = rows.length > MAX_ROWS;
+  const exportRows = truncated ? rows.slice(0, MAX_ROWS) : rows;
 
   // Ehita CSV
   const header = ['id', 'name', 'email'];
@@ -131,7 +135,7 @@ export async function GET(req: Request) {
 
   const lines = [
     header.join(','), // header
-    ...rows.map((row) =>
+    ...exportRows.map((row) =>
       [
         escape(row.id),
         escape(row.name),
@@ -147,6 +151,10 @@ export async function GET(req: Request) {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',
       'Content-Disposition': 'attachment; filename="customers.csv"',
+      ...(truncated ? {
+        Warning: `299 - "Export truncated to ${MAX_ROWS} rows"`,
+        'X-Export-Truncated': '1',
+      } : {}),
     },
   });
 }
