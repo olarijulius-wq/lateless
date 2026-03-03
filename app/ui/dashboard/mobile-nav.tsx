@@ -8,12 +8,14 @@ type MobileNavProps = {
   userEmail: string;
   logoutAction: () => Promise<void>;
   showBillingRecoveryWarning?: boolean;
+  canViewFeedbackAdmin?: boolean;
 };
 
 export default function MobileNav({
   userEmail,
   logoutAction,
   showBillingRecoveryWarning = false,
+  canViewFeedbackAdmin = false,
 }: MobileNavProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -36,6 +38,7 @@ export default function MobileNav({
         userEmail={userEmail}
         logoutAction={logoutAction}
         showBillingRecoveryWarning={showBillingRecoveryWarning}
+        canViewFeedbackAdmin={canViewFeedbackAdmin}
       />
     </>
   );

@@ -73,6 +73,7 @@ Set `POSTGRES_URL_TEST` secret in GitHub repo settings.
 - `MAIL_FROM_NAME`
 - `SUPPORT_EMAIL`
 - `REMINDER_FROM_EMAIL`
+- `INTERNAL_ADMIN_EMAILS` (comma-separated internal admin emails for gated internal/admin pages, including Feedback)
 - `SMTP_ENCRYPTION_KEY_BASE64` (base64-encoded 32-byte key for SMTP password encryption)
 - `SENTRY_DSN` (optional in production; recommended)
 - `REMINDER_CRON_TOKEN`
@@ -93,6 +94,7 @@ Set `POSTGRES_URL_TEST` secret in GitHub repo settings.
 
 - Tenant model is currently “user email = tenant”.
 - Plan limits are enforced on the server (not only hidden in the UI).
+- Internal admin surfaces are hidden by default unless `INTERNAL_ADMIN_EMAILS` is configured.
 - Login attempts are rate-limited.
 - Reminder job is protected by `REMINDER_CRON_TOKEN`.
 - Stripe webhooks sync subscription state and Stripe Connect status.

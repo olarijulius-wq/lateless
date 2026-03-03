@@ -5,6 +5,7 @@ import {
   Cog6ToothIcon,
   ClockIcon,
   EnvelopeIcon,
+  ChatBubbleLeftRightIcon,
 } from '@heroicons/react/24/outline';
 
 export type DashboardNavLink = {
@@ -12,6 +13,7 @@ export type DashboardNavLink = {
   href: string;
   icon: typeof HomeIcon;
   proOnly?: boolean;
+  adminOnly?: boolean;
 };
 
 const BASE_DASHBOARD_LINKS: DashboardNavLink[] = [
@@ -27,6 +29,23 @@ const BASE_DASHBOARD_LINKS: DashboardNavLink[] = [
   { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
 ];
 
-export function getDashboardLinks(): DashboardNavLink[] {
-  return [...BASE_DASHBOARD_LINKS];
+type GetDashboardLinksInput = {
+  canViewFeedbackAdmin?: boolean;
+};
+
+export function getDashboardLinks(
+  input: GetDashboardLinksInput = {},
+): DashboardNavLink[] {
+  const links = [...BASE_DASHBOARD_LINKS];
+
+  if (input.canViewFeedbackAdmin) {
+    links.push({
+      name: 'Feedback',
+      href: '/dashboard/feedback',
+      icon: ChatBubbleLeftRightIcon,
+      adminOnly: true,
+    });
+  }
+
+  return links;
 }

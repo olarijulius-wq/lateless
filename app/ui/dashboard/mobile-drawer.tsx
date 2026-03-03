@@ -25,6 +25,7 @@ type MobileDrawerProps = {
   userEmail: string;
   logoutAction: () => Promise<void>;
   showBillingRecoveryWarning?: boolean;
+  canViewFeedbackAdmin?: boolean;
 };
 
 type AccountMenuItemsProps = {
@@ -123,6 +124,7 @@ export default function MobileDrawer({
   userEmail,
   logoutAction,
   showBillingRecoveryWarning = false,
+  canViewFeedbackAdmin = false,
 }: MobileDrawerProps) {
   const identityLabel = userEmail || 'Account';
   const avatarInitial = getInitial(userEmail || '?');
@@ -191,6 +193,7 @@ export default function MobileDrawer({
             >
               <NavLinks
                 showBillingRecoveryWarning={showBillingRecoveryWarning}
+                canViewFeedbackAdmin={canViewFeedbackAdmin}
               />
             </nav>
           </div>

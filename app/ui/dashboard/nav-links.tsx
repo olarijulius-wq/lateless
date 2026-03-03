@@ -8,14 +8,16 @@ import { getDashboardLinks } from '@/app/ui/dashboard/nav-links-data';
 
 type NavLinksProps = {
   showBillingRecoveryWarning?: boolean;
+  canViewFeedbackAdmin?: boolean;
 };
 
 export default function NavLinks({
   showBillingRecoveryWarning = false,
+  canViewFeedbackAdmin = false,
 }: NavLinksProps) {
   const pathname = usePathname();
   const prefersReducedMotion = useReducedMotion();
-  const dashboardLinks = getDashboardLinks();
+  const dashboardLinks = getDashboardLinks({ canViewFeedbackAdmin });
   const MotionLink = motion(Link);
 
   return (
