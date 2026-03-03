@@ -27,7 +27,7 @@ Violations of these rules introduce security bugs or production breakage. Do not
 
 4. **No UI regressions on clickable rows.** Action buttons (`Send`, `Pay`, `Approve`, etc.) inside clickable table/card rows MUST have `data-row-nav-stop` + `stopPropagation()` + `pointer-events-auto`. Never nest an interactive element inside a parent anchor/button in a way that makes it unreachable or hijacks the click.
 
-5. **No hardcoded internal admin emails.** Use `INTERNAL_ADMIN_EMAILS` env var with `isInternalAdmin()` from `app/lib/internal-admin-email.ts`. The hardcoded `user@nextmail.com` in `app/lib/feedback.ts` and `app/ui/dashboard/nav-links-data.ts` is tracked debt — do not add more instances.
+5. **No hardcoded internal admin emails.** Use `INTERNAL_ADMIN_EMAILS` env var with `isInternalAdmin()` from `app/lib/internal-admin-email.ts`; do not hardcode admin addresses in feature gates.
 
 ## Before you commit
 

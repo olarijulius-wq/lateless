@@ -13,6 +13,7 @@ import {
   ensureWorkspaceContextForCurrentUser,
 } from '@/app/lib/workspaces';
 import { fetchWorkspaceDunningState } from '@/app/lib/billing-dunning';
+import { isFeedbackAdminEmail } from '@/app/lib/feedback';
 
 function getInitial(value: string) {
   const initial = value.trim().charAt(0).toUpperCase();
@@ -30,6 +31,7 @@ export default async function SideNav() {
   };
   const accountMenuItemCount = 6;
   const shouldShowAccountMenu = accountMenuItemCount > 0;
+  const canViewFeedbackAdmin = isFeedbackAdminEmail(userEmail);
   let showBillingRecoveryWarning = false;
   try {
     const workspaceContext = await ensureWorkspaceContextForCurrentUser();
@@ -45,6 +47,7 @@ export default async function SideNav() {
         userEmail={userEmail}
         logoutAction={logoutAction}
         showBillingRecoveryWarning={showBillingRecoveryWarning}
+        canViewFeedbackAdmin={canViewFeedbackAdmin}
       />
 
       <div className="hidden md:flex md:h-full md:flex-col">
@@ -59,6 +62,7 @@ export default async function SideNav() {
         <div className="flex h-full flex-col">
           <NavLinks
             showBillingRecoveryWarning={showBillingRecoveryWarning}
+            canViewFeedbackAdmin={canViewFeedbackAdmin}
           />
           {shouldShowAccountMenu ? (
             <div className="mt-auto sticky bottom-4 z-[90] w-full pt-4">
