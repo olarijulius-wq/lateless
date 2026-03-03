@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   const rl = await enforceRateLimit(
     req,
     {
-      bucket: 'billing_dismiss_banner',
+      bucket: 'billing_dismiss',
       windowSec: 300,
       ipLimit: 20,
       userLimit: 10,
