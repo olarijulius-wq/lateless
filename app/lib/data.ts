@@ -420,7 +420,6 @@ export async function getNextInvoiceNumber() {
       VALUES (${workspaceId}, ${userEmail}, ${year}, 1)
       ON CONFLICT (workspace_id)
       DO UPDATE SET
-        user_email = excluded.user_email,
         current_year = CASE
           WHEN invoice_counters.current_year = ${year}
           THEN invoice_counters.current_year
