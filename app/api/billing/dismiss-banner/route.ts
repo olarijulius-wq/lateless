@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   const rl = await enforceRateLimit(
     req,
     {
-      bucket: 'billing_dismiss',
+      bucket: 'billing_dismiss_banner',
       windowSec: 300,
       ipLimit: 20,
       userLimit: 10,
@@ -45,7 +45,11 @@ export async function POST(req: Request) {
 
     console.error('[billing] failed to dismiss recovery banner', error);
     return NextResponse.json(
-      { ok: false, error: 'Failed to dismiss billing banner.' },
+      {
+        ok: false,
+        code: 'BILLING_DISMISS_BANNER_FAILED',
+        error: 'Failed to dismiss billing banner.',
+      },
       { status: 500 },
     );
   }
