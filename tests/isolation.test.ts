@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { resolveDbConnectionConfig, sql } from '@/app/lib/db';
+import { createNextRequest } from './helpers/next-request';
 
 type WorkspaceContext = {
   userEmail: string;
@@ -872,7 +873,7 @@ async function run() {
 
       const token = payLinkModule.generatePayToken(fixtures.invoiceA);
       const res = await refundRequestRoute.POST(
-        new Request(`http://localhost/api/public/invoices/${token}/refund-request`, {
+        createNextRequest(`http://localhost/api/public/invoices/${token}/refund-request`, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
@@ -911,7 +912,7 @@ async function run() {
 
       const token = payLinkModule.generatePayToken(fixtures.invoiceB);
       const res = await refundRequestRoute.POST(
-        new Request(`http://localhost/api/public/invoices/${token}/refund-request`, {
+        createNextRequest(`http://localhost/api/public/invoices/${token}/refund-request`, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
@@ -952,7 +953,7 @@ async function run() {
 
       const token = payLinkModule.generatePayToken(fixtures.invoiceA);
       const res = await refundRequestRoute.POST(
-        new Request(`http://localhost/api/public/invoices/${token}/refund-request`, {
+        createNextRequest(`http://localhost/api/public/invoices/${token}/refund-request`, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
@@ -1054,7 +1055,7 @@ async function run() {
       `;
 
       const requestRes = await refundRequestRoute.POST(
-        new Request(`http://localhost/api/public/invoices/${token}/refund-request`, {
+        createNextRequest(`http://localhost/api/public/invoices/${token}/refund-request`, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
