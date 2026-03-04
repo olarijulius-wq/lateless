@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { sql } from '@/app/lib/db';
+import { sql, sqlFragment } from '@/app/lib/db';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import BillingEventsPanel from './billing-events-panel';
 import { isInternalAdmin } from '@/app/lib/internal-admin-email';
@@ -21,6 +21,25 @@ type BillingEventsSearchParams = {
 
 const ALLOWED_SORT = new Set(['created_at', 'event_type', 'status']);
 const ALLOWED_DIR = new Set(['asc', 'desc']);
+
+function buildBillingEventsOrderBy(
+  sort: 'created_at' | 'event_type' | 'status',
+  dir: 'asc' | 'desc',
+) {
+  if (sort === 'event_type') {
+    return dir === 'asc'
+      ? sqlFragment`event_type ASC, created_at DESC, id DESC`
+      : sqlFragment`event_type DESC, created_at DESC, id DESC`;
+  }
+  if (sort === 'status') {
+    return dir === 'asc'
+      ? sqlFragment`status ASC NULLS LAST, created_at DESC, id DESC`
+      : sqlFragment`status DESC NULLS LAST, created_at DESC, id DESC`;
+  }
+  return dir === 'asc'
+    ? sqlFragment`created_at ASC, id DESC`
+    : sqlFragment`created_at DESC, id DESC`;
+}
 
 export default async function BillingEventsPage(props: {
   searchParams?: Promise<BillingEventsSearchParams>;
@@ -67,22 +86,22 @@ export default async function BillingEventsPage(props: {
 
   const offset = (page - 1) * pageSize;
 
-  const whereParts = [sql`workspace_id = ${context.workspaceId}`];
+  const whereParts = [sqlFragment`workspace_id = ${context.workspaceId}`];
   if (t) {
-    whereParts.push(sql`event_type = ${t}`);
+    whereParts.push(sqlFragment`event_type = ${t}`);
   }
   if (status) {
-    whereParts.push(sql`status = ${status}`);
+    whereParts.push(sqlFragment`status = ${status}`);
   }
   if (q) {
     const pattern = `%${q}%`;
-    whereParts.push(sql`(event_type ilike ${pattern} or meta::text ilike ${pattern})`);
+    whereParts.push(sqlFragment`(event_type ilike ${pattern} or meta::text ilike ${pattern})`);
   }
   const whereSql = whereParts.reduce(
-    (acc, clause, index) => (index === 0 ? clause : sql`${acc} and ${clause}`),
+    (acc, clause, index) => (index === 0 ? clause : sqlFragment`${acc} and ${clause}`),
     whereParts[0],
   );
-  const orderBy = `${sort} ${dir}`;
+  const orderBy = buildBillingEventsOrderBy(sort, dir);
 
   const countRows = await sql<{ count: string }[]>`
     select count(*)::text as count
@@ -114,7 +133,7 @@ export default async function BillingEventsPage(props: {
       meta
     from public.billing_events
     where ${whereSql}
-    order by ${sql.unsafe(orderBy)}
+    order by ${orderBy}
     limit ${pageSize}
     offset ${offset}
   `;

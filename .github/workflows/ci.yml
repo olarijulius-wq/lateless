@@ -131,6 +131,7 @@ jobs:
           PAY_LINK_SECRET: "test-pay-link-secret"
           NEXT_PUBLIC_APP_URL: "http://localhost:3000"
           NEXTAUTH_URL: "http://localhost:3000"
+          DEBUG_SQL_42601: "1"
         run: |
           echo "::group::Test"
           pnpm test

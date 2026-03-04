@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 if (!process.env.NODE_ENV) {
   Reflect.set(process.env, 'NODE_ENV', 'development');
@@ -64,4 +66,12 @@ runCase('scope column validator hides details in production', () => {
   } finally {
     Reflect.set(process.env, 'NODE_ENV', previousEnv);
   }
+});
+
+runCase('scope filter builders do not use sql.unsafe in template interpolation', () => {
+  const dataSource = readFileSync(path.join(process.cwd(), 'app/lib/data.ts'), 'utf8');
+  assert.doesNotMatch(
+    dataSource,
+    /\$\{sql\.unsafe\((invoiceFilter|customerFilter)\.column\)\}/,
+  );
 });

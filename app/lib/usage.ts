@@ -1,5 +1,5 @@
 import type postgres from 'postgres';
-import { sql } from '@/app/lib/db';
+import { sql, sqlFragment } from '@/app/lib/db';
 
 export const USAGE_MIGRATION_REQUIRED_CODE = 'USAGE_MIGRATION_REQUIRED';
 
@@ -532,17 +532,32 @@ function resolveInvoiceMetricStrategy(
     warning: null,
     error: null,
     createdFallback: null,
-    extraPredicate: schema.hasInvoiceEmailLogsStatus ? sql`and l.status = 'sent'` : sql``,
+    extraPredicate: schema.hasInvoiceEmailLogsStatus ? sqlFragment`and l.status = 'sent'` : sqlFragment``,
   };
+}
+
+function renderAllowedDateExpression(dateExpression: string) {
+  switch (dateExpression) {
+    case 'i.created_at':
+      return sqlFragment`i.created_at`;
+    case 'i.issued_at':
+      return sqlFragment`i.issued_at`;
+    case 'i.paid_at':
+      return sqlFragment`i.paid_at`;
+    case 'l.sent_at':
+      return sqlFragment`l.sent_at`;
+    default:
+      throw new Error(USAGE_MIGRATION_REQUIRED_CODE);
+  }
 }
 
 function buildInvoiceScopePredicate(scope: UsageScope, schema: UsageSchemaCapabilities) {
   if (scope.scopeType === 'workspace' && schema.hasInvoicesWorkspaceId) {
-    return sql`i.workspace_id = ${scope.workspaceId!}`;
+    return sqlFragment`i.workspace_id = ${scope.workspaceId!}`;
   }
 
   if (schema.hasInvoicesUserEmail) {
-    return sql`lower(i.user_email) = ${scope.userEmail}`;
+    return sqlFragment`lower(i.user_email) = ${scope.userEmail}`;
   }
 
   return null;
@@ -550,11 +565,11 @@ function buildInvoiceScopePredicate(scope: UsageScope, schema: UsageSchemaCapabi
 
 function buildReminderScopePredicate(scope: UsageScope, schema: UsageSchemaCapabilities) {
   if (scope.scopeType === 'workspace' && schema.hasReminderRunsWorkspaceId) {
-    return sql`rr.workspace_id = ${scope.workspaceId!}`;
+    return sqlFragment`rr.workspace_id = ${scope.workspaceId!}`;
   }
 
   if (schema.hasReminderRunsUserEmail) {
-    return sql`lower(rr.user_email) = ${scope.userEmail}`;
+    return sqlFragment`lower(rr.user_email) = ${scope.userEmail}`;
   }
 
   return null;
@@ -631,7 +646,7 @@ async function fetchInvoiceMetricCountForWindow(input: {
       join public.invoices i on i.id = l.invoice_id
       where ${invoiceScopePredicate}
         and l.sent_at is not null
-        ${strategy.extraPredicate ?? sql``}
+        ${strategy.extraPredicate ?? sqlFragment``}
         and l.sent_at >= ${input.window.startUtc.toISOString()}
         and l.sent_at < ${input.window.endUtc.toISOString()}
     `;
@@ -671,10 +686,10 @@ async function fetchInvoiceMetricCountForWindow(input: {
     select count(*)::text as count
     from public.invoices i
     where ${scopePredicate}
-      and ${sql.unsafe(strategy.dateExpression)} is not null
-      ${strategy.extraPredicate ?? sql``}
-      and ${sql.unsafe(strategy.dateExpression)} >= ${input.window.startUtc.toISOString()}
-      and ${sql.unsafe(strategy.dateExpression)} < ${input.window.endUtc.toISOString()}
+      and ${renderAllowedDateExpression(strategy.dateExpression)} is not null
+      ${strategy.extraPredicate ?? sqlFragment``}
+      and ${renderAllowedDateExpression(strategy.dateExpression)} >= ${input.window.startUtc.toISOString()}
+      and ${renderAllowedDateExpression(strategy.dateExpression)} < ${input.window.endUtc.toISOString()}
   `;
 
   return {
@@ -763,7 +778,7 @@ async function fetchInvoiceDailySeriesForWindow(input: {
         join public.invoices i on i.id = l.invoice_id
         where ${invoiceScopePredicate}
           and l.sent_at is not null
-          ${strategy.extraPredicate ?? sql``}
+          ${strategy.extraPredicate ?? sqlFragment``}
           and l.sent_at >= ${input.window.startUtc.toISOString()}
           and l.sent_at < ${input.window.endUtc.toISOString()}
         group by date_trunc('day', l.sent_at at time zone 'Europe/Tallinn')
@@ -814,15 +829,15 @@ async function fetchInvoiceDailySeriesForWindow(input: {
   const rows = await sql<{ date: string; count: string }[]>`
     with grouped as (
       select
-        date_trunc('day', ${sql.unsafe(strategy.dateExpression)} at time zone 'Europe/Tallinn') as day,
+        date_trunc('day', ${renderAllowedDateExpression(strategy.dateExpression)} at time zone 'Europe/Tallinn') as day,
         count(*)::text as count
       from public.invoices i
       where ${scopePredicate}
-        and ${sql.unsafe(strategy.dateExpression)} is not null
-        ${strategy.extraPredicate ?? sql``}
-        and ${sql.unsafe(strategy.dateExpression)} >= ${input.window.startUtc.toISOString()}
-        and ${sql.unsafe(strategy.dateExpression)} < ${input.window.endUtc.toISOString()}
-      group by date_trunc('day', ${sql.unsafe(strategy.dateExpression)} at time zone 'Europe/Tallinn')
+        and ${renderAllowedDateExpression(strategy.dateExpression)} is not null
+        ${strategy.extraPredicate ?? sqlFragment``}
+        and ${renderAllowedDateExpression(strategy.dateExpression)} >= ${input.window.startUtc.toISOString()}
+        and ${renderAllowedDateExpression(strategy.dateExpression)} < ${input.window.endUtc.toISOString()}
+      group by date_trunc('day', ${renderAllowedDateExpression(strategy.dateExpression)} at time zone 'Europe/Tallinn')
     )
     select
       to_char(gs.day, 'YYYY-MM-DD') as date,

@@ -364,7 +364,7 @@ function getOrCreateSqlClient() {
 const SQL_SYNTAX_LOG_LIMIT = 400;
 
 function shouldLogSqlSyntaxError() {
-  return process.env.DEBUG_SQL_ERRORS === '1';
+  return process.env.DEBUG_SQL_42601 === '1' || process.env.DEBUG_SQL_ERRORS === '1';
 }
 
 function truncateForSingleLineLog(value: string, limit = SQL_SYNTAX_LOG_LIMIT): string {
@@ -515,20 +515,28 @@ export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof p
       const invocationStack = new Error().stack;
       return withSqlSyntaxErrorLogging(args, invocationStack, () => bound(...args));
     };
-    if (
-      property === 'begin' ||
-      property === 'reserve' ||
-      property === 'listen' ||
-      property === 'notify' ||
-      property === 'end'
-    ) {
-      return (...args: unknown[]) =>
-        ensureDnsPreflight().then(() => invokeWithLogging(...args));
-    };
-    return invokeWithLogging;
+    if (property === 'begin' || property === 'reserve' || property === 'listen' || property === 'notify' || property === 'end') {
+      return (...args: unknown[]) => ensureDnsPreflight().then(() => invokeWithLogging(...args));
+    }
+    if (property === 'unsafe') {
+      return invokeWithLogging;
+    }
+    // Helper methods like `json`/`array` must remain plain functions.
+    return bound;
   },
   set(_target, property, value, receiver) {
     const client = getOrCreateSqlClient() as unknown as Record<PropertyKey, unknown>;
     return Reflect.set(client, property, value, receiver);
   },
 });
+
+export function sqlFragment(
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+) {
+  return Reflect.apply(
+    getOrCreateSqlClient() as unknown as Function,
+    getOrCreateSqlClient(),
+    [strings, ...values],
+  );
+}

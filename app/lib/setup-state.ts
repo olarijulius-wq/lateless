@@ -1,6 +1,6 @@
 import { auth } from '@/auth';
 import { isTeamMigrationRequiredError } from '@/app/lib/workspaces';
-import { sql } from '@/app/lib/db';
+import { sql, sqlFragment } from '@/app/lib/db';
 import {
   isWorkspaceContextError,
   requireWorkspaceContext,
@@ -108,16 +108,16 @@ export async function fetchSetupStateForCurrentUser(): Promise<SetupStateResolut
     schema.hasCompanyProfilesTable &&
     schema.hasCompanyProfilesWorkspaceId &&
     workspaceId
-      ? sql`cp.workspace_id = ${workspaceId}`
-      : sql`lower(cp.user_email) = ${userEmail}`;
+      ? sqlFragment`cp.workspace_id = ${workspaceId}`
+      : sqlFragment`lower(cp.user_email) = ${userEmail}`;
   const customerScope =
     schema.hasCustomersWorkspaceId && workspaceId
-      ? sql`c.workspace_id = ${workspaceId}`
-      : sql`lower(c.user_email) = ${userEmail}`;
+      ? sqlFragment`c.workspace_id = ${workspaceId}`
+      : sqlFragment`lower(c.user_email) = ${userEmail}`;
   const invoiceScope =
     schema.hasInvoicesWorkspaceId && workspaceId
-      ? sql`i.workspace_id = ${workspaceId}`
-      : sql`lower(i.user_email) = ${userEmail}`;
+      ? sqlFragment`i.workspace_id = ${workspaceId}`
+      : sqlFragment`lower(i.user_email) = ${userEmail}`;
 
   const companyPromise = schema.hasCompanyProfilesTable
     ? sql<{ done: boolean }[]>`
