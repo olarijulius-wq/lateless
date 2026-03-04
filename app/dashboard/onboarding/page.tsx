@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { sql } from '@/app/lib/db';
+import { sql, sqlFragment } from '@/app/lib/db';
 import { auth } from '@/auth';
 import {
   fetchSetupStateForCurrentUser,
@@ -43,8 +43,8 @@ async function fetchNextSendInvoiceHref(userEmail: string) {
   `;
   const scopePredicate =
     scopeMeta?.has_workspace_id && workspaceId
-      ? sql`i.workspace_id = ${workspaceId}`
-      : sql`lower(i.user_email) = ${userEmail}`;
+      ? sqlFragment`i.workspace_id = ${workspaceId}`
+      : sqlFragment`lower(i.user_email) = ${userEmail}`;
 
   const [invoice] = await sql<{ id: string }[]>`
     select i.id

@@ -19,7 +19,7 @@ import { resolveBillingContext } from '@/app/lib/workspace-billing';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
-import { resolveDbConnectionConfig, sql } from './db';
+import { resolveDbConnectionConfig, sql, sqlFragment } from './db';
 
 const TEST_HOOKS_ENABLED =
   process.env.NODE_ENV === 'test' && process.env.LATELLESS_TEST_MODE === '1';
@@ -44,7 +44,7 @@ export const __testHooks = {
       },
       input.qualified ?? true,
     );
-    return `WHERE ${filter.column} = $1`;
+    return `WHERE 1=1 AND ${filter.column} = $1`;
   },
 };
 
@@ -80,9 +80,62 @@ type InvoiceCustomerScope = {
 };
 
 type ScopeFilterCondition = {
-  column: string;
+  column: ScopeFilterColumn;
   value: string;
 };
+
+const INVALID_QUERY_BUILDER_FRAGMENT_MESSAGE = 'Invalid query builder fragment';
+
+const ALLOWED_SCOPE_FILTER_COLUMNS = [
+  'workspace_id',
+  'lower(user_email)',
+  'invoices.workspace_id',
+  'lower(invoices.user_email)',
+  'customers.workspace_id',
+  'lower(customers.user_email)',
+] as const;
+
+type ScopeFilterColumn = (typeof ALLOWED_SCOPE_FILTER_COLUMNS)[number];
+
+const ALLOWED_SCOPE_FILTER_COLUMN_SET = new Set<string>(ALLOWED_SCOPE_FILTER_COLUMNS);
+
+export function validateScopeFilterColumn(column: string): ScopeFilterColumn {
+  const trimmed = column.trim();
+  if (ALLOWED_SCOPE_FILTER_COLUMN_SET.has(trimmed)) {
+    return trimmed as ScopeFilterColumn;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(INVALID_QUERY_BUILDER_FRAGMENT_MESSAGE);
+  }
+
+  throw new Error(
+    `Invalid scope filter column fragment "${column}". Expected a bare column/expression with no operators/placeholders.`,
+  );
+}
+
+function renderScopeFilterColumn(column: ScopeFilterColumn) {
+  switch (column) {
+    case 'workspace_id':
+      return sqlFragment`workspace_id`;
+    case 'lower(user_email)':
+      return sqlFragment`lower(user_email)`;
+    case 'invoices.workspace_id':
+      return sqlFragment`invoices.workspace_id`;
+    case 'lower(invoices.user_email)':
+      return sqlFragment`lower(invoices.user_email)`;
+    case 'customers.workspace_id':
+      return sqlFragment`customers.workspace_id`;
+    case 'lower(customers.user_email)':
+      return sqlFragment`lower(customers.user_email)`;
+    default:
+      throw new Error(INVALID_QUERY_BUILDER_FRAGMENT_MESSAGE);
+  }
+}
+
+function renderScopeFilterEq(filter: ScopeFilterCondition) {
+  return sqlFragment`${renderScopeFilterColumn(filter.column)} = ${filter.value}`;
+}
 
 let invoiceCustomerScopeMetaPromise:
   | Promise<{ hasInvoicesWorkspaceId: boolean; hasCustomersWorkspaceId: boolean }>
@@ -157,13 +210,17 @@ function getInvoicesWorkspaceFilter(scope: InvoiceCustomerScope, qualified = fal
   const workspaceId = scope.workspaceId?.trim();
   if (scope.hasInvoicesWorkspaceId && workspaceId) {
     return {
-      column: qualified ? 'invoices.workspace_id' : 'workspace_id',
+      column: validateScopeFilterColumn(
+        qualified ? 'invoices.workspace_id' : 'workspace_id',
+      ),
       value: workspaceId,
     } as ScopeFilterCondition;
   }
 
   return {
-    column: qualified ? 'lower(invoices.user_email)' : 'lower(user_email)',
+    column: validateScopeFilterColumn(
+      qualified ? 'lower(invoices.user_email)' : 'lower(user_email)',
+    ),
     value: scope.userEmail,
   } as ScopeFilterCondition;
 }
@@ -172,13 +229,17 @@ function getCustomersWorkspaceFilter(scope: InvoiceCustomerScope, qualified = fa
   const workspaceId = scope.workspaceId?.trim();
   if (scope.hasCustomersWorkspaceId && workspaceId) {
     return {
-      column: qualified ? 'customers.workspace_id' : 'workspace_id',
+      column: validateScopeFilterColumn(
+        qualified ? 'customers.workspace_id' : 'workspace_id',
+      ),
       value: workspaceId,
     } as ScopeFilterCondition;
   }
 
   return {
-    column: qualified ? 'lower(customers.user_email)' : 'lower(user_email)',
+    column: validateScopeFilterColumn(
+      qualified ? 'lower(customers.user_email)' : 'lower(user_email)',
+    ),
     value: scope.userEmail,
   } as ScopeFilterCondition;
 }
@@ -483,7 +544,7 @@ export async function fetchRevenue() {
     FROM invoices
     WHERE
       status = 'paid'
-      AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+      AND ${renderScopeFilterEq(invoiceFilter)}
     GROUP BY date_trunc('month', date::date)
     ORDER BY date_trunc('month', date::date)
   `;
@@ -510,7 +571,7 @@ export async function fetchRevenueDaily(days: number = 30): Promise<RevenueDay[]
       status = 'paid'
       AND paid_at IS NOT NULL
       AND (paid_at at time zone 'Europe/Tallinn') >= (SELECT start_day FROM local_bounds)
-      AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+      AND ${renderScopeFilterEq(invoiceFilter)}
     GROUP BY date_trunc('day', paid_at at time zone 'Europe/Tallinn')
     ORDER BY date_trunc('day', paid_at at time zone 'Europe/Tallinn') ASC
   `;
@@ -537,8 +598,8 @@ export async function fetchLatestInvoices() {
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE 1=1
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
+        AND ${renderScopeFilterEq(customerFilter)}
       ORDER BY invoices.date DESC
       LIMIT 5
     `;
@@ -564,13 +625,13 @@ export async function fetchCardData() {
     const invoiceCountRows = await sql`
       SELECT COUNT(*) FROM invoices
       WHERE 1=1
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
     `;
 
     const customerCountRows = await sql`
       SELECT COUNT(*) FROM customers
       WHERE 1=1
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(customerFilter)}
     `;
 
     const invoiceStatusRows = await sql`
@@ -579,7 +640,7 @@ export async function fetchCardData() {
         SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
       FROM invoices
       WHERE 1=1
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
     `;
 
     const numberOfInvoices = Number(invoiceCountRows[0].count ?? '0');
@@ -629,51 +690,92 @@ const DEFAULT_CUSTOMERS_PAGE_SIZE = 50;
 const DEFAULT_LATE_PAYERS_PAGE_SIZE = 100;
 const DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE = 25;
 
-const ORDER_BY_SQL_BY_KEY: Record<InvoiceSortKey, (dir: InvoiceSortDir) => string> = {
-  due_date: (dir) =>
-    `invoices.due_date ${dir.toUpperCase()} NULLS LAST, invoices.date DESC, invoices.id DESC`,
-  amount: (dir) =>
-    `invoices.amount ${dir.toUpperCase()}, invoices.date DESC, invoices.id DESC`,
-  created_at: (dir) =>
-    `invoices.date ${dir.toUpperCase()}, invoices.id DESC`,
-  customer: (dir) =>
-    `lower(customers.name) ${dir.toUpperCase()}, invoices.date DESC, invoices.id DESC`,
-  status: (dir) =>
-    `lower(invoices.status) ${dir.toUpperCase()}, invoices.date DESC, invoices.id DESC`,
-};
+function buildInvoicesOrderByClause(sortKey: InvoiceSortKey, sortDir: InvoiceSortDir) {
+  if (sortKey === 'due_date') {
+    return sortDir === 'asc'
+      ? sqlFragment`invoices.due_date ASC NULLS LAST, invoices.date DESC, invoices.id DESC`
+      : sqlFragment`invoices.due_date DESC NULLS LAST, invoices.date DESC, invoices.id DESC`;
+  }
+  if (sortKey === 'amount') {
+    return sortDir === 'asc'
+      ? sqlFragment`invoices.amount ASC, invoices.date DESC, invoices.id DESC`
+      : sqlFragment`invoices.amount DESC, invoices.date DESC, invoices.id DESC`;
+  }
+  if (sortKey === 'customer') {
+    return sortDir === 'asc'
+      ? sqlFragment`lower(customers.name) ASC, invoices.date DESC, invoices.id DESC`
+      : sqlFragment`lower(customers.name) DESC, invoices.date DESC, invoices.id DESC`;
+  }
+  if (sortKey === 'status') {
+    return sortDir === 'asc'
+      ? sqlFragment`lower(invoices.status) ASC, invoices.date DESC, invoices.id DESC`
+      : sqlFragment`lower(invoices.status) DESC, invoices.date DESC, invoices.id DESC`;
+  }
+  return sortDir === 'asc'
+    ? sqlFragment`invoices.date ASC, invoices.id DESC`
+    : sqlFragment`invoices.date DESC, invoices.id DESC`;
+}
 
-const CUSTOMER_ORDER_BY_SQL_BY_KEY: Record<
-  CustomerSortKey,
-  (dir: CustomerSortDir) => string
-> = {
-  name: (dir) => `lower(customers.name) ${dir.toUpperCase()}, customers.id DESC`,
-  email: (dir) => `lower(customers.email) ${dir.toUpperCase()}, customers.id DESC`,
-  created_at: (dir) => `customers.created_at ${dir.toUpperCase()}, customers.id DESC`,
-  total_invoices: (dir) => `COUNT(invoices.id) ${dir.toUpperCase()}, lower(customers.name) ASC`,
-};
+function buildCustomerInvoicesOrderByClause(
+  sortKey: CustomerInvoiceSortKey,
+  sortDir: CustomerInvoiceSortDir,
+) {
+  if (sortKey === 'due_date') {
+    return sortDir === 'asc'
+      ? sqlFragment`invoices.due_date ASC NULLS LAST, invoices.date DESC, invoices.id DESC`
+      : sqlFragment`invoices.due_date DESC NULLS LAST, invoices.date DESC, invoices.id DESC`;
+  }
+  if (sortKey === 'amount') {
+    return sortDir === 'asc'
+      ? sqlFragment`invoices.amount ASC, invoices.date DESC, invoices.id DESC`
+      : sqlFragment`invoices.amount DESC, invoices.date DESC, invoices.id DESC`;
+  }
+  return sortDir === 'asc'
+    ? sqlFragment`invoices.date ASC, invoices.id DESC`
+    : sqlFragment`invoices.date DESC, invoices.id DESC`;
+}
 
-const CUSTOMER_INVOICE_ORDER_BY_SQL_BY_KEY: Record<
-  CustomerInvoiceSortKey,
-  (dir: CustomerInvoiceSortDir) => string
-> = {
-  due_date: (dir) => `invoices.due_date ${dir.toUpperCase()} NULLS LAST, invoices.date DESC, invoices.id DESC`,
-  amount: (dir) => `invoices.amount ${dir.toUpperCase()}, invoices.date DESC, invoices.id DESC`,
-  created_at: (dir) => `invoices.date ${dir.toUpperCase()}, invoices.id DESC`,
-};
+function buildLatePayersOrderByClause(sortKey: LatePayerSortKey, sortDir: LatePayerSortDir) {
+  if (sortKey === 'days_overdue') {
+    return sortDir === 'asc'
+      ? sqlFragment`AVG(CASE WHEN invoices.due_date IS NOT NULL THEN (invoices.paid_at::date - invoices.due_date) ELSE (invoices.paid_at::date - invoices.date) END) ASC, lower(customers.name) ASC`
+      : sqlFragment`AVG(CASE WHEN invoices.due_date IS NOT NULL THEN (invoices.paid_at::date - invoices.due_date) ELSE (invoices.paid_at::date - invoices.date) END) DESC, lower(customers.name) ASC`;
+  }
+  if (sortKey === 'paid_invoices' || sortKey === 'amount') {
+    return sortDir === 'asc'
+      ? sqlFragment`COUNT(invoices.id) ASC, lower(customers.name) ASC`
+      : sqlFragment`COUNT(invoices.id) DESC, lower(customers.name) ASC`;
+  }
+  if (sortKey === 'email') {
+    return sortDir === 'asc'
+      ? sqlFragment`lower(customers.email) ASC, customers.id DESC`
+      : sqlFragment`lower(customers.email) DESC, customers.id DESC`;
+  }
+  return sortDir === 'asc'
+    ? sqlFragment`lower(customers.name) ASC, customers.id DESC`
+    : sqlFragment`lower(customers.name) DESC, customers.id DESC`;
+}
 
-const LATE_PAYER_ORDER_BY_SQL_BY_KEY: Record<
-  LatePayerSortKey,
-  (dir: LatePayerSortDir) => string
-> = {
-  days_overdue: (dir) =>
-    `AVG(CASE WHEN invoices.due_date IS NOT NULL THEN (invoices.paid_at::date - invoices.due_date) ELSE (invoices.paid_at::date - invoices.date) END) ${dir.toUpperCase()}, lower(customers.name) ASC`,
-  paid_invoices: (dir) =>
-    `COUNT(invoices.id) ${dir.toUpperCase()}, lower(customers.name) ASC`,
-  amount: (dir) =>
-    `COUNT(invoices.id) ${dir.toUpperCase()}, lower(customers.name) ASC`,
-  name: (dir) => `lower(customers.name) ${dir.toUpperCase()}, customers.id DESC`,
-  email: (dir) => `lower(customers.email) ${dir.toUpperCase()}, customers.id DESC`,
-};
+function buildCustomersOrderByClause(sortKey: CustomerSortKey, sortDir: CustomerSortDir) {
+  if (sortKey === 'email') {
+    return sortDir === 'asc'
+      ? sqlFragment`lower(customers.email) ASC, customers.id DESC`
+      : sqlFragment`lower(customers.email) DESC, customers.id DESC`;
+  }
+  if (sortKey === 'created_at') {
+    return sortDir === 'asc'
+      ? sqlFragment`customers.created_at ASC, customers.id DESC`
+      : sqlFragment`customers.created_at DESC, customers.id DESC`;
+  }
+  if (sortKey === 'total_invoices') {
+    return sortDir === 'asc'
+      ? sqlFragment`COUNT(invoices.id) ASC, lower(customers.name) ASC`
+      : sqlFragment`COUNT(invoices.id) DESC, lower(customers.name) ASC`;
+  }
+  return sortDir === 'asc'
+    ? sqlFragment`lower(customers.name) ASC, customers.id DESC`
+    : sqlFragment`lower(customers.name) DESC, customers.id DESC`;
+}
 
 function normalizeInvoiceStatusFilter(
   statusFilter: string | undefined,
@@ -807,7 +909,7 @@ export async function fetchFilteredInvoices(
   const safeStatusFilter = normalizeInvoiceStatusFilter(statusFilter);
   const safeSortKey = normalizeInvoiceSortKey(sortKey);
   const safeSortDir = normalizeInvoiceSortDir(sortDir);
-  const orderByClause = ORDER_BY_SQL_BY_KEY[safeSortKey](safeSortDir);
+  const orderByClause = buildInvoicesOrderByClause(safeSortKey, safeSortDir);
 
   try {
     const invoices = await sql<InvoicesTable[]>`
@@ -841,8 +943,8 @@ export async function fetchFilteredInvoices(
         limit 1
       ) logs on true
       WHERE 1=1
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
+        AND ${renderScopeFilterEq(customerFilter)}
         AND (
           ${safeStatusFilter} = 'all'
           OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -868,7 +970,7 @@ export async function fetchFilteredInvoices(
           invoices.date::text ILIKE ${`%${query}%`} OR
           invoices.status ILIKE ${`%${query}%`}
         )
-      ORDER BY ${sql.unsafe(orderByClause)}
+      ORDER BY ${orderByClause}
       LIMIT ${safePageSize} OFFSET ${offset}
     `;
 
@@ -899,8 +1001,8 @@ export async function fetchFilteredInvoices(
         FROM invoices
         JOIN customers ON invoices.customer_id = customers.id
         WHERE 1=1
-          AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
-          AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+          AND ${renderScopeFilterEq(invoiceFilter)}
+          AND ${renderScopeFilterEq(customerFilter)}
           AND (
             ${safeStatusFilter} = 'all'
             OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -926,7 +1028,7 @@ export async function fetchFilteredInvoices(
             invoices.date::text ILIKE ${`%${query}%`} OR
             invoices.status ILIKE ${`%${query}%`}
           )
-        ORDER BY ${sql.unsafe(orderByClause)}
+        ORDER BY ${orderByClause}
         LIMIT ${safePageSize} OFFSET ${offset}
       `;
       return invoices;
@@ -953,8 +1055,8 @@ export async function fetchInvoicesPages(
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE 1=1
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
+        AND ${renderScopeFilterEq(customerFilter)}
         AND (
           ${safeStatusFilter} = 'all'
           OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -1034,8 +1136,8 @@ export async function fetchInvoiceById(id: string) {
         limit 1
       ) logs on true
       WHERE invoices.id = ${id}
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
+        AND ${renderScopeFilterEq(customerFilter)}
       LIMIT 1
     `;
 
@@ -1073,8 +1175,8 @@ export async function fetchInvoiceById(id: string) {
         JOIN customers
           ON customers.id = invoices.customer_id
         WHERE invoices.id = ${id}
-          AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
-          AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+          AND ${renderScopeFilterEq(invoiceFilter)}
+          AND ${renderScopeFilterEq(customerFilter)}
         LIMIT 1
       `;
       return fallback[0];
@@ -1111,8 +1213,8 @@ export async function fetchInvoiceById(id: string) {
         JOIN customers
           ON customers.id = invoices.customer_id
         WHERE invoices.id = ${id}
-          AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
-          AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+          AND ${renderScopeFilterEq(invoiceFilter)}
+          AND ${renderScopeFilterEq(customerFilter)}
         LIMIT 1
       `;
       return fallback[0];
@@ -1136,7 +1238,7 @@ export async function fetchInvoiceFormById(id: string) {
         invoices.due_date
       FROM invoices
       WHERE invoices.id = ${id}
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
     `;
 
     const invoice = data.map((invoice) => ({
@@ -1160,7 +1262,7 @@ export async function fetchCustomers() {
       SELECT id, name
       FROM customers
       WHERE 1=1
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(customerFilter)}
       ORDER BY name ASC
     `;
 
@@ -1180,7 +1282,7 @@ export async function fetchCustomerById(id: string) {
       SELECT id, name, email, image_url
       FROM customers
       WHERE id = ${id}
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(customerFilter)}
       LIMIT 1
     `;
 
@@ -1200,7 +1302,7 @@ export async function fetchInvoicesByCustomerId(customerId: string) {
       SELECT id, amount, status, date
       FROM invoices
       WHERE customer_id = ${customerId}
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
       ORDER BY date DESC
     `;
 
@@ -1237,7 +1339,7 @@ export async function fetchCustomerInvoiceSummaryByCustomerId(customerId: string
         ) AS total_overdue
       FROM invoices
       WHERE invoices.customer_id = ${customerId}
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
     `;
 
     return {
@@ -1269,7 +1371,7 @@ export async function fetchFilteredCustomerInvoicesByCustomerId(
   const safeSortDir = normalizeCustomerInvoiceSortDir(sortDir);
   const safePageSize = normalizeCustomerInvoicePageSize(pageSize);
   const offset = (safeCurrentPage - 1) * safePageSize;
-  const orderByClause = CUSTOMER_INVOICE_ORDER_BY_SQL_BY_KEY[safeSortKey](safeSortDir);
+  const orderByClause = buildCustomerInvoicesOrderByClause(safeSortKey, safeSortDir);
 
   try {
     const data = await sql<CustomerInvoiceScoped[]>`
@@ -1282,7 +1384,7 @@ export async function fetchFilteredCustomerInvoicesByCustomerId(
         invoices.invoice_number
       FROM invoices
       WHERE invoices.customer_id = ${customerId}
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
         AND (
           ${safeStatusFilter} = 'all'
           OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -1307,7 +1409,7 @@ export async function fetchFilteredCustomerInvoicesByCustomerId(
           OR invoices.date::text ILIKE ${`%${query}%`}
           OR COALESCE(invoices.due_date::text, '') ILIKE ${`%${query}%`}
         )
-      ORDER BY ${sql.unsafe(orderByClause)}
+      ORDER BY ${orderByClause}
       LIMIT ${safePageSize} OFFSET ${offset}
     `;
 
@@ -1334,7 +1436,7 @@ export async function fetchCustomerInvoicesPagesByCustomerId(
       SELECT COUNT(*)
       FROM invoices
       WHERE invoices.customer_id = ${customerId}
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
         AND (
           ${safeStatusFilter} = 'all'
           OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -1383,7 +1485,7 @@ export async function fetchLatePayerStats(
   const offset = (safeCurrentPage - 1) * safePageSize;
   const safeSortKey = normalizeLatePayerSortKey(sortKey);
   const safeSortDir = normalizeLatePayerSortDir(sortDir);
-  const orderByClause = LATE_PAYER_ORDER_BY_SQL_BY_KEY[safeSortKey](safeSortDir);
+  const orderByClause = buildLatePayersOrderByClause(safeSortKey, safeSortDir);
 
   try {
     const data = await sql<LatePayerStat[]>`
@@ -1402,10 +1504,10 @@ export async function fetchLatePayerStats(
       FROM invoices
       JOIN customers
         ON customers.id = invoices.customer_id
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(customerFilter)}
       WHERE
         1=1
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
         AND (
           customers.name ILIKE ${`%${query}%`}
           OR customers.email ILIKE ${`%${query}%`}
@@ -1421,7 +1523,7 @@ export async function fetchLatePayerStats(
           END
         ) > 0
       GROUP BY customers.id, customers.name, customers.email
-      ORDER BY ${sql.unsafe(orderByClause)}
+      ORDER BY ${orderByClause}
       LIMIT ${safePageSize} OFFSET ${offset}
     `;
 
@@ -1446,10 +1548,10 @@ export async function fetchLatePayerPages(query: string = '', pageSize: number =
         FROM invoices
         JOIN customers
           ON customers.id = invoices.customer_id
-          AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+          AND ${renderScopeFilterEq(customerFilter)}
         WHERE
           1=1
-          AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+          AND ${renderScopeFilterEq(invoiceFilter)}
           AND (
             customers.name ILIKE ${`%${query}%`}
             OR customers.email ILIKE ${`%${query}%`}
@@ -1490,7 +1592,7 @@ export async function fetchFilteredCustomers(
   const offset = (safeCurrentPage - 1) * safePageSize;
   const safeSortKey = normalizeCustomerSortKey(sortKey);
   const safeSortDir = normalizeCustomerSortDir(sortDir);
-  const orderByClause = CUSTOMER_ORDER_BY_SQL_BY_KEY[safeSortKey](safeSortDir);
+  const orderByClause = buildCustomersOrderByClause(safeSortKey, safeSortDir);
 
   try {
     const data = await sql<CustomersTableType[]>`
@@ -1505,15 +1607,15 @@ export async function fetchFilteredCustomers(
       FROM customers
       LEFT JOIN invoices
         ON customers.id = invoices.customer_id
-        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${renderScopeFilterEq(invoiceFilter)}
       WHERE 1=1
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(customerFilter)}
         AND (
           customers.name ILIKE ${`%${query}%`} OR
           customers.email ILIKE ${`%${query}%`}
         )
       GROUP BY customers.id, customers.name, customers.email, customers.image_url
-      ORDER BY ${sql.unsafe(orderByClause)}
+      ORDER BY ${orderByClause}
       LIMIT ${safePageSize} OFFSET ${offset}
     `;
 
@@ -1543,7 +1645,7 @@ export async function fetchCustomersPages(
       SELECT COUNT(*)
       FROM customers
       WHERE 1=1
-        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
+        AND ${renderScopeFilterEq(customerFilter)}
         AND (
           customers.name ILIKE ${`%${query}%`} OR
           customers.email ILIKE ${`%${query}%`}

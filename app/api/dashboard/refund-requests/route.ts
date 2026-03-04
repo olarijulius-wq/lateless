@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@/app/lib/db';
+import { sql, sqlFragment } from '@/app/lib/db';
 import {
   ensureWorkspaceContextForCurrentUser,
   isTeamMigrationRequiredError,
@@ -47,7 +47,7 @@ export async function GET() {
     }[]>`
       select
         rr.id,
-        ${hasRequestedAt ? sql`rr.requested_at` : sql`rr.created_at`} as requested_at,
+        ${hasRequestedAt ? sqlFragment`rr.requested_at` : sqlFragment`rr.created_at`} as requested_at,
         rr.invoice_id,
         i.invoice_number,
         i.amount,
@@ -62,7 +62,7 @@ export async function GET() {
       join public.invoices i
         on i.id = rr.invoice_id
       where rr.workspace_id = ${context.workspaceId}
-      order by ${hasRequestedAt ? sql`rr.requested_at` : sql`rr.created_at`} desc
+      order by ${hasRequestedAt ? sqlFragment`rr.requested_at` : sqlFragment`rr.created_at`} desc
       limit 50
     `;
 
