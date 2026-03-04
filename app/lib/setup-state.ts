@@ -1,9 +1,10 @@
 import { auth } from '@/auth';
-import {
-  ensureWorkspaceContextForCurrentUser,
-  isTeamMigrationRequiredError,
-} from '@/app/lib/workspaces';
+import { isTeamMigrationRequiredError } from '@/app/lib/workspaces';
 import { sql } from '@/app/lib/db';
+import {
+  isWorkspaceContextError,
+  requireWorkspaceContext,
+} from '@/app/lib/workspace-context';
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -78,10 +79,16 @@ export async function fetchSetupStateForCurrentUser(): Promise<SetupStateResolut
   let workspaceId: string | null = null;
 
   try {
-    const workspaceContext = await ensureWorkspaceContextForCurrentUser();
+    const workspaceContext = await requireWorkspaceContext();
     userEmail = workspaceContext.userEmail;
     workspaceId = workspaceContext.workspaceId;
   } catch (error) {
+    if (isWorkspaceContextError(error)) {
+      if (error.code === 'UNAUTHORIZED') {
+        return { ok: false, code: 'UNAUTHORIZED', needsAuth: true, needsSetup: false };
+      }
+      return { ok: false, code: 'NO_ACTIVE_WORKSPACE', needsAuth: false, needsSetup: true };
+    }
     if (error instanceof Error && error.message === 'Unauthorized') {
       return { ok: false, code: 'UNAUTHORIZED', needsAuth: true, needsSetup: false };
     }
