@@ -460,6 +460,14 @@ async function run() {
 
       dataModule.__testHooks.requireWorkspaceContextOverride = async () => workspaceAContext;
 
+      const whereClause = dataModule.__testHooks.renderInvoiceScopeWhereClause({
+        userEmail: workspaceAContext.userEmail,
+        workspaceId: workspaceAContext.workspaceId,
+        hasInvoicesWorkspaceId: true,
+        qualified: true,
+      });
+      assert.doesNotMatch(whereClause, /where\s+and/i, 'scope clause must not start with AND');
+
       const invoices = await dataModule.fetchFilteredInvoices('', 1, 'all', 'created_at', 'desc', 25);
       const customers = await dataModule.fetchFilteredCustomers('', 1, 25, 'name', 'asc');
 

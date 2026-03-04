@@ -362,10 +362,7 @@ function getOrCreateSqlClient() {
 }
 
 function shouldLogSqlSyntaxErrorInCi() {
-  return (
-    process.env.GITHUB_ACTIONS === 'true' ||
-    process.env.DEBUG_SQL_42601 === '1'
-  );
+  return process.env.DEBUG_SQL_42601 === '1';
 }
 
 function extractSqlTextForSyntaxError(error: unknown, argArray: unknown[]): string {
@@ -398,7 +395,7 @@ function extractAppCallsiteFromStack(stack: string | undefined): string | null {
   const appFrame = stack
     .split('\n')
     .map((line) => line.trim())
-    .find((line) => line.includes('/app/'));
+    .find((line) => line.includes('/app/') && !line.includes('/app/lib/db.ts'));
 
   return appFrame ?? null;
 }
