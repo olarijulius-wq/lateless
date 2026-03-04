@@ -1,15 +1,26 @@
 import 'server-only';
+import dns from 'node:dns';
 import postgres from 'postgres';
 
 const globalForDb = globalThis as unknown as {
   __latelessSql?: ReturnType<typeof postgres>;
   __latelessDbBootLogged?: boolean;
+  __latelessDbConfig?: DbConfig;
+  __latelessDbInitPromise?: Promise<void>;
+  __latelessDbDnsLookupCache?: Map<string, Promise<void>>;
+  __latelessDbDnsErrorLogged?: Set<string>;
 };
 
 const poolMaxRaw = process.env.POSTGRES_POOL_MAX;
 const poolMax = Number(poolMaxRaw);
 const maxConnections =
   Number.isFinite(poolMax) && poolMax > 0 ? Math.floor(poolMax) : 10;
+
+type DbSourceEnvVar =
+  | 'POSTGRES_URL_TEST'
+  | 'POSTGRES_URL_POOLER'
+  | 'POSTGRES_URL'
+  | 'DATABASE_URL';
 
 export function isPoolerUrl(connectionString: string) {
   try {
@@ -25,11 +36,40 @@ export function isPoolerUrl(connectionString: string) {
 
 type DbConfig = {
   connectionString: string;
-  sourceEnvVar: 'POSTGRES_URL_TEST' | 'POSTGRES_URL' | 'DATABASE_URL';
+  sourceEnvVar: DbSourceEnvVar;
   ssl: false | 'require';
   host: string;
   urlHasSslmode: boolean;
 };
+
+type DbDnsFailureDetails = {
+  host: string;
+  sourceEnvVar: DbSourceEnvVar;
+  fallbackAvailable: boolean;
+};
+
+const DB_DNS_LOGIN_MESSAGE =
+  'Database connection misconfigured (DNS). Contact support or check server env.';
+
+export class DbDnsResolutionError extends Error {
+  readonly host: string;
+  readonly sourceEnvVar: DbSourceEnvVar;
+
+  constructor({ host, sourceEnvVar }: { host: string; sourceEnvVar: DbSourceEnvVar }) {
+    super(`DB host cannot be resolved. Check POSTGRES_URL / DNS / VPN. Host=${host}.`);
+    this.name = 'DbDnsResolutionError';
+    this.host = host;
+    this.sourceEnvVar = sourceEnvVar;
+  }
+
+  get userMessage() {
+    return `${DB_DNS_LOGIN_MESSAGE} Host=${this.host}.`;
+  }
+}
+
+export function isDbDnsResolutionError(error: unknown): error is DbDnsResolutionError {
+  return error instanceof DbDnsResolutionError;
+}
 
 function resolveHostname(connectionString: string): string {
   try {
@@ -93,30 +133,53 @@ function sanitizeConnectionStringForNoSsl(connectionString: string): string {
   }
 }
 
-export function resolveDbConnectionConfig(): DbConfig {
+function isTruthy(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function shouldPreferPoolerUrl() {
+  return (
+    process.env.NODE_ENV === 'development' ||
+    process.env.NODE_ENV === 'test' ||
+    process.env.CI === 'true' ||
+    process.env.GITHUB_ACTIONS === 'true' ||
+    process.env.LATELLESS_TEST_MODE === '1'
+  );
+}
+
+export function resolveDbSourcePriority(): DbSourceEnvVar[] {
   const isTestMode =
     process.env.LATELLESS_TEST_MODE === '1' || process.env.NODE_ENV === 'test';
-  const useTestUrl =
-    isTestMode &&
-    typeof process.env.POSTGRES_URL_TEST === 'string' &&
-    process.env.POSTGRES_URL_TEST.trim() !== '';
-  const sourceEnvVar = useTestUrl
-    ? 'POSTGRES_URL_TEST'
-    : process.env.POSTGRES_URL
-      ? 'POSTGRES_URL'
-      : 'DATABASE_URL';
-  const connectionStringRaw = process.env[sourceEnvVar];
-  if (!connectionStringRaw) {
-    throw new Error('Missing POSTGRES_URL_TEST, POSTGRES_URL, or DATABASE_URL');
+
+  const priority: DbSourceEnvVar[] = [];
+  if (isTestMode && isTruthy(process.env.POSTGRES_URL_TEST)) {
+    priority.push('POSTGRES_URL_TEST');
   }
 
-  const ssl = resolveSslMode(connectionStringRaw);
+  if (shouldPreferPoolerUrl() && isTruthy(process.env.POSTGRES_URL_POOLER)) {
+    priority.push('POSTGRES_URL_POOLER');
+  }
+
+  if (isTruthy(process.env.POSTGRES_URL)) {
+    priority.push('POSTGRES_URL');
+  }
+
+  if (isTruthy(process.env.DATABASE_URL)) {
+    priority.push('DATABASE_URL');
+  }
+
+  return priority;
+}
+
+function buildDbConfig(sourceEnvVar: DbSourceEnvVar, connectionStringRaw: string): DbConfig {
+  const trimmedRaw = connectionStringRaw.trim();
+  const ssl = resolveSslMode(trimmedRaw);
   const connectionString =
     ssl === false
-      ? sanitizeConnectionStringForNoSsl(connectionStringRaw)
-      : connectionStringRaw;
+      ? sanitizeConnectionStringForNoSsl(trimmedRaw)
+      : trimmedRaw;
   const host = resolveHostname(connectionString);
-  const urlHasSslmode = hasSslQueryParam(connectionStringRaw);
+  const urlHasSslmode = hasSslQueryParam(trimmedRaw);
 
   return {
     connectionString,
@@ -127,26 +190,167 @@ export function resolveDbConnectionConfig(): DbConfig {
   };
 }
 
-function createSqlClient() {
-  const dbConfig = resolveDbConnectionConfig();
-  if (!globalForDb.__latelessDbBootLogged) {
-    globalForDb.__latelessDbBootLogged = true;
-    console.error(
-      `[db][boot] env=${process.env.NODE_ENV ?? ''} ci=${process.env.CI ?? ''} gha=${process.env.GITHUB_ACTIONS ?? ''} test_mode=${process.env.LATELLESS_TEST_MODE ?? ''} source=${dbConfig.sourceEnvVar} host=${dbConfig.host} ssl=${dbConfig.ssl} url_has_sslmode=${dbConfig.urlHasSslmode}`,
+export function resolveDbConnectionCandidates(): DbConfig[] {
+  const priority = resolveDbSourcePriority();
+  const seen = new Set<string>();
+  const candidates: DbConfig[] = [];
+
+  for (const sourceEnvVar of priority) {
+    const raw = process.env[sourceEnvVar];
+    if (typeof raw !== 'string' || raw.trim() === '') continue;
+    const trimmedRaw = raw.trim();
+    if (seen.has(trimmedRaw)) continue;
+    seen.add(trimmedRaw);
+    candidates.push(buildDbConfig(sourceEnvVar, trimmedRaw));
+  }
+
+  if (candidates.length === 0) {
+    throw new Error(
+      'Missing POSTGRES_URL_TEST, POSTGRES_URL_POOLER, POSTGRES_URL, or DATABASE_URL',
     );
   }
 
-  const { connectionString, ssl } = dbConfig;
-  const disablePreparedStatements = isPoolerUrl(connectionString);
-  const clientSsl = ssl === false ? false : 'require';
+  return candidates;
+}
 
-  return postgres(connectionString, {
+export function resolveDbConnectionConfig(): DbConfig {
+  return resolveDbConnectionCandidates()[0];
+}
+
+function logBootOnce(dbConfig: DbConfig) {
+  if (globalForDb.__latelessDbBootLogged) return;
+  globalForDb.__latelessDbBootLogged = true;
+  const message = `[db][boot] env=${process.env.NODE_ENV ?? ''} ci=${process.env.CI ?? ''} gha=${process.env.GITHUB_ACTIONS ?? ''} test_mode=${process.env.LATELLESS_TEST_MODE ?? ''} source=${dbConfig.sourceEnvVar} host=${dbConfig.host} ssl=${dbConfig.ssl} url_has_sslmode=${dbConfig.urlHasSslmode}`;
+  if (process.env.NODE_ENV === 'development') {
+    console.log(message);
+    return;
+  }
+  console.info(message);
+}
+
+function logDnsErrorOnce(details: DbDnsFailureDetails) {
+  if (!globalForDb.__latelessDbDnsErrorLogged) {
+    globalForDb.__latelessDbDnsErrorLogged = new Set();
+  }
+  const key = `${details.sourceEnvVar}:${details.host}`;
+  if (globalForDb.__latelessDbDnsErrorLogged.has(key)) return;
+  globalForDb.__latelessDbDnsErrorLogged.add(key);
+  console.error('[db][dns_error]', {
+    host: details.host,
+    source: details.sourceEnvVar,
+    fallback_available: details.fallbackAvailable,
+    error: 'ENOTFOUND',
+  });
+}
+
+function isDnsNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === 'ENOTFOUND'
+  );
+}
+
+async function lookupHostnameOnce(hostname: string): Promise<void> {
+  if (!hostname || hostname === 'unknown') return;
+  if (!globalForDb.__latelessDbDnsLookupCache) {
+    globalForDb.__latelessDbDnsLookupCache = new Map();
+  }
+  const cache = globalForDb.__latelessDbDnsLookupCache;
+  const existing = cache.get(hostname);
+  if (existing) {
+    await existing;
+    return;
+  }
+
+  const lookupPromise = dns.promises.lookup(hostname).then(() => undefined);
+  cache.set(hostname, lookupPromise);
+  await lookupPromise;
+}
+
+function createClientForConfig(dbConfig: DbConfig) {
+  const disablePreparedStatements = isPoolerUrl(dbConfig.connectionString);
+  const clientSsl = dbConfig.ssl === false ? false : 'require';
+
+  return postgres(dbConfig.connectionString, {
     ssl: clientSsl,
     prepare: disablePreparedStatements ? false : undefined,
     max: maxConnections,
     idle_timeout: 20,
     connect_timeout: 15,
   });
+}
+
+async function ensureDnsPreflight(): Promise<void> {
+  if (globalForDb.__latelessDbInitPromise) {
+    await globalForDb.__latelessDbInitPromise;
+    return;
+  }
+
+  const initPromise = (async () => {
+    const candidates = resolveDbConnectionCandidates();
+    const activeConfig = globalForDb.__latelessDbConfig ?? candidates[0];
+    const fallbackConfig = candidates.find(
+      (candidate) => candidate.sourceEnvVar !== activeConfig.sourceEnvVar,
+    );
+
+    try {
+      await lookupHostnameOnce(activeConfig.host);
+    } catch (error) {
+      if (!isDnsNotFoundError(error)) {
+        throw error;
+      }
+
+      if (fallbackConfig) {
+        try {
+          await lookupHostnameOnce(fallbackConfig.host);
+          globalForDb.__latelessDbConfig = fallbackConfig;
+          globalForDb.__latelessSql = createClientForConfig(fallbackConfig);
+          const fallbackMessage = `[db][boot] fallback_used=true from=${activeConfig.sourceEnvVar} to=${fallbackConfig.sourceEnvVar} host=${activeConfig.host}`;
+          if (process.env.NODE_ENV === 'development') {
+            console.log(fallbackMessage);
+          } else {
+            console.info(fallbackMessage);
+          }
+          return;
+        } catch (fallbackError) {
+          if (!isDnsNotFoundError(fallbackError)) {
+            throw fallbackError;
+          }
+          logDnsErrorOnce({
+            host: fallbackConfig.host,
+            sourceEnvVar: fallbackConfig.sourceEnvVar,
+            fallbackAvailable: true,
+          });
+          throw new DbDnsResolutionError({
+            host: fallbackConfig.host,
+            sourceEnvVar: fallbackConfig.sourceEnvVar,
+          });
+        }
+      }
+
+      logDnsErrorOnce({
+        host: activeConfig.host,
+        sourceEnvVar: activeConfig.sourceEnvVar,
+        fallbackAvailable: false,
+      });
+      throw new DbDnsResolutionError({
+        host: activeConfig.host,
+        sourceEnvVar: activeConfig.sourceEnvVar,
+      });
+    }
+  })();
+
+  globalForDb.__latelessDbInitPromise = initPromise;
+  await initPromise;
+}
+
+function createSqlClient() {
+  const dbConfig = resolveDbConnectionConfig();
+  globalForDb.__latelessDbConfig = dbConfig;
+  logBootOnce(dbConfig);
+  return createClientForConfig(dbConfig);
 }
 
 function getOrCreateSqlClient() {
@@ -157,14 +361,95 @@ function getOrCreateSqlClient() {
   return globalForDb.__latelessSql;
 }
 
+function shouldLogSqlSyntaxErrorInCi() {
+  return process.env.DEBUG_SQL_42601 === '1';
+}
+
+function extractSqlTextForSyntaxError(error: unknown, argArray: unknown[]): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'query' in error &&
+    typeof (error as { query?: unknown }).query === 'string'
+  ) {
+    return (error as { query: string }).query;
+  }
+
+  if (typeof argArray[0] === 'string') {
+    return argArray[0];
+  }
+
+  if (argArray[0] && typeof argArray[0] === 'object') {
+    const keys = Object.keys(argArray[0] as Record<string, unknown>).slice(0, 8);
+    return `[unavailable:first_arg_type=object keys=${keys.join(',') || '-'}]`;
+  }
+
+  return `[unavailable:first_arg_type=${typeof argArray[0]}]`;
+}
+
+function extractAppCallsiteFromStack(stack: string | undefined): string | null {
+  if (!stack) {
+    return null;
+  }
+
+  const appFrame = stack
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.includes('/app/') && !line.includes('/app/lib/db.ts'));
+
+  return appFrame ?? null;
+}
+
 export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof postgres>, {
   apply(_target, thisArg, argArray) {
-    return Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray);
+    return ensureDnsPreflight().then(() => {
+      const log42601 = (error: unknown) => {
+        const errorCode =
+          typeof error === 'object' && error !== null && 'code' in error
+            ? String((error as { code?: unknown }).code)
+            : '';
+        if (errorCode === '42601' && shouldLogSqlSyntaxErrorInCi()) {
+          console.error(`[db][sql_42601] ${extractSqlTextForSyntaxError(error, argArray)}`);
+          const callsite = extractAppCallsiteFromStack(new Error().stack);
+          if (callsite) {
+            console.error(`[db][sql_42601_callsite] ${callsite}`);
+          }
+        }
+      };
+
+      try {
+        const result = Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray);
+        if (result && typeof (result as Promise<unknown>).then === 'function') {
+          return (result as Promise<unknown>).catch((error) => {
+            log42601(error);
+            throw error;
+          });
+        }
+        return result;
+      } catch (error) {
+        log42601(error);
+        throw error;
+      }
+    });
   },
   get(_target, property, receiver) {
     const client = getOrCreateSqlClient() as unknown as Record<PropertyKey, unknown>;
     const value = Reflect.get(client, property, receiver);
-    return typeof value === 'function' ? value.bind(client) : value;
+    if (typeof value !== 'function') {
+      return value;
+    }
+    const bound = value.bind(client) as (...args: unknown[]) => unknown;
+    if (
+      property === 'begin' ||
+      property === 'reserve' ||
+      property === 'listen' ||
+      property === 'notify' ||
+      property === 'end'
+    ) {
+      return (...args: unknown[]) =>
+        ensureDnsPreflight().then(() => bound(...args));
+    }
+    return bound;
   },
   set(_target, property, value, receiver) {
     const client = getOrCreateSqlClient() as unknown as Record<PropertyKey, unknown>;

@@ -21,7 +21,7 @@ import { logFunnelEvent } from '@/app/lib/funnel-events';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveBillingContext } from '@/app/lib/workspace-billing';
-import { sql } from '@/app/lib/db';
+import { isDbDnsResolutionError, sql } from '@/app/lib/db';
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -1249,7 +1249,17 @@ export async function authenticate(
     ) {
       throw error;
     }
-    await recordLoginAttempt(normalizedEmail, false);
+    if (isDbDnsResolutionError(error)) {
+      return {
+        ...initialLoginState,
+        message: error.userMessage,
+      };
+    }
+    try {
+      await recordLoginAttempt(normalizedEmail, false);
+    } catch {
+      // Ignore secondary DB errors while handling login failures.
+    }
     console.error('Unexpected login error', error);
     return {
       ...initialLoginState,

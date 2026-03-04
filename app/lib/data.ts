@@ -29,6 +29,23 @@ export const __testHooks = {
   requireWorkspaceContextOverride: null as
     | (() => Promise<{ userEmail: string; workspaceId: string }>)
     | null,
+  renderInvoiceScopeWhereClause: (input: {
+    userEmail: string;
+    workspaceId: string;
+    hasInvoicesWorkspaceId: boolean;
+    qualified?: boolean;
+  }) => {
+    const filter = getInvoicesWorkspaceFilter(
+      {
+        userEmail: normalizeEmail(input.userEmail),
+        workspaceId: input.workspaceId,
+        hasInvoicesWorkspaceId: input.hasInvoicesWorkspaceId,
+        hasCustomersWorkspaceId: true,
+      },
+      input.qualified ?? true,
+    );
+    return `WHERE ${filter.column} = $1`;
+  },
 };
 
 function redactConnectionString(connectionString: string) {
@@ -60,6 +77,11 @@ type InvoiceCustomerScope = {
   workspaceId: string;
   hasInvoicesWorkspaceId: boolean;
   hasCustomersWorkspaceId: boolean;
+};
+
+type ScopeFilterCondition = {
+  column: string;
+  value: string;
 };
 
 let invoiceCustomerScopeMetaPromise:
@@ -134,27 +156,31 @@ async function requireDataWorkspaceContext() {
 function getInvoicesWorkspaceFilter(scope: InvoiceCustomerScope, qualified = false) {
   const workspaceId = scope.workspaceId?.trim();
   if (scope.hasInvoicesWorkspaceId && workspaceId) {
-    return qualified
-      ? sql`AND invoices.workspace_id = ${workspaceId}`
-      : sql`AND workspace_id = ${workspaceId}`;
+    return {
+      column: qualified ? 'invoices.workspace_id' : 'workspace_id',
+      value: workspaceId,
+    } as ScopeFilterCondition;
   }
 
-  return qualified
-    ? sql`AND lower(invoices.user_email) = ${scope.userEmail}`
-    : sql`AND lower(user_email) = ${scope.userEmail}`;
+  return {
+    column: qualified ? 'lower(invoices.user_email)' : 'lower(user_email)',
+    value: scope.userEmail,
+  } as ScopeFilterCondition;
 }
 
 function getCustomersWorkspaceFilter(scope: InvoiceCustomerScope, qualified = false) {
   const workspaceId = scope.workspaceId?.trim();
   if (scope.hasCustomersWorkspaceId && workspaceId) {
-    return qualified
-      ? sql`AND customers.workspace_id = ${workspaceId}`
-      : sql`AND workspace_id = ${workspaceId}`;
+    return {
+      column: qualified ? 'customers.workspace_id' : 'workspace_id',
+      value: workspaceId,
+    } as ScopeFilterCondition;
   }
 
-  return qualified
-    ? sql`AND lower(customers.user_email) = ${scope.userEmail}`
-    : sql`AND lower(user_email) = ${scope.userEmail}`;
+  return {
+    column: qualified ? 'lower(customers.user_email)' : 'lower(user_email)',
+    value: scope.userEmail,
+  } as ScopeFilterCondition;
 }
 
 function isUndefinedColumnError(error: unknown): boolean {
@@ -448,6 +474,7 @@ export async function getNextInvoiceNumber() {
 
 export async function fetchRevenue() {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope);
 
   const data = await sql<{ month: string; revenue: number }[]>`
     SELECT
@@ -456,7 +483,7 @@ export async function fetchRevenue() {
     FROM invoices
     WHERE
       status = 'paid'
-      ${getInvoicesWorkspaceFilter(scope)}
+      AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
     GROUP BY date_trunc('month', date::date)
     ORDER BY date_trunc('month', date::date)
   `;
@@ -466,6 +493,7 @@ export async function fetchRevenue() {
 
 export async function fetchRevenueDaily(days: number = 30): Promise<RevenueDay[]> {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope);
 
   const safeDays = Math.max(1, Math.floor(days || 30));
 
@@ -482,7 +510,7 @@ export async function fetchRevenueDaily(days: number = 30): Promise<RevenueDay[]
       status = 'paid'
       AND paid_at IS NOT NULL
       AND (paid_at at time zone 'Europe/Tallinn') >= (SELECT start_day FROM local_bounds)
-      ${getInvoicesWorkspaceFilter(scope)}
+      AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
     GROUP BY date_trunc('day', paid_at at time zone 'Europe/Tallinn')
     ORDER BY date_trunc('day', paid_at at time zone 'Europe/Tallinn') ASC
   `;
@@ -492,6 +520,8 @@ export async function fetchRevenueDaily(days: number = 30): Promise<RevenueDay[]
 
 export async function fetchLatestInvoices() {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
 
   try {
     const data = await sql<LatestInvoiceRaw[]>`
@@ -507,8 +537,8 @@ export async function fetchLatestInvoices() {
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE 1=1
-        ${getInvoicesWorkspaceFilter(scope, true)}
-        ${getCustomersWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
       ORDER BY invoices.date DESC
       LIMIT 5
     `;
@@ -527,18 +557,20 @@ export async function fetchLatestInvoices() {
 
 export async function fetchCardData() {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope);
+  const customerFilter = getCustomersWorkspaceFilter(scope);
 
   try {
     const invoiceCountRows = await sql`
       SELECT COUNT(*) FROM invoices
       WHERE 1=1
-        ${getInvoicesWorkspaceFilter(scope)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
     `;
 
     const customerCountRows = await sql`
       SELECT COUNT(*) FROM customers
       WHERE 1=1
-        ${getCustomersWorkspaceFilter(scope)}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
     `;
 
     const invoiceStatusRows = await sql`
@@ -547,7 +579,7 @@ export async function fetchCardData() {
         SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
       FROM invoices
       WHERE 1=1
-        ${getInvoicesWorkspaceFilter(scope)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
     `;
 
     const numberOfInvoices = Number(invoiceCountRows[0].count ?? '0');
@@ -767,6 +799,8 @@ export async function fetchFilteredInvoices(
   pageSize: number = DEFAULT_INVOICES_PAGE_SIZE,
 ) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
   const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
   const safePageSize = normalizeInvoicePageSize(pageSize);
   const offset = (safeCurrentPage - 1) * safePageSize;
@@ -807,8 +841,8 @@ export async function fetchFilteredInvoices(
         limit 1
       ) logs on true
       WHERE 1=1
-        ${getInvoicesWorkspaceFilter(scope, true)}
-        ${getCustomersWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
         AND (
           ${safeStatusFilter} = 'all'
           OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -865,8 +899,8 @@ export async function fetchFilteredInvoices(
         FROM invoices
         JOIN customers ON invoices.customer_id = customers.id
         WHERE 1=1
-          ${getInvoicesWorkspaceFilter(scope, true)}
-          ${getCustomersWorkspaceFilter(scope, true)}
+          AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+          AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
           AND (
             ${safeStatusFilter} = 'all'
             OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -908,6 +942,8 @@ export async function fetchInvoicesPages(
   pageSize: number = DEFAULT_INVOICES_PAGE_SIZE,
 ) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
   const safeStatusFilter = normalizeInvoiceStatusFilter(statusFilter);
   const safePageSize = normalizeInvoicePageSize(pageSize);
 
@@ -917,8 +953,8 @@ export async function fetchInvoicesPages(
       FROM invoices
       JOIN customers ON invoices.customer_id = customers.id
       WHERE 1=1
-        ${getInvoicesWorkspaceFilter(scope, true)}
-        ${getCustomersWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
         AND (
           ${safeStatusFilter} = 'all'
           OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -956,6 +992,8 @@ export async function fetchInvoicesPages(
 
 export async function fetchInvoiceById(id: string) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
 
   try {
     const data = await sql<InvoiceDetail[]>`
@@ -996,8 +1034,8 @@ export async function fetchInvoiceById(id: string) {
         limit 1
       ) logs on true
       WHERE invoices.id = ${id}
-        ${getInvoicesWorkspaceFilter(scope, true)}
-        ${getCustomersWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
       LIMIT 1
     `;
 
@@ -1035,8 +1073,8 @@ export async function fetchInvoiceById(id: string) {
         JOIN customers
           ON customers.id = invoices.customer_id
         WHERE invoices.id = ${id}
-          ${getInvoicesWorkspaceFilter(scope, true)}
-          ${getCustomersWorkspaceFilter(scope, true)}
+          AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+          AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
         LIMIT 1
       `;
       return fallback[0];
@@ -1073,8 +1111,8 @@ export async function fetchInvoiceById(id: string) {
         JOIN customers
           ON customers.id = invoices.customer_id
         WHERE invoices.id = ${id}
-          ${getInvoicesWorkspaceFilter(scope, true)}
-          ${getCustomersWorkspaceFilter(scope, true)}
+          AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
+          AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
         LIMIT 1
       `;
       return fallback[0];
@@ -1086,6 +1124,7 @@ export async function fetchInvoiceById(id: string) {
 
 export async function fetchInvoiceFormById(id: string) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
 
   try {
     const data = await sql<InvoiceForm[]>`
@@ -1097,7 +1136,7 @@ export async function fetchInvoiceFormById(id: string) {
         invoices.due_date
       FROM invoices
       WHERE invoices.id = ${id}
-        ${getInvoicesWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
     `;
 
     const invoice = data.map((invoice) => ({
@@ -1114,13 +1153,14 @@ export async function fetchInvoiceFormById(id: string) {
 
 export async function fetchCustomers() {
   const scope = await requireInvoiceCustomerScope();
+  const customerFilter = getCustomersWorkspaceFilter(scope);
 
   try {
     const customers = await sql<CustomerField[]>`
       SELECT id, name
       FROM customers
       WHERE 1=1
-        ${getCustomersWorkspaceFilter(scope)}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
       ORDER BY name ASC
     `;
 
@@ -1133,13 +1173,14 @@ export async function fetchCustomers() {
 
 export async function fetchCustomerById(id: string) {
   const scope = await requireInvoiceCustomerScope();
+  const customerFilter = getCustomersWorkspaceFilter(scope);
 
   try {
     const data = await sql<CustomerForm[]>`
       SELECT id, name, email, image_url
       FROM customers
       WHERE id = ${id}
-        ${getCustomersWorkspaceFilter(scope)}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
       LIMIT 1
     `;
 
@@ -1152,13 +1193,14 @@ export async function fetchCustomerById(id: string) {
 
 export async function fetchInvoicesByCustomerId(customerId: string) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope);
 
   try {
     const data = await sql<CustomerInvoice[]>`
       SELECT id, amount, status, date
       FROM invoices
       WHERE customer_id = ${customerId}
-        ${getInvoicesWorkspaceFilter(scope)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
       ORDER BY date DESC
     `;
 
@@ -1171,6 +1213,7 @@ export async function fetchInvoicesByCustomerId(customerId: string) {
 
 export async function fetchCustomerInvoiceSummaryByCustomerId(customerId: string) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
 
   try {
     const [data] = await sql<{
@@ -1194,7 +1237,7 @@ export async function fetchCustomerInvoiceSummaryByCustomerId(customerId: string
         ) AS total_overdue
       FROM invoices
       WHERE invoices.customer_id = ${customerId}
-        ${getInvoicesWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
     `;
 
     return {
@@ -1219,6 +1262,7 @@ export async function fetchFilteredCustomerInvoicesByCustomerId(
   pageSize: number = DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE,
 ) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
   const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
   const safeStatusFilter = normalizeInvoiceStatusFilter(statusFilter);
   const safeSortKey = normalizeCustomerInvoiceSortKey(sortKey);
@@ -1238,7 +1282,7 @@ export async function fetchFilteredCustomerInvoicesByCustomerId(
         invoices.invoice_number
       FROM invoices
       WHERE invoices.customer_id = ${customerId}
-        ${getInvoicesWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
         AND (
           ${safeStatusFilter} = 'all'
           OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -1281,6 +1325,7 @@ export async function fetchCustomerInvoicesPagesByCustomerId(
   pageSize: number = DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE,
 ) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
   const safeStatusFilter = normalizeInvoiceStatusFilter(statusFilter);
   const safePageSize = normalizeCustomerInvoicePageSize(pageSize);
 
@@ -1289,7 +1334,7 @@ export async function fetchCustomerInvoicesPagesByCustomerId(
       SELECT COUNT(*)
       FROM invoices
       WHERE invoices.customer_id = ${customerId}
-        ${getInvoicesWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
         AND (
           ${safeStatusFilter} = 'all'
           OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
@@ -1331,6 +1376,8 @@ export async function fetchLatePayerStats(
   query: string = '',
 ) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
   const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
   const safePageSize = normalizeLatePayerPageSize(pageSize);
   const offset = (safeCurrentPage - 1) * safePageSize;
@@ -1355,10 +1402,10 @@ export async function fetchLatePayerStats(
       FROM invoices
       JOIN customers
         ON customers.id = invoices.customer_id
-        ${getCustomersWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
       WHERE
         1=1
-        ${getInvoicesWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
         AND (
           customers.name ILIKE ${`%${query}%`}
           OR customers.email ILIKE ${`%${query}%`}
@@ -1387,6 +1434,8 @@ export async function fetchLatePayerStats(
 
 export async function fetchLatePayerPages(query: string = '', pageSize: number = DEFAULT_LATE_PAYERS_PAGE_SIZE) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
   const safePageSize = normalizeLatePayerPageSize(pageSize);
 
   try {
@@ -1397,10 +1446,10 @@ export async function fetchLatePayerPages(query: string = '', pageSize: number =
         FROM invoices
         JOIN customers
           ON customers.id = invoices.customer_id
-          ${getCustomersWorkspaceFilter(scope, true)}
+          AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
         WHERE
           1=1
-          ${getInvoicesWorkspaceFilter(scope, true)}
+          AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
           AND (
             customers.name ILIKE ${`%${query}%`}
             OR customers.email ILIKE ${`%${query}%`}
@@ -1434,6 +1483,8 @@ export async function fetchFilteredCustomers(
   sortDir: string = 'asc',
 ) {
   const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
   const safeCurrentPage = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
   const safePageSize = normalizeCustomerPageSize(pageSize);
   const offset = (safeCurrentPage - 1) * safePageSize;
@@ -1454,9 +1505,9 @@ export async function fetchFilteredCustomers(
       FROM customers
       LEFT JOIN invoices
         ON customers.id = invoices.customer_id
-        ${getInvoicesWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(invoiceFilter.column)} = ${invoiceFilter.value}
       WHERE 1=1
-        ${getCustomersWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
         AND (
           customers.name ILIKE ${`%${query}%`} OR
           customers.email ILIKE ${`%${query}%`}
@@ -1484,6 +1535,7 @@ export async function fetchCustomersPages(
   pageSize: number = DEFAULT_CUSTOMERS_PAGE_SIZE,
 ) {
   const scope = await requireInvoiceCustomerScope();
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
   const safePageSize = normalizeCustomerPageSize(pageSize);
 
   try {
@@ -1491,7 +1543,7 @@ export async function fetchCustomersPages(
       SELECT COUNT(*)
       FROM customers
       WHERE 1=1
-        ${getCustomersWorkspaceFilter(scope, true)}
+        AND ${sql.unsafe(customerFilter.column)} = ${customerFilter.value}
         AND (
           customers.name ILIKE ${`%${query}%`} OR
           customers.email ILIKE ${`%${query}%`}
