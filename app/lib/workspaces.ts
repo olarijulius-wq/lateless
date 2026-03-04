@@ -56,6 +56,10 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+function buildSessionFallbackEmail(userId: string) {
+  return `${userId.trim().toLowerCase()}@missing.local`;
+}
+
 function buildWorkspaceName(name: string | null, email: string) {
   const label = name?.trim() || email.split('@')[0] || 'Company';
   return normalizeCompanyName(`${label} company`);
@@ -146,14 +150,6 @@ export async function requireCurrentUser() {
     throw new Error('Unauthorized');
   }
   const emptyUserRows: { id: string; name: string | null; email: string }[] = [];
-  const userByEmailPromise = sessionEmail
-    ? sql<{ id: string; name: string | null; email: string }[]>`
-        select id, name, email
-        from public.users
-        where lower(email) = ${normalizeEmail(sessionEmail)}
-        limit 1
-      `
-    : Promise.resolve(emptyUserRows);
   const userByIdPromise = sessionUserId
     ? sql<{ id: string; name: string | null; email: string }[]>`
         select id, name, email
@@ -162,16 +158,39 @@ export async function requireCurrentUser() {
         limit 1
       `
     : Promise.resolve(emptyUserRows);
+  const userByEmailPromise = sessionEmail
+    ? sql<{ id: string; name: string | null; email: string }[]>`
+        select id, name, email
+        from public.users
+        where lower(email) = ${normalizeEmail(sessionEmail)}
+        limit 1
+      `
+    : Promise.resolve(emptyUserRows);
 
   const [userByEmailRows, userByIdRows] = await Promise.all([userByEmailPromise, userByIdPromise]);
-  const user = userByEmailRows[0] ?? userByIdRows[0];
-  if (!user?.email?.trim()) {
-    throw new Error('Unauthorized');
+  const user = userByIdRows[0] ?? userByEmailRows[0];
+  if (!user) {
+    if (sessionUserId && sessionEmail) {
+      return {
+        id: sessionUserId,
+        email: normalizeEmail(sessionEmail),
+        name: null,
+      };
+    }
+    throw new Error('NO_ACTIVE_WORKSPACE');
+  }
+
+  const resolvedEmail =
+    user.email?.trim() ||
+    sessionEmail ||
+    (sessionUserId ? buildSessionFallbackEmail(sessionUserId) : null);
+  if (!resolvedEmail) {
+    throw new Error('NO_ACTIVE_WORKSPACE');
   }
 
   return {
     id: user.id,
-    email: normalizeEmail(user.email),
+    email: normalizeEmail(resolvedEmail),
     name: user.name,
   };
 }
@@ -186,14 +205,48 @@ export async function ensureActiveWorkspaceForUser(user: {
   return sql.begin(async (tx) => {
     const userRows = (await tx.unsafe(
       `
-      select active_workspace_id
+      select id, active_workspace_id
       from public.users
       where id = $1
       limit 1
       `,
       [user.id],
-    )) as { active_workspace_id: string | null }[];
-    const [userRow] = userRows;
+    )) as { id: string; active_workspace_id: string | null }[];
+    let [userRow] = userRows;
+
+    if (!userRow) {
+      if (!user.email?.trim()) {
+        throw new Error('NO_ACTIVE_WORKSPACE');
+      }
+      const [createdUser] = (await tx.unsafe(
+        `
+        insert into public.users (
+          id,
+          name,
+          email,
+          password,
+          is_verified,
+          plan,
+          subscription_status
+        )
+        values (
+          $1,
+          $2,
+          $3,
+          '$2b$10$uD50r8jflxRQQ6MShwbVVuAVrkMtk0iA0WIMRqjYOEoTP0TO.Zi5q',
+          true,
+          'solo',
+          'active'
+        )
+        on conflict (id)
+        do update set email = excluded.email
+        returning id, active_workspace_id
+        `,
+        [user.id, user.name, normalizeEmail(user.email)],
+      )) as { id: string; active_workspace_id: string | null }[];
+
+      userRow = createdUser ?? null;
+    }
 
     const memberships = (await tx.unsafe(
       `

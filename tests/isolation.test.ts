@@ -451,6 +451,78 @@ async function run() {
       assert.equal(membershipCount?.count, '1');
     });
 
+    await runCase('workspace resolver bootstraps missing membership and is idempotent', async () => {
+      const userId = '99999999-9999-4999-8999-999999999998';
+      const userEmail = 'resolver-bootstrap@example.com';
+
+      await sql`
+        insert into public.users (
+          id,
+          name,
+          email,
+          password,
+          is_verified,
+          plan,
+          subscription_status,
+          active_workspace_id
+        )
+        values (
+          ${userId},
+          'Resolver Bootstrap',
+          ${userEmail},
+          '$2b$10$uD50r8jflxRQQ6MShwbVVuAVrkMtk0iA0WIMRqjYOEoTP0TO.Zi5q',
+          true,
+          'solo',
+          'active',
+          null
+        )
+      `;
+
+      const [membershipCountBefore] = await sql<{ count: string }[]>`
+        select count(*)::text as count
+        from public.workspace_members
+        where user_id = ${userId}
+      `;
+      assert.equal(membershipCountBefore?.count, '0');
+
+      const firstResolution = await workspacesModule.ensureActiveWorkspaceForUser({
+        id: userId,
+        email: userEmail,
+        name: 'Resolver Bootstrap',
+      });
+      assert.ok(firstResolution.workspaceId);
+      assert.equal(firstResolution.userRole, 'owner');
+
+      const [membershipAfterFirst] = await sql<{ count: string }[]>`
+        select count(*)::text as count
+        from public.workspace_members
+        where user_id = ${userId}
+      `;
+      assert.equal(membershipAfterFirst?.count, '1');
+
+      const [activeAfterFirst] = await sql<{ active_workspace_id: string | null }[]>`
+        select active_workspace_id
+        from public.users
+        where id = ${userId}
+        limit 1
+      `;
+      assert.equal(activeAfterFirst?.active_workspace_id, firstResolution.workspaceId);
+
+      const secondResolution = await workspacesModule.ensureActiveWorkspaceForUser({
+        id: userId,
+        email: userEmail,
+        name: 'Resolver Bootstrap',
+      });
+      assert.equal(secondResolution.workspaceId, firstResolution.workspaceId);
+
+      const [membershipAfterSecond] = await sql<{ count: string }[]>`
+        select count(*)::text as count
+        from public.workspace_members
+        where user_id = ${userId}
+      `;
+      assert.equal(membershipAfterSecond?.count, '1');
+    });
+
     await runCase('listing isolation (invoices + customers)', async () => {
       const fixtures = await seedFixtures();
       const workspaceAContext: WorkspaceContext = {
