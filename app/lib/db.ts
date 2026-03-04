@@ -361,11 +361,79 @@ function getOrCreateSqlClient() {
   return globalForDb.__latelessSql;
 }
 
+function shouldLogSqlSyntaxErrorInCi() {
+  return (
+    process.env.GITHUB_ACTIONS === 'true' ||
+    process.env.DEBUG_SQL_42601 === '1'
+  );
+}
+
+function extractSqlTextForSyntaxError(error: unknown, argArray: unknown[]): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'query' in error &&
+    typeof (error as { query?: unknown }).query === 'string'
+  ) {
+    return (error as { query: string }).query;
+  }
+
+  if (typeof argArray[0] === 'string') {
+    return argArray[0];
+  }
+
+  if (argArray[0] && typeof argArray[0] === 'object') {
+    const keys = Object.keys(argArray[0] as Record<string, unknown>).slice(0, 8);
+    return `[unavailable:first_arg_type=object keys=${keys.join(',') || '-'}]`;
+  }
+
+  return `[unavailable:first_arg_type=${typeof argArray[0]}]`;
+}
+
+function extractAppCallsiteFromStack(stack: string | undefined): string | null {
+  if (!stack) {
+    return null;
+  }
+
+  const appFrame = stack
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.includes('/app/'));
+
+  return appFrame ?? null;
+}
+
 export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof postgres>, {
   apply(_target, thisArg, argArray) {
-    return ensureDnsPreflight().then(() =>
-      Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray),
-    );
+    return ensureDnsPreflight().then(() => {
+      const log42601 = (error: unknown) => {
+        const errorCode =
+          typeof error === 'object' && error !== null && 'code' in error
+            ? String((error as { code?: unknown }).code)
+            : '';
+        if (errorCode === '42601' && shouldLogSqlSyntaxErrorInCi()) {
+          console.error(`[db][sql_42601] ${extractSqlTextForSyntaxError(error, argArray)}`);
+          const callsite = extractAppCallsiteFromStack(new Error().stack);
+          if (callsite) {
+            console.error(`[db][sql_42601_callsite] ${callsite}`);
+          }
+        }
+      };
+
+      try {
+        const result = Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray);
+        if (result && typeof (result as Promise<unknown>).then === 'function') {
+          return (result as Promise<unknown>).catch((error) => {
+            log42601(error);
+            throw error;
+          });
+        }
+        return result;
+      } catch (error) {
+        log42601(error);
+        throw error;
+      }
+    });
   },
   get(_target, property, receiver) {
     const client = getOrCreateSqlClient() as unknown as Record<PropertyKey, unknown>;
