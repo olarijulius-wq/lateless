@@ -44,7 +44,7 @@ export const __testHooks = {
       },
       input.qualified ?? true,
     );
-    return `WHERE ${filter.column} = $1`;
+    return `WHERE 1=1 AND ${filter.column} = $1`;
   },
 };
 
@@ -83,6 +83,38 @@ type ScopeFilterCondition = {
   column: string;
   value: string;
 };
+
+const INVALID_QUERY_BUILDER_FRAGMENT_MESSAGE = 'Invalid query builder fragment';
+
+function isInvalidScopeColumnFragment(column: string): boolean {
+  const trimmed = column.trim();
+  const lowered = trimmed.toLowerCase();
+  return (
+    trimmed.length === 0 ||
+    trimmed.includes('=') ||
+    trimmed.includes('$') ||
+    trimmed.includes(';') ||
+    lowered.includes(' where ') ||
+    lowered.startsWith('where ') ||
+    lowered.startsWith('and ') ||
+    lowered.startsWith('or ')
+  );
+}
+
+export function validateScopeFilterColumn(column: string): string {
+  const trimmed = column.trim();
+  if (!isInvalidScopeColumnFragment(trimmed)) {
+    return trimmed;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(INVALID_QUERY_BUILDER_FRAGMENT_MESSAGE);
+  }
+
+  throw new Error(
+    `Invalid scope filter column fragment "${column}". Expected a bare column/expression with no operators/placeholders.`,
+  );
+}
 
 let invoiceCustomerScopeMetaPromise:
   | Promise<{ hasInvoicesWorkspaceId: boolean; hasCustomersWorkspaceId: boolean }>
@@ -157,13 +189,17 @@ function getInvoicesWorkspaceFilter(scope: InvoiceCustomerScope, qualified = fal
   const workspaceId = scope.workspaceId?.trim();
   if (scope.hasInvoicesWorkspaceId && workspaceId) {
     return {
-      column: qualified ? 'invoices.workspace_id' : 'workspace_id',
+      column: validateScopeFilterColumn(
+        qualified ? 'invoices.workspace_id' : 'workspace_id',
+      ),
       value: workspaceId,
     } as ScopeFilterCondition;
   }
 
   return {
-    column: qualified ? 'lower(invoices.user_email)' : 'lower(user_email)',
+    column: validateScopeFilterColumn(
+      qualified ? 'lower(invoices.user_email)' : 'lower(user_email)',
+    ),
     value: scope.userEmail,
   } as ScopeFilterCondition;
 }
@@ -172,13 +208,17 @@ function getCustomersWorkspaceFilter(scope: InvoiceCustomerScope, qualified = fa
   const workspaceId = scope.workspaceId?.trim();
   if (scope.hasCustomersWorkspaceId && workspaceId) {
     return {
-      column: qualified ? 'customers.workspace_id' : 'workspace_id',
+      column: validateScopeFilterColumn(
+        qualified ? 'customers.workspace_id' : 'workspace_id',
+      ),
       value: workspaceId,
     } as ScopeFilterCondition;
   }
 
   return {
-    column: qualified ? 'lower(customers.user_email)' : 'lower(user_email)',
+    column: validateScopeFilterColumn(
+      qualified ? 'lower(customers.user_email)' : 'lower(user_email)',
+    ),
     value: scope.userEmail,
   } as ScopeFilterCondition;
 }

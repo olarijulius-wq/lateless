@@ -361,8 +361,18 @@ function getOrCreateSqlClient() {
   return globalForDb.__latelessSql;
 }
 
-function shouldLogSqlSyntaxErrorInCi() {
-  return process.env.DEBUG_SQL_42601 === '1';
+const SQL_SYNTAX_LOG_LIMIT = 400;
+
+function shouldLogSqlSyntaxError() {
+  return process.env.DEBUG_SQL_ERRORS === '1';
+}
+
+function truncateForSingleLineLog(value: string, limit = SQL_SYNTAX_LOG_LIMIT): string {
+  const singleLine = value.replace(/\s+/g, ' ').trim();
+  if (singleLine.length <= limit) {
+    return singleLine;
+  }
+  return `${singleLine.slice(0, limit)}…`;
 }
 
 function extractSqlTextForSyntaxError(error: unknown, argArray: unknown[]): string {
@@ -387,6 +397,33 @@ function extractSqlTextForSyntaxError(error: unknown, argArray: unknown[]): stri
   return `[unavailable:first_arg_type=${typeof argArray[0]}]`;
 }
 
+function extractErrorPosition(error: unknown): number | null {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'position' in error
+  ) {
+    const position = Number((error as { position?: unknown }).position);
+    if (Number.isFinite(position) && position > 0) {
+      return Math.floor(position);
+    }
+  }
+  return null;
+}
+
+function extractNearSqlPosition(sqlText: string, position: number | null): string {
+  if (position === null) {
+    return '[unavailable]';
+  }
+  const zeroBased = position - 1;
+  if (zeroBased < 0 || zeroBased >= sqlText.length) {
+    return '[out_of_range]';
+  }
+  const start = Math.max(0, zeroBased - 30);
+  const end = Math.min(sqlText.length, zeroBased + 30);
+  return truncateForSingleLineLog(sqlText.slice(start, end), 120);
+}
+
 function extractAppCallsiteFromStack(stack: string | undefined): string | null {
   if (!stack) {
     return null;
@@ -400,36 +437,71 @@ function extractAppCallsiteFromStack(stack: string | undefined): string | null {
   return appFrame ?? null;
 }
 
+function isSyntaxError42601(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    String((error as { code?: unknown }).code) === '42601'
+  );
+}
+
+function logSqlSyntaxError42601(error: unknown, argArray: unknown[], invocationStack: string | undefined) {
+  if (!shouldLogSqlSyntaxError() || !isSyntaxError42601(error)) {
+    return;
+  }
+
+  const sqlText = extractSqlTextForSyntaxError(error, argArray);
+  const truncatedSqlText = truncateForSingleLineLog(sqlText);
+  const position = extractErrorPosition(error);
+  const near = extractNearSqlPosition(sqlText, position);
+  const callsite =
+    extractAppCallsiteFromStack(
+      typeof error === 'object' && error !== null && 'stack' in error
+        ? String((error as { stack?: unknown }).stack ?? '')
+        : undefined,
+    ) ?? extractAppCallsiteFromStack(invocationStack);
+
+  console.error(`[db][sql_42601] ${truncatedSqlText}`);
+  console.error(`[db][sql_42601_pos] position=${position ?? 'unknown'} near=${near}`);
+  if (callsite) {
+    console.error(`[db][sql_42601_stack] ${truncateForSingleLineLog(callsite, 400)}`);
+  } else {
+    console.error('[db][sql_42601_stack] [app_frame_unavailable]');
+  }
+}
+
+function withSqlSyntaxErrorLogging<T>(
+  argArray: unknown[],
+  invocationStack: string | undefined,
+  invoke: () => T,
+): T {
+  try {
+    const result = invoke();
+    if (
+      result &&
+      typeof (result as unknown as { then?: unknown }).then === 'function'
+    ) {
+      const promiseResult = result as unknown as Promise<unknown>;
+      return promiseResult.catch((error) => {
+        logSqlSyntaxError42601(error, argArray, invocationStack);
+        throw error;
+      }) as T;
+    }
+    return result;
+  } catch (error) {
+    logSqlSyntaxError42601(error, argArray, invocationStack);
+    throw error;
+  }
+}
+
 export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof postgres>, {
   apply(_target, thisArg, argArray) {
+    const invocationStack = new Error().stack;
     return ensureDnsPreflight().then(() => {
-      const log42601 = (error: unknown) => {
-        const errorCode =
-          typeof error === 'object' && error !== null && 'code' in error
-            ? String((error as { code?: unknown }).code)
-            : '';
-        if (errorCode === '42601' && shouldLogSqlSyntaxErrorInCi()) {
-          console.error(`[db][sql_42601] ${extractSqlTextForSyntaxError(error, argArray)}`);
-          const callsite = extractAppCallsiteFromStack(new Error().stack);
-          if (callsite) {
-            console.error(`[db][sql_42601_callsite] ${callsite}`);
-          }
-        }
-      };
-
-      try {
-        const result = Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray);
-        if (result && typeof (result as Promise<unknown>).then === 'function') {
-          return (result as Promise<unknown>).catch((error) => {
-            log42601(error);
-            throw error;
-          });
-        }
-        return result;
-      } catch (error) {
-        log42601(error);
-        throw error;
-      }
+      return withSqlSyntaxErrorLogging(argArray, invocationStack, () =>
+        Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray),
+      );
     });
   },
   get(_target, property, receiver) {
@@ -439,6 +511,10 @@ export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof p
       return value;
     }
     const bound = value.bind(client) as (...args: unknown[]) => unknown;
+    const invokeWithLogging = (...args: unknown[]) => {
+      const invocationStack = new Error().stack;
+      return withSqlSyntaxErrorLogging(args, invocationStack, () => bound(...args));
+    };
     if (
       property === 'begin' ||
       property === 'reserve' ||
@@ -447,9 +523,9 @@ export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof p
       property === 'end'
     ) {
       return (...args: unknown[]) =>
-        ensureDnsPreflight().then(() => bound(...args));
-    }
-    return bound;
+        ensureDnsPreflight().then(() => invokeWithLogging(...args));
+    };
+    return invokeWithLogging;
   },
   set(_target, property, value, receiver) {
     const client = getOrCreateSqlClient() as unknown as Record<PropertyKey, unknown>;
