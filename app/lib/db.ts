@@ -212,17 +212,18 @@ export function resolveDbSourcePriority(): DbSourceEnvVar[] {
     priority.push('POSTGRES_URL_POOLER');
   }
 
-  if (isTruthy(process.env.POSTGRES_URL_NON_POOLING)) {
-    priority.push('POSTGRES_URL_NON_POOLING');
-  }
+  if (isProductionEnv()) {
+    if (isTruthy(process.env.POSTGRES_URL)) {
+      priority.push('POSTGRES_URL');
+    }
 
-  if (isTruthy(process.env.POSTGRES_URL_DIRECT)) {
-    priority.push('POSTGRES_URL_DIRECT');
-  }
-
-  if (isTruthy(process.env.POSTGRES_URL)) {
-    priority.push('POSTGRES_URL');
-  }
+    if (isTruthy(process.env.DATABASE_URL)) {
+      priority.push('DATABASE_URL');
+    }
+  } else {
+    if (isTruthy(process.env.POSTGRES_URL_NON_POOLING)) {
+      priority.push('POSTGRES_URL_NON_POOLING');
+    }
 
     if (isTruthy(process.env.POSTGRES_URL_DIRECT)) {
       priority.push('POSTGRES_URL_DIRECT');
