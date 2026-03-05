@@ -3,6 +3,7 @@ import {
   resolveDbConnectionCandidates,
   resolveDbSourcePriority,
 } from '@/app/lib/db';
+import { resolveMigrationSourceEnvVar } from '@/scripts/migrate.mjs';
 
 const ORIGINAL_ENV = { ...process.env };
 const mutableEnv = process.env as Record<string, string | undefined>;
@@ -44,11 +45,7 @@ function run() {
   mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
   const candidates = resolveDbConnectionCandidates();
   assert.equal(candidates[0]?.sourceEnvVar, 'POSTGRES_URL_TEST');
-  assert.equal(candidates[1]?.sourceEnvVar, 'POSTGRES_URL_POOLER');
-  assert.equal(candidates[2]?.sourceEnvVar, 'POSTGRES_URL_NON_POOLING');
-  assert.equal(candidates[3]?.sourceEnvVar, 'POSTGRES_URL_DIRECT');
-  assert.equal(candidates[4]?.sourceEnvVar, 'POSTGRES_URL');
-  assert.equal(candidates[5]?.sourceEnvVar, 'DATABASE_URL');
+  assert.equal(candidates.length, 1);
 
   resetEnv();
   mutableEnv.NODE_ENV = 'production';
@@ -58,11 +55,35 @@ function run() {
   mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
   mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
   assert.deepEqual(resolveDbSourcePriority(), [
-    'POSTGRES_URL_NON_POOLING',
-    'POSTGRES_URL_DIRECT',
+    'POSTGRES_URL_POOLER',
     'POSTGRES_URL',
     'DATABASE_URL',
   ]);
+
+  resetEnv();
+  mutableEnv.NODE_ENV = 'production';
+  mutableEnv.POSTGRES_URL_POOLER = 'postgres://u:p@pooler.local:6543/db';
+  mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
+  mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
+  const productionCandidates = resolveDbConnectionCandidates();
+  assert.equal(productionCandidates[0]?.sourceEnvVar, 'POSTGRES_URL_POOLER');
+
+  resetEnv();
+  mutableEnv.NODE_ENV = 'production';
+  mutableEnv.POSTGRES_URL_NON_POOLING = 'postgres://u:p@direct-nonpool.local:5432/db';
+  mutableEnv.POSTGRES_URL_DIRECT = 'postgres://u:p@direct-explicit.local:5432/db';
+  mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
+  mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
+  assert.equal(
+    resolveMigrationSourceEnvVar(),
+    'POSTGRES_URL_NON_POOLING',
+  );
+
+  delete mutableEnv.POSTGRES_URL_NON_POOLING;
+  assert.equal(resolveMigrationSourceEnvVar(), 'POSTGRES_URL_DIRECT');
+
+  delete mutableEnv.POSTGRES_URL_DIRECT;
+  assert.equal(resolveMigrationSourceEnvVar(), 'POSTGRES_URL');
 
   resetEnv();
   mutableEnv.NODE_ENV = 'test';
