@@ -16,6 +16,10 @@ const poolMax = Number(poolMaxRaw);
 const maxConnections =
   Number.isFinite(poolMax) && poolMax > 0 ? Math.floor(poolMax) : 10;
 
+function isProductionEnv() {
+  return process.env.NODE_ENV === 'production';
+}
+
 type DbSourceEnvVar =
   | 'POSTGRES_URL_TEST'
   | 'POSTGRES_URL_POOLER'
@@ -142,6 +146,7 @@ function isTruthy(value: string | undefined): boolean {
 
 function shouldPreferPoolerUrl() {
   return (
+    isProductionEnv() ||
     process.env.NODE_ENV === 'development' ||
     process.env.NODE_ENV === 'test' ||
     process.env.LATELLESS_TEST_MODE === '1'
@@ -203,20 +208,30 @@ export function resolveDbSourcePriority(): DbSourceEnvVar[] {
     priority.push('POSTGRES_URL_POOLER');
   }
 
-  if (isTruthy(process.env.POSTGRES_URL_NON_POOLING)) {
-    priority.push('POSTGRES_URL_NON_POOLING');
-  }
+  if (isProductionEnv()) {
+    if (isTruthy(process.env.POSTGRES_URL)) {
+      priority.push('POSTGRES_URL');
+    }
 
-  if (isTruthy(process.env.POSTGRES_URL_DIRECT)) {
-    priority.push('POSTGRES_URL_DIRECT');
-  }
+    if (isTruthy(process.env.DATABASE_URL)) {
+      priority.push('DATABASE_URL');
+    }
+  } else {
+    if (isTruthy(process.env.POSTGRES_URL_NON_POOLING)) {
+      priority.push('POSTGRES_URL_NON_POOLING');
+    }
 
-  if (isTruthy(process.env.POSTGRES_URL)) {
-    priority.push('POSTGRES_URL');
-  }
+    if (isTruthy(process.env.POSTGRES_URL_DIRECT)) {
+      priority.push('POSTGRES_URL_DIRECT');
+    }
 
-  if (isTruthy(process.env.DATABASE_URL)) {
-    priority.push('DATABASE_URL');
+    if (isTruthy(process.env.POSTGRES_URL)) {
+      priority.push('POSTGRES_URL');
+    }
+
+    if (isTruthy(process.env.DATABASE_URL)) {
+      priority.push('DATABASE_URL');
+    }
   }
 
   return priority;
@@ -313,11 +328,14 @@ export function resolveDbConnectionConfig(): DbConfig {
 function logBootOnce(dbConfig: DbConfig) {
   if (globalForDb.__latelessDbBootLogged) return;
   globalForDb.__latelessDbBootLogged = true;
+  const chosenSourceMessage = `[db][boot] chosen_env_var=${dbConfig.sourceEnvVar}`;
   const message = `[db][boot] env=${process.env.NODE_ENV ?? ''} ci=${process.env.CI ?? ''} gha=${process.env.GITHUB_ACTIONS ?? ''} test_mode=${process.env.LATELLESS_TEST_MODE ?? ''} source=${dbConfig.sourceEnvVar} host=${dbConfig.host} ssl=${dbConfig.ssl} url_has_sslmode=${dbConfig.urlHasSslmode}`;
   if (process.env.NODE_ENV === 'development') {
+    console.log(chosenSourceMessage);
     console.log(message);
     return;
   }
+  console.info(chosenSourceMessage);
   console.info(message);
 }
 
@@ -365,12 +383,15 @@ async function lookupHostnameOnce(hostname: string): Promise<void> {
 function createClientForConfig(dbConfig: DbConfig) {
   const disablePreparedStatements = isPoolerUrl(dbConfig.connectionString);
   const clientSsl = dbConfig.ssl === false ? false : 'require';
+  const isProduction = isProductionEnv();
+  const poolMaxClamped = isProduction ? Math.min(maxConnections, 2) : maxConnections;
 
   return postgres(dbConfig.connectionString, {
     ssl: clientSsl,
     prepare: disablePreparedStatements ? false : undefined,
-    max: maxConnections,
+    max: poolMaxClamped,
     idle_timeout: 20,
+    max_lifetime: isProduction ? 60 * 30 : undefined,
     connect_timeout: 15,
   });
 }

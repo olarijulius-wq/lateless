@@ -58,11 +58,18 @@ function run() {
   mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
   mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
   assert.deepEqual(resolveDbSourcePriority(), [
-    'POSTGRES_URL_NON_POOLING',
-    'POSTGRES_URL_DIRECT',
+    'POSTGRES_URL_POOLER',
     'POSTGRES_URL',
     'DATABASE_URL',
   ]);
+
+  resetEnv();
+  mutableEnv.NODE_ENV = 'production';
+  mutableEnv.POSTGRES_URL_POOLER = 'postgres://u:p@pooler.local:6543/db';
+  mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
+  mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
+  const productionCandidates = resolveDbConnectionCandidates();
+  assert.equal(productionCandidates[0]?.sourceEnvVar, 'POSTGRES_URL_POOLER');
 
   resetEnv();
   mutableEnv.NODE_ENV = 'test';

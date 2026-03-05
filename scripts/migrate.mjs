@@ -90,7 +90,7 @@ function resolveConnectionString() {
       );
     }
     sourceEnvVar = 'POSTGRES_URL_TEST';
-  } else if (process.env.NODE_ENV === 'production') {
+  } else {
     if (isTruthy(process.env.POSTGRES_URL_NON_POOLING)) {
       sourceEnvVar = 'POSTGRES_URL_NON_POOLING';
     } else if (isTruthy(process.env.POSTGRES_URL_DIRECT)) {
@@ -100,8 +100,6 @@ function resolveConnectionString() {
     } else {
       sourceEnvVar = 'DATABASE_URL';
     }
-  } else {
-    sourceEnvVar = process.env.POSTGRES_URL ? 'POSTGRES_URL' : 'DATABASE_URL';
   }
 
   const connectionStringRaw = process.env[sourceEnvVar];
@@ -142,14 +140,14 @@ function resolveConnectionString() {
     }
   }
 
-  if (process.env.NODE_ENV === 'production' && isPoolerUrl(connectionStringRaw)) {
+  if (isPoolerUrl(connectionStringRaw)) {
     if (!allowProdDb) {
       throwGuardrail(
-        `Production migrations cannot use pooler URLs. chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}. Use POSTGRES_URL_NON_POOLING or POSTGRES_URL_DIRECT.`,
+        `Migrations cannot use pooler URLs. chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}. Use POSTGRES_URL_NON_POOLING or POSTGRES_URL_DIRECT, or set ALLOW_PROD_DB=1 for explicit override.`,
       );
     }
     logProdOverrideOnce(
-      `enabled in production while using pooler URL chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}.`,
+      `enabled while using pooler URL chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}.`,
     );
   }
 
