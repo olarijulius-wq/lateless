@@ -221,6 +221,12 @@ async function run() {
     const workspacesModule = await import('@/app/lib/workspaces');
     const stripeWorkspaceMetadataModule = await import('@/app/lib/stripe-workspace-metadata');
     const invoiceWorkspaceBillingModule = await import('@/app/lib/invoice-workspace-billing');
+    const authConnectionsModule = await import('@/app/lib/auth-connections');
+    const accountPasswordResetRoute = await import('@/app/api/account/password-reset/route');
+    const authModule = await import('@/auth');
+    const actionsModule = await import('@/app/lib/actions');
+    const loginStateModule = await import('@/app/lib/login-state');
+    const passwordCtaCopyModule = await import('@/app/dashboard/profile/password-cta');
     const { authConfig } = await import('@/auth.config');
 
     let failures = 0;
@@ -269,6 +275,9 @@ async function run() {
         stripePortalRoute.__testHooks.createPortalSessionOverride = null;
         stripePortalRoute.__testHooks.assertStripeConfigOverride = null;
         stripePortalRoute.__testHooks.onResolvedPortalCustomerId = null;
+        accountPasswordResetRoute.__testHooks.requireUserEmailOverride = null;
+        accountPasswordResetRoute.__testHooks.enforceRateLimitOverride = null;
+        accountPasswordResetRoute.__testHooks.requestPasswordResetByEmailOverride = null;
       }
     }
 
@@ -1446,6 +1455,206 @@ async function run() {
       assert.equal(negativeBody.ok, false);
       assert.equal(negativeBody.code, 'WORKSPACE_BILLING_MISSING');
       assert.notEqual(negativeBody.message, 'Connected Stripe account is not configured.');
+    });
+
+    await runCase('oauth-only user cannot credentials-login and gets OAUTH_ONLY_ACCOUNT', async () => {
+      const oauthOnlyUserId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99001';
+      const oauthOnlyEmail = 'oauth-only-login@example.com';
+      const formData = new FormData();
+      formData.set('email', oauthOnlyEmail);
+      formData.set('password', 'example-password');
+
+      await sql`
+        insert into public.users (id, name, email, password, is_verified)
+        values (${oauthOnlyUserId}, 'OAuth Only', ${oauthOnlyEmail}, '', true)
+      `;
+
+      const result = await actionsModule.authenticate(
+        loginStateModule.initialLoginState,
+        formData,
+      );
+
+      assert.equal(result.success, false);
+      assert.equal(result.code, 'OAUTH_ONLY_ACCOUNT');
+      assert.equal(result.status, 409);
+      assert.equal(
+        result.message,
+        'This account uses Google/GitHub sign-in. Continue with that or set a password.',
+      );
+    });
+
+    await runCase('oauth-only profile password CTA shows Set password only', async () => {
+      const oauthOnlyCopy = passwordCtaCopyModule.getPasswordCtaCopy(false);
+      assert.equal(oauthOnlyCopy.actionLabel, 'Set password');
+      assert.match(
+        oauthOnlyCopy.description,
+        /Google\/GitHub/,
+      );
+      assert.equal(
+        oauthOnlyCopy.successMessage('oauth-only@example.com'),
+        'Password setup link sent to oauth-only@example.com.',
+      );
+    });
+
+    await runCase('hybrid profile password CTA shows Change password', async () => {
+      const hybridCopy = passwordCtaCopyModule.getPasswordCtaCopy(true);
+      assert.equal(hybridCopy.actionLabel, 'Change password');
+      assert.equal(
+        hybridCopy.successMessage('hybrid@example.com'),
+        'Password reset link sent to hybrid@example.com.',
+      );
+    });
+
+    await runCase('oauth-only user password reset endpoint sends setup link flow', async () => {
+      const oauthOnlyUserId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99004';
+      const oauthOnlyEmail = 'oauth-only-set-password@example.com';
+
+      await sql`
+        insert into public.users (id, name, email, password, is_verified)
+        values (${oauthOnlyUserId}, 'OAuth Set Password', ${oauthOnlyEmail}, '', true)
+      `;
+
+      accountPasswordResetRoute.__testHooks.requireUserEmailOverride = async () =>
+        oauthOnlyEmail;
+      accountPasswordResetRoute.__testHooks.enforceRateLimitOverride = async () => null;
+
+      const response = await accountPasswordResetRoute.POST(
+        createNextRequest('http://localhost/api/account/password-reset', {
+          method: 'POST',
+          headers: { 'x-forwarded-for': '203.0.113.44' },
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.ok, true);
+
+      const [updated] = await sql<{
+        password_reset_token: string | null;
+        password_reset_sent_at: Date | null;
+      }[]>`
+        select password_reset_token, password_reset_sent_at
+        from public.users
+        where id = ${oauthOnlyUserId}
+        limit 1
+      `;
+      assert.ok(updated?.password_reset_token, 'password reset token should be set');
+      assert.ok(updated?.password_reset_sent_at, 'password reset timestamp should be set');
+    });
+
+    await runCase('hybrid user password reset endpoint sends change password flow', async () => {
+      const fixtures = await seedFixtures();
+
+      accountPasswordResetRoute.__testHooks.requireUserEmailOverride = async () =>
+        fixtures.userEmail;
+      accountPasswordResetRoute.__testHooks.enforceRateLimitOverride = async () => null;
+
+      const response = await accountPasswordResetRoute.POST(
+        createNextRequest('http://localhost/api/account/password-reset', {
+          method: 'POST',
+          headers: { 'x-forwarded-for': '203.0.113.45' },
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.ok, true);
+
+      const [updated] = await sql<{
+        password_reset_token: string | null;
+        password_reset_sent_at: Date | null;
+      }[]>`
+        select password_reset_token, password_reset_sent_at
+        from public.users
+        where id = ${fixtures.userId}
+        limit 1
+      `;
+      assert.ok(updated?.password_reset_token, 'password reset token should be set');
+      assert.ok(updated?.password_reset_sent_at, 'password reset timestamp should be set');
+    });
+
+    await runCase('oauth-only user cannot disconnect last provider', async () => {
+      const oauthOnlyUserId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99002';
+      const oauthOnlyEmail = 'oauth-only-disconnect@example.com';
+
+      await sql`
+        insert into public.users (id, name, email, password, is_verified)
+        values (${oauthOnlyUserId}, 'OAuth Disconnect', ${oauthOnlyEmail}, '', true)
+      `;
+      await sql`
+        insert into public.nextauth_accounts (
+          user_id,
+          type,
+          provider,
+          provider_account_id
+        )
+        values (
+          ${oauthOnlyUserId},
+          'oauth',
+          'google',
+          'google-disconnect-test'
+        )
+      `;
+
+      const result = await authConnectionsModule.disconnectProvider(
+        oauthOnlyUserId,
+        'google',
+      );
+
+      assert.equal(result.ok, false);
+      if (result.ok) {
+        throw new Error('Expected disconnectProvider to fail for last login method.');
+      }
+      assert.equal(result.code, 'CANNOT_DISCONNECT_LAST_LOGIN_METHOD');
+      assert.equal(result.status, 409);
+    });
+
+    await runCase('oauth sign-in re-links provider after accidental disconnect', async () => {
+      const userId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99003';
+      const userEmail = 'oauth-relink@example.com';
+      const provider = 'google';
+      const providerAccountId = 'google-relink-test';
+
+      await sql`
+        insert into public.users (id, name, email, password, is_verified)
+        values (${userId}, 'OAuth Relink', ${userEmail}, '', true)
+      `;
+      await sql`
+        insert into public.nextauth_accounts (
+          user_id,
+          type,
+          provider,
+          provider_account_id
+        )
+        values (${userId}, 'oauth', ${provider}, ${providerAccountId})
+      `;
+      await sql`
+        delete from public.nextauth_accounts
+        where user_id = ${userId}
+          and provider = ${provider}
+      `;
+
+      const relinkResult = await authModule.relinkOAuthAccountForExistingUser({
+        provider,
+        providerAccountId,
+        email: userEmail,
+        resolvedName: 'OAuth Relink',
+        type: 'oauth',
+      });
+
+      assert.equal(relinkResult.ok, true);
+
+      const [relinked] = await sql<{ linked: boolean }[]>`
+        select exists(
+          select 1
+          from public.nextauth_accounts
+          where user_id = ${userId}
+            and provider = ${provider}
+            and provider_account_id = ${providerAccountId}
+          limit 1
+        ) as linked
+      `;
+      assert.equal(relinked?.linked, true);
     });
 
     if (failures > 0) {
