@@ -4,7 +4,10 @@ import { redirect } from 'next/navigation';
 import { sql } from '@/app/lib/db';
 import { disableTwoFactor, enableTwoFactor } from '@/app/lib/actions';
 import { primaryButtonClasses } from '@/app/ui/button';
-import { fetchAuthConnections } from '@/app/lib/auth-connections';
+import {
+  fetchAuthConnections,
+  fetchSignInMethodsState,
+} from '@/app/lib/auth-connections';
 import {
   DeleteAccountForm,
   EmailPasswordPanel,
@@ -48,7 +51,13 @@ export default async function ProfilePage(props: {
   const sessionUserId = (session.user as { id?: string }).id;
   const userId = sessionUserId || user?.id || null;
 
-  const connections = userId ? await fetchAuthConnections(userId) : [];
+  const [connections, signInMethodsState] = userId
+    ? await Promise.all([
+        fetchAuthConnections(userId),
+        fetchSignInMethodsState(userId),
+      ])
+    : [[], null];
+  const hasPassword = Boolean(signInMethodsState?.hasPassword);
   const serializedConnections = connections.map((connection) => ({
     provider: connection.provider,
     connectedAt: connection.connectedAt.toISOString(),
@@ -113,15 +122,17 @@ export default async function ProfilePage(props: {
 
       <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
         <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-          Authentication
+          Sign-in methods
         </h2>
         <div className="mt-3 space-y-3">
           <EmailPasswordPanel
             email={userEmail}
             connectedOnLabel={connectedOnLabel}
+            hasPassword={hasPassword}
           />
           <AuthenticationProvidersPanel
             connections={serializedConnections}
+            hasPassword={hasPassword}
             googleEnabled={Boolean(
               process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
             )}
