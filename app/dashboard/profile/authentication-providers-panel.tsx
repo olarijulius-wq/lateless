@@ -124,7 +124,7 @@ export function AuthenticationProvidersPanel({
                       const payload = (await response
                         .json()
                         .catch(() => null)) as
-                        | { message?: string; removed?: boolean; code?: string }
+                        | { message?: string; error?: string; removed?: boolean; code?: string }
                         | null;
 
                       if (!response.ok) {
@@ -136,6 +136,7 @@ export function AuthenticationProvidersPanel({
                           ok: false,
                           text:
                             lockoutMessage ??
+                            payload?.error ??
                             payload?.message ??
                             'Could not disconnect this provider. Try again.',
                         });

@@ -5,6 +5,7 @@ import { auth } from '@/auth';
 import {
   disconnectProvider,
   fetchAuthConnections,
+  fetchSignInMethodsState,
   type AuthProvider,
 } from '@/app/lib/auth-connections';
 import { enforceRateLimit, parseQuery } from '@/app/lib/security/api-guard';
@@ -44,22 +45,33 @@ const authConnectionsDeleteQuerySchema = z
 export async function GET() {
   const userId = await resolveSessionUserId();
   if (!userId) {
-    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, code: 'UNAUTHORIZED', error: 'Unauthorized' },
+      { status: 401 },
+    );
   }
 
   const connections = await fetchAuthConnections(userId);
+  const signInMethods = await fetchSignInMethodsState(userId);
   return NextResponse.json({
     providers: connections.map((connection) => ({
       provider: connection.provider,
       connectedAt: connection.connectedAt.toISOString(),
     })),
+    signInMethods: {
+      hasPassword: signInMethods?.hasPassword ?? false,
+      providerCount: signInMethods?.connectedProviders.length ?? 0,
+    },
   });
 }
 
 export async function DELETE(request: Request) {
   const userId = await resolveSessionUserId();
   if (!userId) {
-    return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, code: 'UNAUTHORIZED', error: 'Unauthorized' },
+      { status: 401 },
+    );
   }
 
   const session = await auth();
@@ -88,7 +100,10 @@ export async function DELETE(request: Request) {
 
   const result = await disconnectProvider(userId, providerParam as AuthProvider);
   if (!result.ok) {
-    return NextResponse.json({ message: result.message }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, code: result.code, error: result.message },
+      { status: result.status },
+    );
   }
 
   return NextResponse.json({ ok: true, removed: result.removed });
