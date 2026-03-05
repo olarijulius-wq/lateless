@@ -223,7 +223,7 @@ async function run() {
     const invoiceWorkspaceBillingModule = await import('@/app/lib/invoice-workspace-billing');
     const authConnectionsModule = await import('@/app/lib/auth-connections');
     const accountPasswordResetRoute = await import('@/app/api/account/password-reset/route');
-    const authModule = await import('@/auth');
+    const oauthRelinkModule = await import('@/app/lib/oauth-relink');
     const actionsModule = await import('@/app/lib/actions');
     const loginStateModule = await import('@/app/lib/login-state');
     const passwordCtaCopyModule = await import('@/app/dashboard/profile/password-cta');
@@ -1634,7 +1634,7 @@ async function run() {
           and provider = ${provider}
       `;
 
-      const relinkResult = await authModule.relinkOAuthAccountForExistingUser({
+      const relinkResult = await oauthRelinkModule.relinkOAuthAccountForExistingUser({
         provider,
         providerAccountId,
         email: userEmail,
