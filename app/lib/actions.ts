@@ -12,10 +12,10 @@ import { getNextInvoiceNumber, upsertCompanyProfile } from '@/app/lib/data';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from '@/app/lib/config';
 import { checkRateLimit } from '@/app/lib/rate-limit';
 import {
-  sendEmailVerification,
   sendTwoFactorCodeEmail,
 } from '@/app/lib/email';
 import { requestPasswordResetByEmail } from '@/app/lib/password-reset';
+import { issueAndSendVerificationEmail } from '@/app/lib/verification-email';
 import { initialLoginState, type LoginState } from '@/app/lib/login-state';
 import { logFunnelEvent } from '@/app/lib/funnel-events';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
@@ -35,16 +35,6 @@ function nameFromEmail(email: string) {
 }
 
 const PENDING_TWO_FACTOR_NONCE_COOKIE = 'pending_2fa_nonce';
-
-function getBaseAppUrl() {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.AUTH_URL ||
-    (process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000')
-  );
-}
 
 async function clearPending2FaCookies() {
   const cookieStore = await cookies();
@@ -1034,19 +1024,11 @@ export async function registerUser(prevState: SignupState, formData: FormData) {
   }
 
   if (userId) {
-    const verificationToken = crypto.randomUUID();
     try {
-      await sql`
-        update users
-        set verification_token = ${verificationToken},
-            verification_sent_at = now()
-        where id = ${userId}
-      `;
-
-      const baseUrl = getBaseAppUrl();
-      const verifyUrl = `${baseUrl}/verify/${verificationToken}`;
-
-      await sendEmailVerification({ to: normalizedEmail, verifyUrl });
+      await issueAndSendVerificationEmail({
+        userId,
+        email: normalizedEmail,
+      });
     } catch (error) {
       console.error('Email verification setup failed:', error);
     }

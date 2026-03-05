@@ -23,6 +23,34 @@ function resolveHostname(connectionString) {
   }
 }
 
+function resolveDbName(connectionString) {
+  try {
+    return new URL(connectionString).pathname.replace(/^\/+/, '') || '(none)';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function isTruthy(value) {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+function isAllowProdDbOverrideEnabled() {
+  return process.env.ALLOW_PROD_DB === '1';
+}
+
+let hasLoggedProdOverride = false;
+
+function logProdOverrideOnce(reason) {
+  if (hasLoggedProdOverride) return;
+  hasLoggedProdOverride = true;
+  console.error(`[migrate][override] ALLOW_PROD_DB=1 ${reason}`);
+}
+
+function throwGuardrail(message) {
+  throw new Error(`[migrate][guardrail] ${message}`);
+}
+
 function shouldDisableSsl(connectionString) {
   if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') return true;
   if (process.env.LATELLESS_TEST_MODE === '1') return true;
@@ -50,20 +78,79 @@ function sanitizeConnectionStringForNoSsl(connectionString) {
 }
 
 function resolveConnectionString() {
-  const isTestMode =
-    process.env.LATELLESS_TEST_MODE === '1' || process.env.NODE_ENV === 'test';
-  const useTestUrl =
-    isTestMode &&
-    typeof process.env.POSTGRES_URL_TEST === 'string' &&
-    process.env.POSTGRES_URL_TEST.trim() !== '';
-  const sourceEnvVar = useTestUrl
-    ? 'POSTGRES_URL_TEST'
-    : process.env.POSTGRES_URL
-      ? 'POSTGRES_URL'
-      : 'DATABASE_URL';
+  const strictTestMode = process.env.NODE_ENV === 'test' || process.env.CI === 'true';
+  const latentTestMode = process.env.LATELLESS_TEST_MODE === '1';
+  const isTestMode = strictTestMode || latentTestMode;
+
+  let sourceEnvVar;
+  if (isTestMode) {
+    if (!isTruthy(process.env.POSTGRES_URL_TEST)) {
+      throwGuardrail(
+        `NODE_ENV=${process.env.NODE_ENV ?? ''} CI=${process.env.CI ?? ''} requires POSTGRES_URL_TEST. Refusing fallback to POSTGRES_URL/DATABASE_URL.`,
+      );
+    }
+    sourceEnvVar = 'POSTGRES_URL_TEST';
+  } else if (process.env.NODE_ENV === 'production') {
+    if (isTruthy(process.env.POSTGRES_URL_NON_POOLING)) {
+      sourceEnvVar = 'POSTGRES_URL_NON_POOLING';
+    } else if (isTruthy(process.env.POSTGRES_URL_DIRECT)) {
+      sourceEnvVar = 'POSTGRES_URL_DIRECT';
+    } else if (isTruthy(process.env.POSTGRES_URL)) {
+      sourceEnvVar = 'POSTGRES_URL';
+    } else {
+      sourceEnvVar = 'DATABASE_URL';
+    }
+  } else {
+    sourceEnvVar = process.env.POSTGRES_URL ? 'POSTGRES_URL' : 'DATABASE_URL';
+  }
+
   const connectionStringRaw = process.env[sourceEnvVar];
   if (!connectionStringRaw) {
-    throw new Error('Missing POSTGRES_URL_TEST, POSTGRES_URL, or DATABASE_URL');
+    throw new Error(
+      'Missing POSTGRES_URL_TEST, POSTGRES_URL_NON_POOLING, POSTGRES_URL_DIRECT, POSTGRES_URL, or DATABASE_URL',
+    );
+  }
+
+  const selectedHost = resolveHostname(connectionStringRaw);
+  const selectedDb = resolveDbName(connectionStringRaw);
+  const allowProdDb = isAllowProdDbOverrideEnabled();
+
+  if (strictTestMode) {
+    const collisionSources = [
+      'POSTGRES_URL',
+      'POSTGRES_URL_POOLER',
+      'DATABASE_URL',
+      'POSTGRES_URL_NON_POOLING',
+      'POSTGRES_URL_DIRECT',
+    ];
+    for (const envVar of collisionSources) {
+      const collisionRaw = process.env[envVar];
+      if (!isTruthy(collisionRaw)) continue;
+      const collisionHost = resolveHostname(collisionRaw);
+      const collisionDb = resolveDbName(collisionRaw);
+      if (collisionHost === selectedHost && collisionDb === selectedDb) {
+        if (allowProdDb) {
+          logProdOverrideOnce(
+            `enabled in test/CI for shared target host=${selectedHost} db=${selectedDb} chosen=${sourceEnvVar} collides_with=${envVar}.`,
+          );
+          continue;
+        }
+        throwGuardrail(
+          `POSTGRES_URL_TEST target host=${selectedHost} db=${selectedDb} matches ${envVar}. Set a dedicated test database or use ALLOW_PROD_DB=1 for explicit admin operations. chosen=${sourceEnvVar}.`,
+        );
+      }
+    }
+  }
+
+  if (process.env.NODE_ENV === 'production' && isPoolerUrl(connectionStringRaw)) {
+    if (!allowProdDb) {
+      throwGuardrail(
+        `Production migrations cannot use pooler URLs. chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}. Use POSTGRES_URL_NON_POOLING or POSTGRES_URL_DIRECT.`,
+      );
+    }
+    logProdOverrideOnce(
+      `enabled in production while using pooler URL chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}.`,
+    );
   }
 
   const sslOff = shouldDisableSsl(connectionStringRaw);
@@ -76,6 +163,18 @@ function resolveConnectionString() {
     ssl: sslOff ? false : true,
     sourceEnvVar,
   };
+}
+
+function isPoolerUrl(connectionString) {
+  try {
+    const parsed = new URL(connectionString);
+    return (
+      parsed.hostname.toLowerCase().includes('pooler') ||
+      parsed.port === '6543'
+    );
+  } catch {
+    return false;
+  }
 }
 
 const db = resolveConnectionString();

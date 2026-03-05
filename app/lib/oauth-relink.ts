@@ -35,19 +35,6 @@ export async function relinkOAuthAccountForExistingUser(
   }
 
   await sql`
-    update users
-    set
-      name = case
-        when coalesce(trim(name), '') = '' then ${input.resolvedName}
-        else name
-      end,
-      is_verified = true,
-      verification_token = null,
-      verification_sent_at = null
-    where id = ${existing.id}
-  `;
-
-  await sql`
     insert into nextauth_accounts (
       user_id,
       type,
