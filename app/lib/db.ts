@@ -192,15 +192,19 @@ function throwDbGuardrailError(message: string): never {
 export function resolveDbSourcePriority(): DbSourceEnvVar[] {
   const strictTestMode = isStrictTestMode();
   const latentTestMode = process.env.LATELLESS_TEST_MODE === '1';
-  const isTestMode = latentTestMode || strictTestMode;
 
   const priority: DbSourceEnvVar[] = [];
-  if (isTestMode) {
+  if (strictTestMode) {
     if (!isTruthy(process.env.POSTGRES_URL_TEST)) {
       throwDbGuardrailError(
         `NODE_ENV=${process.env.NODE_ENV ?? ''} CI=${process.env.CI ?? ''} requires POSTGRES_URL_TEST. Refusing fallback to POSTGRES_URL_POOLER/POSTGRES_URL/DATABASE_URL.`,
       );
     }
+    priority.push('POSTGRES_URL_TEST');
+    return priority;
+  }
+
+  if (latentTestMode && isTruthy(process.env.POSTGRES_URL_TEST)) {
     priority.push('POSTGRES_URL_TEST');
   }
 

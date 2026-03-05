@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 
 const dryRun = process.env.DRY_RUN === '1';
@@ -14,6 +15,7 @@ const appVersion =
     .trim() || null;
 
 const migrationsDir = resolve(process.cwd(), 'migrations');
+let sql;
 
 function resolveHostname(connectionString) {
   try {
@@ -77,31 +79,29 @@ function sanitizeConnectionStringForNoSsl(connectionString) {
   }
 }
 
-function resolveConnectionString() {
-  const strictTestMode = process.env.NODE_ENV === 'test' || process.env.CI === 'true';
-  const latentTestMode = process.env.LATELLESS_TEST_MODE === '1';
+export function resolveMigrationSourceEnvVar(env = process.env) {
+  const strictTestMode = env.NODE_ENV === 'test' || env.CI === 'true';
+  const latentTestMode = env.LATELLESS_TEST_MODE === '1';
   const isTestMode = strictTestMode || latentTestMode;
 
-  let sourceEnvVar;
   if (isTestMode) {
-    if (!isTruthy(process.env.POSTGRES_URL_TEST)) {
+    if (!isTruthy(env.POSTGRES_URL_TEST)) {
       throwGuardrail(
-        `NODE_ENV=${process.env.NODE_ENV ?? ''} CI=${process.env.CI ?? ''} requires POSTGRES_URL_TEST. Refusing fallback to POSTGRES_URL/DATABASE_URL.`,
+        `NODE_ENV=${env.NODE_ENV ?? ''} CI=${env.CI ?? ''} requires POSTGRES_URL_TEST. Refusing fallback to POSTGRES_URL/DATABASE_URL.`,
       );
     }
-    sourceEnvVar = 'POSTGRES_URL_TEST';
-  } else if (process.env.NODE_ENV === 'production') {
-    if (isTruthy(process.env.POSTGRES_URL_NON_POOLING)) {
-      sourceEnvVar = 'POSTGRES_URL_NON_POOLING';
-    } else if (isTruthy(process.env.POSTGRES_URL_DIRECT)) {
-      sourceEnvVar = 'POSTGRES_URL_DIRECT';
-    } else if (isTruthy(process.env.POSTGRES_URL)) {
-      sourceEnvVar = 'POSTGRES_URL';
-    } else {
-      sourceEnvVar = 'DATABASE_URL';
-    }
+    return 'POSTGRES_URL_TEST';
   }
 
+  if (isTruthy(env.POSTGRES_URL_NON_POOLING)) return 'POSTGRES_URL_NON_POOLING';
+  if (isTruthy(env.POSTGRES_URL_DIRECT)) return 'POSTGRES_URL_DIRECT';
+  if (isTruthy(env.POSTGRES_URL)) return 'POSTGRES_URL';
+  return 'DATABASE_URL';
+}
+
+function resolveConnectionString() {
+  const strictTestMode = process.env.NODE_ENV === 'test' || process.env.CI === 'true';
+  const sourceEnvVar = resolveMigrationSourceEnvVar(process.env);
   const connectionStringRaw = process.env[sourceEnvVar];
   if (!connectionStringRaw) {
     throw new Error(
@@ -140,7 +140,7 @@ function resolveConnectionString() {
     }
   }
 
-  if (isPoolerUrl(connectionStringRaw)) {
+  if (process.env.NODE_ENV === 'production' && isPoolerUrl(connectionStringRaw)) {
     if (!allowProdDb) {
       throwGuardrail(
         `Migrations cannot use pooler URLs. chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}. Use POSTGRES_URL_NON_POOLING or POSTGRES_URL_DIRECT, or set ALLOW_PROD_DB=1 for explicit override.`,
@@ -148,14 +148,6 @@ function resolveConnectionString() {
     }
     logProdOverrideOnce(
       `enabled while using pooler URL chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}.`,
-  if (process.env.NODE_ENV === 'production' && isPoolerUrl(connectionStringRaw)) {
-    if (!allowProdDb) {
-      throwGuardrail(
-        `Production migrations cannot use pooler URLs. chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}. Use POSTGRES_URL_NON_POOLING or POSTGRES_URL_DIRECT.`,
-      );
-    }
-    logProdOverrideOnce(
-      `enabled in production while using pooler URL chosen=${sourceEnvVar} host=${selectedHost} db=${selectedDb}.`,
     );
   }
 
@@ -182,12 +174,6 @@ function isPoolerUrl(connectionString) {
     return false;
   }
 }
-
-const db = resolveConnectionString();
-console.error(
-  `[migrate][db] env=${process.env.NODE_ENV ?? ''} ci=${process.env.CI ?? ''} gha=${process.env.GITHUB_ACTIONS ?? ''} test_mode=${process.env.LATELLESS_TEST_MODE ?? ''} source=${db.sourceEnvVar} host=${resolveHostname(db.connectionString)} ssl=${String(db.ssl)}`,
-);
-const sql = postgres(db.connectionString, { ssl: db.ssl, connect_timeout: 15 });
 
 function sha256(content) {
   return createHash('sha256').update(content, 'utf8').digest('hex');
@@ -369,11 +355,24 @@ async function main() {
   );
 }
 
-main()
-  .catch((error) => {
+async function runCli() {
+  const db = resolveConnectionString();
+  console.error(
+    `[migrate][db] env=${process.env.NODE_ENV ?? ''} ci=${process.env.CI ?? ''} gha=${process.env.GITHUB_ACTIONS ?? ''} test_mode=${process.env.LATELLESS_TEST_MODE ?? ''} source=${db.sourceEnvVar} host=${resolveHostname(db.connectionString)} ssl=${String(db.ssl)}`,
+  );
+  sql = postgres(db.connectionString, { ssl: db.ssl, connect_timeout: 15 });
+
+  try {
+    await main();
+  } catch (error) {
     console.error('Migration run failed:', error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
-  })
-  .finally(async () => {
+  } finally {
     await sql.end({ timeout: 5 });
-  });
+  }
+}
+
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) {
+  void runCli();
+}
