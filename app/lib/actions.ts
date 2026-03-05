@@ -13,9 +13,9 @@ import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from '@/app/lib/config
 import { checkRateLimit } from '@/app/lib/rate-limit';
 import {
   sendEmailVerification,
-  sendPasswordResetEmail,
   sendTwoFactorCodeEmail,
 } from '@/app/lib/email';
+import { requestPasswordResetByEmail } from '@/app/lib/password-reset';
 import { initialLoginState, type LoginState } from '@/app/lib/login-state';
 import { logFunnelEvent } from '@/app/lib/funnel-events';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
@@ -1095,6 +1095,8 @@ export async function authenticate(
   if (!validated.success) {
     return {
       ...initialLoginState,
+      code: 'INVALID_CREDENTIALS',
+      status: 401,
       message: 'Wrong email or password.',
     };
   }
@@ -1113,6 +1115,8 @@ export async function authenticate(
     if (!rate.ok) {
       return {
         ...initialLoginState,
+        code: 'RATE_LIMITED',
+        status: 429,
         message: 'Too many login attempts. Please wait a few minutes and try again.',
         emailForVerification: normalizedEmail,
       };
@@ -1122,6 +1126,8 @@ export async function authenticate(
     if (failedCount >= 10) {
       return {
         ...initialLoginState,
+        code: 'RATE_LIMITED',
+        status: 429,
         message: 'Too many login attempts. Please try again in 15 minutes.',
         emailForVerification: normalizedEmail,
       };
@@ -1144,15 +1150,20 @@ export async function authenticate(
       await recordLoginAttempt(normalizedEmail, false);
       return {
         ...initialLoginState,
+        code: 'INVALID_CREDENTIALS',
+        status: 401,
         message: 'Wrong email or password.',
       };
     }
 
-    if (!user.password) {
+    if (!user.password || user.password.trim() === '') {
       await recordLoginAttempt(normalizedEmail, false);
       return {
         ...initialLoginState,
-        message: 'Wrong email or password.',
+        code: 'OAUTH_ONLY_ACCOUNT',
+        status: 409,
+        message:
+          'This account uses Google/GitHub sign-in. Continue with that or set a password.',
       };
     }
 
@@ -1161,6 +1172,8 @@ export async function authenticate(
       await recordLoginAttempt(normalizedEmail, false);
       return {
         ...initialLoginState,
+        code: 'INVALID_CREDENTIALS',
+        status: 401,
         message: 'Wrong email or password.',
       };
     }
@@ -1169,6 +1182,8 @@ export async function authenticate(
       await recordLoginAttempt(normalizedEmail, false);
       return {
         ...initialLoginState,
+        code: 'EMAIL_NOT_VERIFIED',
+        status: 403,
         message:
           'Your email is not verified yet. Please check your inbox and click the verification link.',
         needsVerification: true,
@@ -1252,6 +1267,8 @@ export async function authenticate(
     if (isDbDnsResolutionError(error)) {
       return {
         ...initialLoginState,
+        code: 'DATABASE_UNAVAILABLE',
+        status: 503,
         message: error.userMessage,
       };
     }
@@ -1263,6 +1280,8 @@ export async function authenticate(
     console.error('Unexpected login error', error);
     return {
       ...initialLoginState,
+      code: 'AUTHENTICATION_FAILED',
+      status: 500,
       message: 'Something went wrong. Please try again.',
     };
   }
@@ -1515,25 +1534,7 @@ export async function requestPasswordReset(
   const normalizedEmail = normalizeEmail(parsed.data.email);
 
   try {
-    const [user] = await sql<{ id: string }[]>`
-      select id
-      from users
-      where lower(email) = ${normalizedEmail}
-      limit 1
-    `;
-
-    if (user) {
-      const token = crypto.randomUUID();
-      await sql`
-        update users
-        set password_reset_token = ${token},
-            password_reset_sent_at = now()
-        where id = ${user.id}
-      `;
-
-      const resetUrl = `${getBaseAppUrl()}/reset-password/${token}`;
-      await sendPasswordResetEmail({ to: normalizedEmail, resetUrl });
-    }
+    await requestPasswordResetByEmail(normalizedEmail);
   } catch (error) {
     console.error('Password reset request failed', error);
   }

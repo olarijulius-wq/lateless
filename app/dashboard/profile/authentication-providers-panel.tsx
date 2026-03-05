@@ -4,7 +4,7 @@ import { signIn } from 'next-auth/react';
 import { useState } from 'react';
 import clsx from 'clsx';
 import { useRouter } from 'next/navigation';
-import { primaryButtonClasses } from '@/app/ui/button';
+import { Button, primaryButtonClasses } from '@/app/ui/button';
 import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
 
 type ProviderId = 'google' | 'github';
@@ -16,6 +16,7 @@ type ProviderConnection = {
 
 type AuthenticationProvidersPanelProps = {
   connections: ProviderConnection[];
+  hasPassword: boolean;
   googleEnabled: boolean;
   githubEnabled: boolean;
 };
@@ -35,6 +36,7 @@ function formatConnectedDate(value: string) {
 
 export function AuthenticationProvidersPanel({
   connections,
+  hasPassword,
   googleEnabled,
   githubEnabled,
 }: AuthenticationProvidersPanelProps) {
@@ -53,14 +55,34 @@ export function AuthenticationProvidersPanel({
     { id: 'google' as const, label: 'Google', enabled: googleEnabled },
     { id: 'github' as const, label: 'GitHub', enabled: githubEnabled },
   ];
+  const connectedCount = connections.length;
+  const isOAuthOnly = !hasPassword;
+  const signInMethodsCount = connectedCount + (hasPassword ? 1 : 0);
 
   return (
     <div className="space-y-3">
+      <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-black">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          Sign-in methods
+        </h3>
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          {hasPassword ? 'Password is set.' : 'No password set (OAuth-only).'}{' '}
+          {connectedCount > 0
+            ? `${connectedCount} OAuth provider${connectedCount === 1 ? '' : 's'} linked.`
+            : 'No OAuth providers linked.'}
+        </p>
+      </div>
       {providers.map((provider) => {
         const connected = connectionByProvider.get(provider.id);
         const isConnected = Boolean(connected);
         const isLinking = linkingProvider === provider.id;
         const isDisconnecting = disconnectingProvider === provider.id;
+        const remainingProvidersCount = connectedCount - (isConnected ? 1 : 0);
+        const canDisconnect = !isConnected || remainingProvidersCount + (hasPassword ? 1 : 0) > 0;
+        const disconnectDisabledReason =
+          isConnected && !canDisconnect
+            ? 'Set a password before disconnecting your last provider.'
+            : null;
 
         return (
           <div
@@ -83,54 +105,72 @@ export function AuthenticationProvidersPanel({
             </div>
 
             {isConnected ? (
-              <button
-                type="button"
-                disabled={isDisconnecting}
-                onClick={async () => {
-                  setMessage(null);
-                  setDisconnectingProvider(provider.id);
+              <div className="flex flex-col items-end gap-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={isDisconnecting || !canDisconnect}
+                  title={disconnectDisabledReason ?? undefined}
+                  onClick={async () => {
+                    if (!canDisconnect) return;
+                    setMessage(null);
+                    setDisconnectingProvider(provider.id);
 
-                  try {
-                    const response = await fetch(
-                      `/api/account/auth-connections?provider=${provider.id}`,
-                      { method: 'DELETE' },
-                    );
-                    const payload = (await response
-                      .json()
-                      .catch(() => null)) as { message?: string; removed?: boolean } | null;
+                    try {
+                      const response = await fetch(
+                        `/api/account/auth-connections?provider=${provider.id}`,
+                        { method: 'DELETE' },
+                      );
+                      const payload = (await response
+                        .json()
+                        .catch(() => null)) as
+                        | { message?: string; error?: string; removed?: boolean; code?: string }
+                        | null;
 
-                    if (!response.ok) {
+                      if (!response.ok) {
+                        const lockoutMessage =
+                          payload?.code === 'CANNOT_DISCONNECT_LAST_LOGIN_METHOD'
+                            ? "You can't disconnect your last sign-in method. Set a password first."
+                            : null;
+                        setMessage({
+                          ok: false,
+                          text:
+                            lockoutMessage ??
+                            payload?.error ??
+                            payload?.message ??
+                            'Could not disconnect this provider. Try again.',
+                        });
+                        return;
+                      }
+
+                      setMessage({
+                        ok: true,
+                        text: payload?.removed
+                          ? `${provider.label} disconnected.`
+                          : `${provider.label} was already disconnected.`,
+                      });
+                      router.refresh();
+                    } catch {
                       setMessage({
                         ok: false,
-                        text:
-                          payload?.message ??
-                          'Could not disconnect this provider. Try again.',
+                        text: 'Could not disconnect this provider. Try again.',
                       });
-                      return;
+                    } finally {
+                      setDisconnectingProvider(null);
                     }
-
-                    setMessage({
-                      ok: true,
-                      text: payload?.removed
-                        ? `${provider.label} disconnected.`
-                        : `${provider.label} was already disconnected.`,
-                    });
-                    router.refresh();
-                  } catch {
-                    setMessage({
-                      ok: false,
-                      text: 'Could not disconnect this provider. Try again.',
-                    });
-                  } finally {
-                    setDisconnectingProvider(null);
-                  }
-                }}
-                className={`inline-flex h-10 items-center justify-center rounded-xl border border-neutral-300 px-3 text-sm font-medium text-neutral-900 transition hover:border-neutral-400 hover:bg-neutral-100 dark:border-zinc-700 dark:text-zinc-100 dark:hover:border-zinc-600 dark:hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 ${NEUTRAL_FOCUS_RING_CLASSES}`}
-              >
-                {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
-              </button>
+                  }}
+                  className={`h-10 px-3 ${NEUTRAL_FOCUS_RING_CLASSES}`}
+                >
+                  {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+                </Button>
+                {disconnectDisabledReason ? (
+                  <p className="max-w-[16rem] text-right text-xs text-amber-800 dark:text-amber-200">
+                    {disconnectDisabledReason}
+                  </p>
+                ) : null}
+              </div>
             ) : (
-              <button
+              <Button
                 type="button"
                 disabled={isLinking || !provider.enabled}
                 onClick={async () => {
@@ -152,11 +192,21 @@ export function AuthenticationProvidersPanel({
                     ? 'Opening...'
                     : `Link ${provider.label}`
                   : `${provider.label} not configured`}
-              </button>
+              </Button>
             )}
           </div>
         );
       })}
+      {isOAuthOnly ? (
+        <p className="text-xs text-slate-600 dark:text-slate-400">
+          OAuth-only account. Add a password before removing your last linked provider.
+        </p>
+      ) : null}
+      {signInMethodsCount <= 0 ? (
+        <p className="text-xs text-rose-700 dark:text-rose-300">
+          No sign-in method is available. Contact support.
+        </p>
+      ) : null}
       {message ? (
         <p
           className={clsx(

@@ -1,21 +1,21 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { primaryButtonClasses } from '@/app/ui/button';
-import {
-  NEUTRAL_FOCUS_RING_CLASSES,
-  NEUTRAL_INACTIVE_ITEM_CLASSES,
-} from '@/app/ui/dashboard/neutral-interaction';
+import { Button, primaryButtonClasses } from '@/app/ui/button';
+import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
+import { getPasswordCtaCopy } from './password-cta';
 
 type ApiResponse = {
   ok?: boolean;
   message?: string;
+  code?: string;
 };
 
 type EmailPasswordPanelProps = {
   email: string;
   connectedOnLabel: string;
+  hasPassword: boolean;
 };
 
 const profileInputClasses = `block w-full rounded-xl border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 transition dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 ${NEUTRAL_FOCUS_RING_CLASSES}`;
@@ -23,32 +23,55 @@ const profileInputClasses = `block w-full rounded-xl border border-neutral-300 b
 export function EmailPasswordPanel({
   email,
   connectedOnLabel,
+  hasPassword,
 }: EmailPasswordPanelProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const menuContainerRef = useRef<HTMLDivElement | null>(null);
+  const [resetPending, setResetPending] = useState(false);
+  const [resetMessage, setResetMessage] = useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
 
-  useEffect(() => {
-    function handleOutsideClick(event: MouseEvent) {
-      if (!menuContainerRef.current) return;
-      if (!menuContainerRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
+  const ctaCopy = getPasswordCtaCopy(hasPassword);
+
+  async function handleSendResetLink() {
+    setResetPending(true);
+    setResetMessage(null);
+
+    try {
+      const response = await fetch('/api/account/password-reset', {
+        method: 'POST',
+      });
+
+      const payload = (await response.json().catch(() => null)) as ApiResponse | null;
+
+      if (!response.ok || !payload?.ok) {
+        if (payload?.code === 'RATE_LIMITED') {
+          setResetMessage({
+            ok: false,
+            text: 'Too many requests. Please wait a few minutes and try again.',
+          });
+          return;
+        }
+
+        setResetMessage({
+          ok: false,
+          text: payload?.message ?? 'Could not send password reset email. Try again.',
+        });
+        return;
       }
-    }
 
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setMenuOpen(false);
-      }
+      setResetMessage({
+        ok: true,
+        text: ctaCopy.successMessage(email),
+      });
+    } catch {
+      setResetMessage({
+        ok: false,
+        text: 'Could not send password reset email. Try again.',
+      });
+    } finally {
+      setResetPending(false);
     }
-
-    window.addEventListener('mousedown', handleOutsideClick);
-    window.addEventListener('keydown', handleEscape);
-    return () => {
-      window.removeEventListener('mousedown', handleOutsideClick);
-      window.removeEventListener('keydown', handleEscape);
-    };
-  }, []);
+  }
 
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-black">
@@ -61,171 +84,32 @@ export function EmailPasswordPanel({
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Connected on {connectedOnLabel}
           </p>
+          <p className="mt-3 text-xs text-slate-600 dark:text-slate-400">
+            {ctaCopy.description}
+          </p>
         </div>
-        <div className="relative" ref={menuContainerRef}>
-          <button
-            type="button"
-            aria-label="Open authentication options"
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            onClick={() => setMenuOpen((current) => !current)}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-neutral-300 text-lg leading-none text-neutral-700 transition dark:border-neutral-700 dark:text-neutral-200 ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`}
-          >
-            &#8942;
-          </button>
-          {menuOpen ? (
-            <div
-              role="menu"
-              className="absolute right-0 z-10 mt-2 w-44 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-lg dark:border-neutral-800 dark:bg-neutral-950"
-            >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setShowChangePassword(true);
-                  setMenuOpen(false);
-                }}
-                className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition text-slate-800 dark:text-slate-200 ${NEUTRAL_INACTIVE_ITEM_CLASSES} ${NEUTRAL_FOCUS_RING_CLASSES}`}
-              >
-                Change password
-              </button>
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {showChangePassword ? (
-        <div className="mt-4 border-t border-neutral-200 pt-4 dark:border-neutral-800">
-          <ChangePasswordForm />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-export function ChangePasswordForm() {
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
-  const [changePending, setChangePending] = useState(false);
-  const [changeMessage, setChangeMessage] = useState<{ ok: boolean; text: string } | null>(null);
-
-  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setChangePending(true);
-    setChangeMessage(null);
-
-    try {
-      const response = await fetch('/api/account/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-          confirmNewPassword,
-        }),
-      });
-
-      const payload = (await response.json().catch(() => null)) as ApiResponse | null;
-
-      if (!response.ok || !payload?.ok) {
-        setChangeMessage({
-          ok: false,
-          text: payload?.message ?? 'Could not change password.',
-        });
-        return;
-      }
-
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmNewPassword('');
-      setChangeMessage({ ok: true, text: 'Password updated.' });
-    } catch {
-      setChangeMessage({ ok: false, text: 'Could not change password.' });
-    } finally {
-      setChangePending(false);
-    }
-  }
-
-  return (
-    <form className="space-y-3" onSubmit={handleChangePassword}>
-      <div>
-        <label
-          className="mb-2 block text-xs font-medium text-slate-700 dark:text-slate-300"
-          htmlFor="currentPassword"
+        <Button
+          type="button"
+          onClick={handleSendResetLink}
+          disabled={resetPending}
+          className={`h-10 px-4 ${NEUTRAL_FOCUS_RING_CLASSES}`}
         >
-          Current password
-        </label>
-        <input
-          id="currentPassword"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={currentPassword}
-          onChange={(event) => setCurrentPassword(event.target.value)}
-          className={profileInputClasses}
-        />
+          {resetPending ? 'Sending...' : ctaCopy.actionLabel}
+        </Button>
       </div>
-
-      <div>
-        <label
-          className="mb-2 block text-xs font-medium text-slate-700 dark:text-slate-300"
-          htmlFor="newPassword"
-        >
-          New password
-        </label>
-        <input
-          id="newPassword"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
-          className={profileInputClasses}
-        />
-      </div>
-
-      <div>
-        <label
-          className="mb-2 block text-xs font-medium text-slate-700 dark:text-slate-300"
-          htmlFor="confirmNewPassword"
-        >
-          Confirm new password
-        </label>
-        <input
-          id="confirmNewPassword"
-          type="password"
-          autoComplete="new-password"
-          minLength={8}
-          required
-          value={confirmNewPassword}
-          onChange={(event) => setConfirmNewPassword(event.target.value)}
-          className={profileInputClasses}
-        />
-      </div>
-
-      <button
-        type="submit"
-        disabled={changePending}
-        className={primaryButtonClasses}
-      >
-        {changePending ? 'Updating...' : 'Change password'}
-      </button>
-
-      {changeMessage ? (
+      {resetMessage ? (
         <p
           className={`text-sm ${
-            changeMessage.ok
+            resetMessage.ok
               ? 'text-neutral-700 dark:text-neutral-300'
               : 'text-rose-700 dark:text-rose-300'
           }`}
           aria-live="polite"
         >
-          {changeMessage.text}
+          {resetMessage.text}
         </p>
       ) : null}
-    </form>
+    </div>
   );
 }
 

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { sql } from '@/app/lib/db';
-import AcmeLogo from '@/app/ui/acme-logo';
+import AuthLayout from '@/app/(auth)/_components/auth-layout';
 import ResetPasswordForm from './reset-password-form';
 import { secondaryButtonClasses } from '@/app/ui/button';
 
@@ -32,34 +32,26 @@ export default async function ResetPasswordPage(props: ResetPasswordPageProps) {
   }
 
   return (
-    <main className="flex items-center justify-center md:h-screen">
-      <div className="relative mx-auto flex w-full max-w-[400px] flex-col space-y-2.5 p-4 md:-mt-32">
-        <div className="flex h-20 w-full items-end rounded-2xl border border-slate-800 bg-slate-900/80 p-3 shadow-[0_18px_35px_rgba(0,0,0,0.45)] md:h-36">
-          <div className="w-32 text-slate-100 md:w-36">
-            <AcmeLogo />
-          </div>
+    <AuthLayout
+      title="Set a new password"
+      subtitle="Choose a new password for your account."
+      maxWidthClassName="max-w-lg"
+    >
+      {!isValidLink ? (
+        <div className="space-y-4">
+          <p className="rounded-xl border border-amber-500/30 bg-amber-400/12 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+            This link is invalid or has expired.
+          </p>
+          <Link
+            href="/forgot-password"
+            className={`${secondaryButtonClasses} h-11 w-full justify-center`}
+          >
+            Request a new reset link
+          </Link>
         </div>
-
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 px-6 py-8 shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
-          <h1 className="mb-3 text-2xl text-slate-100">Set a new password</h1>
-
-          {!isValidLink ? (
-            <div className="space-y-4">
-              <p className="text-sm text-amber-200">
-                This link is invalid or has expired.
-              </p>
-              <Link
-                href="/forgot-password"
-                className={`${secondaryButtonClasses} px-3 py-2`}
-              >
-                Request a new reset link
-              </Link>
-            </div>
-          ) : (
-            <ResetPasswordForm token={token} />
-          )}
-        </div>
-      </div>
-    </main>
+      ) : (
+        <ResetPasswordForm token={token} />
+      )}
+    </AuthLayout>
   );
 }

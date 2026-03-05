@@ -9,7 +9,12 @@ export type AuthConnection = {
 
 type DisconnectProviderResult =
   | { ok: true; removed: boolean }
-  | { ok: false; message: string };
+  | { ok: false; message: string; code: string; status: number };
+
+export type SignInMethodsState = {
+  hasPassword: boolean;
+  connectedProviders: AuthProvider[];
+};
 
 export async function fetchAuthConnections(userId: string): Promise<AuthConnection[]> {
   const rows = await sql<{ provider: AuthProvider; connected_at: Date }[]>`
@@ -62,40 +67,76 @@ export async function fetchConnectedProviders(
   return rows.map((row) => row.provider);
 }
 
+export async function fetchSignInMethodsState(
+  userId: string,
+): Promise<SignInMethodsState | null> {
+  const [userState] = await sql<{
+    password: string | null;
+    connected_providers: AuthProvider[] | null;
+  }[]>`
+    select
+      u.password,
+      coalesce(
+        (
+          select array_agg(provider::text)::text[]
+          from (
+            select distinct provider
+            from nextauth_accounts a
+            where a.user_id = u.id
+              and a.provider in ('google', 'github')
+            order by provider asc
+          ) provider_rows
+        ),
+        array[]::text[]
+      ) as connected_providers
+    from users u
+    where u.id = ${userId}
+    limit 1
+  `;
+
+  if (!userState) return null;
+
+  return {
+    hasPassword: Boolean(userState.password && userState.password.trim()),
+    connectedProviders: (userState.connected_providers ?? []) as AuthProvider[],
+  };
+}
+
 export async function disconnectProvider(
   userId: string,
   provider: AuthProvider,
 ): Promise<DisconnectProviderResult> {
   const normalizedProvider = provider.trim().toLowerCase() as AuthProvider;
   if (normalizedProvider !== 'google' && normalizedProvider !== 'github') {
-    return { ok: false, message: 'Invalid provider.' };
-  }
-
-  const [userState] = await sql<{
-    password: string | null;
-    connected_count: number;
-  }[]>`
-    select
-      u.password,
-      (
-        select count(*)::int
-        from nextauth_accounts a
-        where a.user_id = u.id
-          and a.provider in ('google', 'github')
-      ) as connected_count
-    from users u
-    where u.id = ${userId}
-    limit 1
-  `;
-
-  if (!userState) {
-    return { ok: false, message: 'Unauthorized' };
-  }
-
-  const hasPassword = Boolean(userState.password && userState.password.trim());
-  if (!hasPassword && userState.connected_count <= 1) {
     return {
       ok: false,
+      code: 'INVALID_PROVIDER',
+      status: 400,
+      message: 'Invalid provider.',
+    };
+  }
+
+  const userState = await fetchSignInMethodsState(userId);
+
+  if (!userState) {
+    return {
+      ok: false,
+      code: 'UNAUTHORIZED',
+      status: 401,
+      message: 'Unauthorized.',
+    };
+  }
+
+  const remainingProvidersCount = userState.connectedProviders.filter(
+    (connectedProvider) => connectedProvider !== normalizedProvider,
+  ).length;
+  const currentlyConnected = userState.connectedProviders.includes(normalizedProvider);
+  const remainingMethodsCount = remainingProvidersCount + (userState.hasPassword ? 1 : 0);
+  if (currentlyConnected && remainingMethodsCount <= 0) {
+    return {
+      ok: false,
+      code: 'CANNOT_DISCONNECT_LAST_LOGIN_METHOD',
+      status: 409,
       message: "You can’t disconnect your last sign-in method. Set a password first.",
     };
   }

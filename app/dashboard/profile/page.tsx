@@ -35,11 +35,12 @@ export default async function ProfilePage(props: {
     {
       id: string;
       email: string;
+      password: string | null;
       is_verified: boolean | null;
       two_factor_enabled: boolean | null;
     }[]
   >`
-    SELECT id, email, is_verified, two_factor_enabled
+    SELECT id, email, password, is_verified, two_factor_enabled
     FROM users
     WHERE lower(email) = ${userEmail}
     LIMIT 1
@@ -49,6 +50,7 @@ export default async function ProfilePage(props: {
   const userId = sessionUserId || user?.id || null;
 
   const connections = userId ? await fetchAuthConnections(userId) : [];
+  const hasPassword = Boolean(user?.password && user.password.trim());
   const serializedConnections = connections.map((connection) => ({
     provider: connection.provider,
     connectedAt: connection.connectedAt.toISOString(),
@@ -113,15 +115,17 @@ export default async function ProfilePage(props: {
 
       <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
         <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-          Authentication
+          Sign-in methods
         </h2>
         <div className="mt-3 space-y-3">
           <EmailPasswordPanel
             email={userEmail}
             connectedOnLabel={connectedOnLabel}
+            hasPassword={hasPassword}
           />
           <AuthenticationProvidersPanel
             connections={serializedConnections}
+            hasPassword={hasPassword}
             googleEnabled={Boolean(
               process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
             )}

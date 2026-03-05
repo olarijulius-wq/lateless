@@ -16,7 +16,7 @@ export default function AuthLayout({
   maxWidthClassName = 'max-w-lg',
 }: AuthLayoutProps) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#f7f7f4] px-6 py-10 text-zinc-900 dark:bg-black dark:text-white">
+    <main className="relative min-h-screen overflow-hidden bg-background px-6 py-10 text-foreground">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(1200px_820px_at_50%_55%,rgba(255,255,255,0.75),rgba(245,245,244,0.95)_68%)] dark:bg-[radial-gradient(1200px_820px_at_50%_55%,rgba(0,0,0,0.24),rgba(0,0,0,0.9)_70%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent_0%,transparent_58%,rgba(255,255,255,0.18)_59%,rgba(255,255,255,0.26)_60%,rgba(255,255,255,0.1)_62%,transparent_67%,transparent_100%),radial-gradient(900px_700px_at_95%_35%,rgba(180,180,160,0.14),rgba(180,180,160,0.05)_45%,transparent_72%)] dark:bg-[linear-gradient(120deg,transparent_0%,transparent_56%,rgba(255,255,255,0.08)_58%,rgba(255,255,255,0.16)_59%,rgba(255,255,255,0.06)_61%,transparent_66%,transparent_100%),radial-gradient(900px_700px_at_95%_35%,rgba(255,255,255,0.16),rgba(255,255,255,0.05)_45%,transparent_72%)]" />
