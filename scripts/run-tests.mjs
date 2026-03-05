@@ -24,8 +24,6 @@ const result = spawnSync('pnpm', ['exec', 'jiti', 'tests/isolation.test.ts'], {
     JITI_ALIAS: alias,
     LATELLESS_TEST_MODE: '1',
     POSTGRES_URL_TEST: testDbUrl,
-    POSTGRES_URL: testDbUrl,
-    DATABASE_URL: testDbUrl,
   },
 });
 

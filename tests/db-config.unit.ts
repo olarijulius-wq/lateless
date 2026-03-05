@@ -22,10 +22,14 @@ function run() {
   resetEnv();
   mutableEnv.NODE_ENV = 'development';
   mutableEnv.POSTGRES_URL_POOLER = 'postgres://u:p@pooler.local:6543/db';
+  mutableEnv.POSTGRES_URL_NON_POOLING = 'postgres://u:p@direct-nonpool.local:5432/db';
+  mutableEnv.POSTGRES_URL_DIRECT = 'postgres://u:p@direct-explicit.local:5432/db';
   mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
   mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
   assert.deepEqual(resolveDbSourcePriority(), [
     'POSTGRES_URL_POOLER',
+    'POSTGRES_URL_NON_POOLING',
+    'POSTGRES_URL_DIRECT',
     'POSTGRES_URL',
     'DATABASE_URL',
   ]);
@@ -34,20 +38,56 @@ function run() {
   mutableEnv.NODE_ENV = 'test';
   mutableEnv.POSTGRES_URL_TEST = 'postgres://u:p@test.local:5432/db';
   mutableEnv.POSTGRES_URL_POOLER = 'postgres://u:p@pooler.local:6543/db';
+  mutableEnv.POSTGRES_URL_NON_POOLING = 'postgres://u:p@direct-nonpool.local:5432/db';
+  mutableEnv.POSTGRES_URL_DIRECT = 'postgres://u:p@direct-explicit.local:5432/db';
   mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
   mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
   const candidates = resolveDbConnectionCandidates();
   assert.equal(candidates[0]?.sourceEnvVar, 'POSTGRES_URL_TEST');
   assert.equal(candidates[1]?.sourceEnvVar, 'POSTGRES_URL_POOLER');
-  assert.equal(candidates[2]?.sourceEnvVar, 'POSTGRES_URL');
-  assert.equal(candidates[3]?.sourceEnvVar, 'DATABASE_URL');
+  assert.equal(candidates[2]?.sourceEnvVar, 'POSTGRES_URL_NON_POOLING');
+  assert.equal(candidates[3]?.sourceEnvVar, 'POSTGRES_URL_DIRECT');
+  assert.equal(candidates[4]?.sourceEnvVar, 'POSTGRES_URL');
+  assert.equal(candidates[5]?.sourceEnvVar, 'DATABASE_URL');
 
   resetEnv();
   mutableEnv.NODE_ENV = 'production';
   mutableEnv.POSTGRES_URL_POOLER = 'postgres://u:p@pooler.local:6543/db';
+  mutableEnv.POSTGRES_URL_NON_POOLING = 'postgres://u:p@direct-nonpool.local:5432/db';
+  mutableEnv.POSTGRES_URL_DIRECT = 'postgres://u:p@direct-explicit.local:5432/db';
   mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
   mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
-  assert.deepEqual(resolveDbSourcePriority(), ['POSTGRES_URL', 'DATABASE_URL']);
+  assert.deepEqual(resolveDbSourcePriority(), [
+    'POSTGRES_URL_NON_POOLING',
+    'POSTGRES_URL_DIRECT',
+    'POSTGRES_URL',
+    'DATABASE_URL',
+  ]);
+
+  resetEnv();
+  mutableEnv.NODE_ENV = 'test';
+  delete mutableEnv.POSTGRES_URL_TEST;
+  assert.throws(
+    () => resolveDbConnectionCandidates(),
+    /requires POSTGRES_URL_TEST/i,
+  );
+
+  resetEnv();
+  mutableEnv.NODE_ENV = 'test';
+  mutableEnv.POSTGRES_URL_TEST = 'postgres://u:p@shared.local:5432/db';
+  mutableEnv.POSTGRES_URL = 'postgres://u:p@shared.local:5432/db';
+  assert.throws(
+    () => resolveDbConnectionCandidates(),
+    /matches POSTGRES_URL/i,
+  );
+
+  resetEnv();
+  mutableEnv.NODE_ENV = 'test';
+  mutableEnv.POSTGRES_URL_TEST = 'postgres://u:p@shared.local:5432/db';
+  mutableEnv.POSTGRES_URL = 'postgres://u:p@shared.local:5432/db';
+  mutableEnv.ALLOW_PROD_DB = '1';
+  const allowOverrideCandidates = resolveDbConnectionCandidates();
+  assert.equal(allowOverrideCandidates[0]?.sourceEnvVar, 'POSTGRES_URL_TEST');
 }
 
 run();

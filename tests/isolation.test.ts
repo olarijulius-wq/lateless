@@ -191,8 +191,12 @@ async function run() {
       stdio: 'inherit',
       env: {
         ...process.env,
-        POSTGRES_URL: testDbUrl,
-        DATABASE_URL: testDbUrl,
+        POSTGRES_URL_TEST: testDbUrl,
+        POSTGRES_URL: '',
+        POSTGRES_URL_POOLER: '',
+        POSTGRES_URL_NON_POOLING: '',
+        POSTGRES_URL_DIRECT: '',
+        DATABASE_URL: '',
       },
     });
 
@@ -200,8 +204,12 @@ async function run() {
       stdio: 'inherit',
       env: {
         ...process.env,
-        POSTGRES_URL: testDbUrl,
-        DATABASE_URL: testDbUrl,
+        POSTGRES_URL_TEST: testDbUrl,
+        POSTGRES_URL: '',
+        POSTGRES_URL_POOLER: '',
+        POSTGRES_URL_NON_POOLING: '',
+        POSTGRES_URL_DIRECT: '',
+        DATABASE_URL: '',
       },
     });
 
@@ -223,7 +231,9 @@ async function run() {
     const invoiceWorkspaceBillingModule = await import('@/app/lib/invoice-workspace-billing');
     const authConnectionsModule = await import('@/app/lib/auth-connections');
     const accountPasswordResetRoute = await import('@/app/api/account/password-reset/route');
+    const resendVerificationRoute = await import('@/app/api/account/resend-verification/route');
     const oauthRelinkModule = await import('@/app/lib/oauth-relink');
+    const verificationEmailModule = await import('@/app/lib/verification-email');
     const actionsModule = await import('@/app/lib/actions');
     const loginStateModule = await import('@/app/lib/login-state');
     const passwordCtaCopyModule = await import('@/app/dashboard/profile/password-cta');
@@ -278,6 +288,7 @@ async function run() {
         accountPasswordResetRoute.__testHooks.requireUserEmailOverride = null;
         accountPasswordResetRoute.__testHooks.enforceRateLimitOverride = null;
         accountPasswordResetRoute.__testHooks.requestPasswordResetByEmailOverride = null;
+        verificationEmailModule.__testHooks.sendEmailVerificationOverride = null;
       }
     }
 
@@ -1530,14 +1541,18 @@ async function run() {
       assert.equal(payload.ok, true);
 
       const [updated] = await sql<{
+        name: string | null;
+        email: string;
         password_reset_token: string | null;
         password_reset_sent_at: Date | null;
       }[]>`
-        select password_reset_token, password_reset_sent_at
+        select name, email, password_reset_token, password_reset_sent_at
         from public.users
         where id = ${oauthOnlyUserId}
         limit 1
       `;
+      assert.equal(updated?.name, 'OAuth Set Password');
+      assert.equal(updated?.email, oauthOnlyEmail);
       assert.ok(updated?.password_reset_token, 'password reset token should be set');
       assert.ok(updated?.password_reset_sent_at, 'password reset timestamp should be set');
     });
@@ -1561,16 +1576,201 @@ async function run() {
       assert.equal(payload.ok, true);
 
       const [updated] = await sql<{
+        name: string | null;
+        email: string;
         password_reset_token: string | null;
         password_reset_sent_at: Date | null;
       }[]>`
-        select password_reset_token, password_reset_sent_at
+        select name, email, password_reset_token, password_reset_sent_at
         from public.users
         where id = ${fixtures.userId}
         limit 1
       `;
+      assert.equal(updated?.name, 'Isolation Owner');
+      assert.equal(updated?.email, fixtures.userEmail);
       assert.ok(updated?.password_reset_token, 'password reset token should be set');
       assert.ok(updated?.password_reset_sent_at, 'password reset timestamp should be set');
+    });
+
+    await runCase('resetPassword action updates password only and keeps email/name intact', async () => {
+      const userId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99008';
+      const userEmail = 'reset-password-no-mutation@example.com';
+      const originalName = 'Reset Password Stable';
+      const resetToken = 'test-reset-token-no-mutation';
+      const beforePasswordHash = '$2b$10$uD50r8jflxRQQ6MShwbVVuAVrkMtk0iA0WIMRqjYOEoTP0TO.Zi5q';
+
+      await sql`
+        insert into public.users (
+          id,
+          name,
+          email,
+          password,
+          is_verified,
+          password_reset_token,
+          password_reset_sent_at
+        )
+        values (
+          ${userId},
+          ${originalName},
+          ${userEmail},
+          ${beforePasswordHash},
+          true,
+          ${resetToken},
+          now()
+        )
+      `;
+
+      const formData = new FormData();
+      formData.set('token', resetToken);
+      formData.set('password', 'new-password-123');
+      formData.set('confirmPassword', 'new-password-123');
+
+      let redirected = false;
+      try {
+        await actionsModule.resetPassword({ message: null }, formData);
+      } catch (error) {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'digest' in error &&
+          typeof (error as { digest?: string }).digest === 'string' &&
+          (error as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+        ) {
+          redirected = true;
+        } else {
+          throw error;
+        }
+      }
+
+      assert.equal(redirected, true, 'resetPassword should redirect after success');
+
+      const [updated] = await sql<{
+        name: string | null;
+        email: string;
+        password: string | null;
+        password_reset_token: string | null;
+      }[]>`
+        select name, email, password, password_reset_token
+        from public.users
+        where id = ${userId}
+        limit 1
+      `;
+      assert.equal(updated?.name, originalName);
+      assert.equal(updated?.email, userEmail);
+      assert.equal(updated?.password_reset_token, null);
+      assert.ok(updated?.password, 'password hash should be set');
+      assert.notEqual(updated?.password, beforePasswordHash);
+    });
+
+    await runCase('resend verification sets token/timestamp and writes sent lifecycle log row', async () => {
+      const userId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99009';
+      const userEmail = 'verification-log-sent@example.com';
+
+      await sql`
+        insert into public.users (id, name, email, password, is_verified)
+        values (${userId}, 'Verify Sent', ${userEmail}, '', false)
+      `;
+      verificationEmailModule.__testHooks.sendEmailVerificationOverride = async () => {};
+
+      const response = await resendVerificationRoute.POST(
+        createNextRequest('http://localhost/api/account/resend-verification', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-forwarded-for': '203.0.113.92',
+          },
+          body: JSON.stringify({ email: userEmail }),
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.ok, true);
+
+      const [user] = await sql<{
+        verification_token: string | null;
+        verification_sent_at: Date | null;
+      }[]>`
+        select verification_token, verification_sent_at
+        from public.users
+        where id = ${userId}
+        limit 1
+      `;
+      assert.ok(user?.verification_token);
+      assert.ok(user?.verification_sent_at);
+
+      const [log] = await sql<{
+        status: string;
+        error_message: string | null;
+        sent_at: Date | null;
+      }[]>`
+        select status, error_message, sent_at
+        from public.lifecycle_email_logs
+        where user_id = ${userId}
+          and email_type = 'verification'
+        order by last_attempt_at desc
+        limit 1
+      `;
+      assert.equal(log?.status, 'sent');
+      assert.equal(log?.error_message, null);
+      assert.ok(log?.sent_at);
+    });
+
+    await runCase('resend verification logs failed lifecycle row when send fails', async () => {
+      const userId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99010';
+      const userEmail = 'verification-log-failed@example.com';
+
+      await sql`
+        insert into public.users (id, name, email, password, is_verified)
+        values (${userId}, 'Verify Failed', ${userEmail}, '', false)
+      `;
+
+      verificationEmailModule.__testHooks.sendEmailVerificationOverride = async () => {
+        throw new Error('verification send failed test path');
+      };
+
+      const response = await resendVerificationRoute.POST(
+        createNextRequest('http://localhost/api/account/resend-verification', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-forwarded-for': '203.0.113.93',
+          },
+          body: JSON.stringify({ email: userEmail }),
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.ok, true);
+
+      const [user] = await sql<{
+        verification_token: string | null;
+        verification_sent_at: Date | null;
+      }[]>`
+        select verification_token, verification_sent_at
+        from public.users
+        where id = ${userId}
+        limit 1
+      `;
+      assert.ok(user?.verification_token);
+      assert.ok(user?.verification_sent_at);
+
+      const [log] = await sql<{
+        status: string;
+        error_message: string | null;
+        sent_at: Date | null;
+      }[]>`
+        select status, error_message, sent_at
+        from public.lifecycle_email_logs
+        where user_id = ${userId}
+          and email_type = 'verification'
+        order by last_attempt_at desc
+        limit 1
+      `;
+      assert.equal(log?.status, 'failed');
+      assert.equal(log?.sent_at, null);
+      assert.match(log?.error_message ?? '', /verification send failed test path/);
     });
 
     await runCase('oauth-only user cannot disconnect last provider', async () => {
@@ -1617,7 +1817,13 @@ async function run() {
 
       await sql`
         insert into public.users (id, name, email, password, is_verified)
-        values (${userId}, 'OAuth Relink', ${userEmail}, '', true)
+        values (${userId}, 'OAuth Relink', ${userEmail}, '', false)
+      `;
+      await sql`
+        update public.users
+        set verification_token = 'preexisting-relink-token',
+            verification_sent_at = now()
+        where id = ${userId}
       `;
       await sql`
         insert into public.nextauth_accounts (
@@ -1655,6 +1861,22 @@ async function run() {
         ) as linked
       `;
       assert.equal(relinked?.linked, true);
+
+      const [userAfter] = await sql<{
+        name: string | null;
+        email: string;
+        is_verified: boolean;
+        verification_token: string | null;
+      }[]>`
+        select name, email, is_verified, verification_token
+        from public.users
+        where id = ${userId}
+        limit 1
+      `;
+      assert.equal(userAfter?.name, 'OAuth Relink');
+      assert.equal(userAfter?.email, userEmail);
+      assert.equal(userAfter?.is_verified, false);
+      assert.equal(userAfter?.verification_token, 'preexisting-relink-token');
     });
 
     if (failures > 0) {

@@ -149,7 +149,6 @@ function PostgresAuthAdapter(): Adapter {
       }
 
       const trimmedName = user.name?.trim() || null;
-      const normalizedEmail = user.email ? normalizeEmail(user.email) : null;
       const [updated] = await sql<{
         id: string;
         name: string | null;
@@ -157,8 +156,10 @@ function PostgresAuthAdapter(): Adapter {
       }[]>`
         update users
         set
-          name = coalesce(${trimmedName}, name),
-          email = coalesce(${normalizedEmail}, email)
+          name = case
+            when coalesce(trim(name), '') = '' then coalesce(${trimmedName}, name)
+            else name
+          end
         where id = ${user.id}
         returning id, name, email
       `;
@@ -626,44 +627,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         return false;
       }
 
-      const nameFromProfile =
-        profile && typeof profile === 'object' && 'name' in profile
-          ? profile.name
-          : null;
-      const resolvedName =
-        user.name?.trim() ||
-        (typeof nameFromProfile === 'string' ? nameFromProfile.trim() : '') ||
-        nameFromEmail(email);
-
-      try {
-        const [existing] = await sql<{
-          id: string;
-        }[]>`
-          select id
-          from users
-          where lower(trim(email)) = ${email}
-          limit 1
-        `;
-
-        if (existing) {
-          await sql`
-            update users
-            set
-              name = case
-                when coalesce(trim(name), '') = '' then ${resolvedName}
-                else name
-              end,
-              is_verified = true,
-              verification_token = null,
-              verification_sent_at = null
-            where id = ${existing.id}
-          `;
-        }
-        return true;
-      } catch (error) {
-        console.error('OAuth sign-in sync failed:', error);
-        return false;
-      }
+      return true;
     },
     async jwt({ token, user }) {
       if (user?.id) token.id = user.id;

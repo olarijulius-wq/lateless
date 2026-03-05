@@ -19,6 +19,8 @@ const maxConnections =
 type DbSourceEnvVar =
   | 'POSTGRES_URL_TEST'
   | 'POSTGRES_URL_POOLER'
+  | 'POSTGRES_URL_NON_POOLING'
+  | 'POSTGRES_URL_DIRECT'
   | 'POSTGRES_URL'
   | 'DATABASE_URL';
 
@@ -39,6 +41,7 @@ type DbConfig = {
   sourceEnvVar: DbSourceEnvVar;
   ssl: false | 'require';
   host: string;
+  dbName: string;
   urlHasSslmode: boolean;
 };
 
@@ -141,23 +144,71 @@ function shouldPreferPoolerUrl() {
   return (
     process.env.NODE_ENV === 'development' ||
     process.env.NODE_ENV === 'test' ||
-    process.env.CI === 'true' ||
-    process.env.GITHUB_ACTIONS === 'true' ||
     process.env.LATELLESS_TEST_MODE === '1'
   );
 }
 
+function isStrictTestMode() {
+  return process.env.NODE_ENV === 'test' || process.env.CI === 'true';
+}
+
+function parseDbTarget(connectionString: string): { host: string; dbName: string } {
+  try {
+    const parsed = new URL(connectionString);
+    const dbName = parsed.pathname.replace(/^\/+/, '') || '(none)';
+    return {
+      host: parsed.hostname.toLowerCase() || 'unknown',
+      dbName,
+    };
+  } catch {
+    return {
+      host: 'unknown',
+      dbName: 'unknown',
+    };
+  }
+}
+
+function isAllowProdDbOverrideEnabled() {
+  return process.env.ALLOW_PROD_DB === '1';
+}
+
+let hasLoggedProdOverride = false;
+
+function logProdOverrideOnce(reason: string) {
+  if (hasLoggedProdOverride) return;
+  hasLoggedProdOverride = true;
+  console.error(`[db][override] ALLOW_PROD_DB=1 ${reason}`);
+}
+
+function throwDbGuardrailError(message: string): never {
+  throw new Error(`[db][guardrail] ${message}`);
+}
+
 export function resolveDbSourcePriority(): DbSourceEnvVar[] {
-  const isTestMode =
-    process.env.LATELLESS_TEST_MODE === '1' || process.env.NODE_ENV === 'test';
+  const strictTestMode = isStrictTestMode();
+  const latentTestMode = process.env.LATELLESS_TEST_MODE === '1';
+  const isTestMode = latentTestMode || strictTestMode;
 
   const priority: DbSourceEnvVar[] = [];
-  if (isTestMode && isTruthy(process.env.POSTGRES_URL_TEST)) {
+  if (isTestMode) {
+    if (!isTruthy(process.env.POSTGRES_URL_TEST)) {
+      throwDbGuardrailError(
+        `NODE_ENV=${process.env.NODE_ENV ?? ''} CI=${process.env.CI ?? ''} requires POSTGRES_URL_TEST. Refusing fallback to POSTGRES_URL_POOLER/POSTGRES_URL/DATABASE_URL.`,
+      );
+    }
     priority.push('POSTGRES_URL_TEST');
   }
 
   if (shouldPreferPoolerUrl() && isTruthy(process.env.POSTGRES_URL_POOLER)) {
     priority.push('POSTGRES_URL_POOLER');
+  }
+
+  if (isTruthy(process.env.POSTGRES_URL_NON_POOLING)) {
+    priority.push('POSTGRES_URL_NON_POOLING');
+  }
+
+  if (isTruthy(process.env.POSTGRES_URL_DIRECT)) {
+    priority.push('POSTGRES_URL_DIRECT');
   }
 
   if (isTruthy(process.env.POSTGRES_URL)) {
@@ -178,7 +229,7 @@ function buildDbConfig(sourceEnvVar: DbSourceEnvVar, connectionStringRaw: string
     ssl === false
       ? sanitizeConnectionStringForNoSsl(trimmedRaw)
       : trimmedRaw;
-  const host = resolveHostname(connectionString);
+  const { host, dbName } = parseDbTarget(connectionString);
   const urlHasSslmode = hasSslQueryParam(trimmedRaw);
 
   return {
@@ -186,8 +237,48 @@ function buildDbConfig(sourceEnvVar: DbSourceEnvVar, connectionStringRaw: string
     sourceEnvVar,
     ssl,
     host,
+    dbName,
     urlHasSslmode,
   };
+}
+
+function enforceDbGuardrails(candidates: DbConfig[]) {
+  const strictTestMode = isStrictTestMode();
+  const allowProdDb = isAllowProdDbOverrideEnabled();
+
+  if (strictTestMode) {
+    const [chosen] = candidates;
+    if (!chosen || chosen.sourceEnvVar !== 'POSTGRES_URL_TEST') {
+      throwDbGuardrailError(
+        `Expected POSTGRES_URL_TEST in test/CI mode but selected ${chosen?.sourceEnvVar ?? '(none)'} host=${chosen?.host ?? 'unknown'} db=${chosen?.dbName ?? 'unknown'}.`,
+      );
+    }
+
+    const collisionSources: DbSourceEnvVar[] = [
+      'POSTGRES_URL',
+      'POSTGRES_URL_POOLER',
+      'DATABASE_URL',
+      'POSTGRES_URL_NON_POOLING',
+      'POSTGRES_URL_DIRECT',
+    ];
+
+    for (const sourceEnvVar of collisionSources) {
+      const raw = process.env[sourceEnvVar];
+      if (!isTruthy(raw)) continue;
+      const target = parseDbTarget(raw!);
+      if (target.host === chosen.host && target.dbName === chosen.dbName) {
+        if (allowProdDb) {
+          logProdOverrideOnce(
+            `enabled in test/CI for shared target host=${chosen.host} db=${chosen.dbName} chosen=${chosen.sourceEnvVar} collides_with=${sourceEnvVar}.`,
+          );
+          continue;
+        }
+        throwDbGuardrailError(
+          `POSTGRES_URL_TEST target host=${chosen.host} db=${chosen.dbName} matches ${sourceEnvVar}. Set a dedicated test database or use ALLOW_PROD_DB=1 for explicit admin operations. chosen=${chosen.sourceEnvVar}.`,
+        );
+      }
+    }
+  }
 }
 
 export function resolveDbConnectionCandidates(): DbConfig[] {
@@ -206,9 +297,11 @@ export function resolveDbConnectionCandidates(): DbConfig[] {
 
   if (candidates.length === 0) {
     throw new Error(
-      'Missing POSTGRES_URL_TEST, POSTGRES_URL_POOLER, POSTGRES_URL, or DATABASE_URL',
+      'Missing POSTGRES_URL_TEST, POSTGRES_URL_POOLER, POSTGRES_URL_NON_POOLING, POSTGRES_URL_DIRECT, POSTGRES_URL, or DATABASE_URL',
     );
   }
+
+  enforceDbGuardrails(candidates);
 
   return candidates;
 }

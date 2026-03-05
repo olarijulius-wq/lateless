@@ -53,13 +53,17 @@ Integration isolation tests run against a dedicated Postgres database.
 1. Set `POSTGRES_URL_TEST` to your test DB connection string.
 2. Run `pnpm test`.
 
-`pnpm test` automatically maps `POSTGRES_URL_TEST` to `POSTGRES_URL`, runs DB migrations, and executes `tests/isolation.test.ts`.
+`pnpm test` runs in strict test mode: it requires `POSTGRES_URL_TEST`, refuses fallback to runtime DB URLs, runs DB migrations, and executes `tests/isolation.test.ts`.
 
 Set `POSTGRES_URL_TEST` secret in GitHub repo settings.
 
 ## Environment variables
 
 - `POSTGRES_URL`
+- `POSTGRES_URL_TEST`
+- `POSTGRES_URL_NON_POOLING` (recommended for production migrations/admin operations)
+- `POSTGRES_URL_DIRECT` (optional alias for direct/non-pooling DB URL)
+- `ALLOW_PROD_DB` (`1` only for explicit admin operations that intentionally bypass DB safety guardrails)
 - `AUTH_SECRET`
 - `AUTH_URL`
 - `STRIPE_SECRET_KEY`
