@@ -4,10 +4,7 @@ import { redirect } from 'next/navigation';
 import { sql } from '@/app/lib/db';
 import { disableTwoFactor, enableTwoFactor } from '@/app/lib/actions';
 import { primaryButtonClasses } from '@/app/ui/button';
-import {
-  fetchAuthConnections,
-  fetchSignInMethodsState,
-} from '@/app/lib/auth-connections';
+import { fetchAuthConnections } from '@/app/lib/auth-connections';
 import {
   DeleteAccountForm,
   EmailPasswordPanel,
@@ -38,11 +35,12 @@ export default async function ProfilePage(props: {
     {
       id: string;
       email: string;
+      password: string | null;
       is_verified: boolean | null;
       two_factor_enabled: boolean | null;
     }[]
   >`
-    SELECT id, email, is_verified, two_factor_enabled
+    SELECT id, email, password, is_verified, two_factor_enabled
     FROM users
     WHERE lower(email) = ${userEmail}
     LIMIT 1
@@ -51,13 +49,8 @@ export default async function ProfilePage(props: {
   const sessionUserId = (session.user as { id?: string }).id;
   const userId = sessionUserId || user?.id || null;
 
-  const [connections, signInMethodsState] = userId
-    ? await Promise.all([
-        fetchAuthConnections(userId),
-        fetchSignInMethodsState(userId),
-      ])
-    : [[], null];
-  const hasPassword = Boolean(signInMethodsState?.hasPassword);
+  const connections = userId ? await fetchAuthConnections(userId) : [];
+  const hasPassword = Boolean(user?.password && user.password.trim());
   const serializedConnections = connections.map((connection) => ({
     provider: connection.provider,
     connectedAt: connection.connectedAt.toISOString(),
