@@ -3,7 +3,7 @@ import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import { sql } from '@/app/lib/db';
 import { disableTwoFactor, enableTwoFactor } from '@/app/lib/actions';
-import { primaryButtonClasses } from '@/app/ui/button';
+import { Button } from '@/app/ui/button';
 import { fetchAuthConnections } from '@/app/lib/auth-connections';
 import {
   DeleteAccountForm,
@@ -152,13 +152,13 @@ export default async function ProfilePage(props: {
               email.
             </p>
             <form action={enableTwoFactor} className="mt-3">
-              <button
+              <Button
                 type="submit"
                 disabled={!user?.is_verified}
-                className={primaryButtonClasses}
+                className="px-4"
               >
                 Enable 2FA
-              </button>
+              </Button>
             </form>
             {!user?.is_verified && (
               <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
@@ -173,12 +173,9 @@ export default async function ProfilePage(props: {
               login.
             </p>
             <form action={disableTwoFactor} className="mt-3">
-              <button
-                type="submit"
-                className={primaryButtonClasses}
-              >
+              <Button type="submit" className="px-4">
                 Disable 2FA
-              </button>
+              </Button>
             </form>
           </>
         )}

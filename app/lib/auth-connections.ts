@@ -137,7 +137,7 @@ export async function disconnectProvider(
       ok: false,
       code: 'CANNOT_DISCONNECT_LAST_LOGIN_METHOD',
       status: 409,
-      message: "You can’t disconnect your last sign-in method. Set a password first.",
+      message: "You can't disconnect your last sign-in method. Set a password first.",
     };
   }
 

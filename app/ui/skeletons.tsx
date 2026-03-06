@@ -65,7 +65,7 @@ export function LatestInvoicesSkeleton() {
       className={`${shimmer} relative flex w-full flex-col overflow-hidden md:col-span-4`}
     >
       <div className="mb-4 h-8 w-36 rounded-md bg-slate-200 dark:bg-neutral-900" />
-      <div className="flex grow flex-col justify-between rounded-2xl bg-slate-200 dark:bg-neutral-900 p-4">
+      <div className="flex flex-col justify-between rounded-2xl bg-slate-200 p-4 dark:bg-neutral-900">
         <div className="bg-slate-100 dark:bg-neutral-950 px-6">
           <InvoiceSkeleton />
           <InvoiceSkeleton />

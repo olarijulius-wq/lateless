@@ -30,7 +30,7 @@ export default function Loading() {
         <Block className="min-h-[500px] w-full border border-neutral-200 p-4 dark:border-neutral-800" />
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Block className="min-h-[420px] border border-neutral-200 p-4 dark:border-neutral-800" />
+          <Block className="border border-neutral-200 p-4 dark:border-neutral-800" />
           <Block className="min-h-[420px] border border-neutral-200 p-4 dark:border-neutral-800" />
         </div>
       </div>
