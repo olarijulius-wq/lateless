@@ -1,6 +1,7 @@
 import 'server-only';
 import dns from 'node:dns';
 import postgres from 'postgres';
+import { recordDbQueryExecution } from '@/app/lib/request-context';
 
 const globalForDb = globalThis as unknown as {
   __latelessSql?: ReturnType<typeof postgres>;
@@ -498,6 +499,11 @@ function getOrCreateSqlClient() {
   return globalForDb.__latelessSql;
 }
 
+async function recordQueryForActiveRequest() {
+  const dbConfig = globalForDb.__latelessDbConfig ?? resolveDbConnectionConfig();
+  await recordDbQueryExecution(dbConfig.sourceEnvVar);
+}
+
 const SQL_SYNTAX_LOG_LIMIT = 400;
 
 function shouldLogSqlSyntaxError() {
@@ -668,8 +674,10 @@ export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof p
   apply(_target, thisArg, argArray) {
     const invocationStack = new Error().stack;
     return ensureDnsPreflight().then(() => {
-      return withSqlSyntaxErrorLogging(argArray, invocationStack, () =>
-        Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray),
+      return recordQueryForActiveRequest().then(() =>
+        withSqlSyntaxErrorLogging(argArray, invocationStack, () =>
+          Reflect.apply(getOrCreateSqlClient() as unknown as Function, thisArg, argArray),
+        ),
       );
     });
   },
@@ -684,7 +692,63 @@ export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof p
       const invocationStack = new Error().stack;
       return withSqlSyntaxErrorLogging(args, invocationStack, () => bound(...args));
     };
-    if (property === 'begin' || property === 'reserve' || property === 'listen' || property === 'notify' || property === 'end') {
+    if (property === 'begin') {
+      return (...args: unknown[]) =>
+        ensureDnsPreflight().then(() =>
+          invokeWithLogging(
+            ...args.map((arg, index) => {
+              if (index !== 0 || typeof arg !== 'function') {
+                return arg;
+              }
+
+              return async (...callbackArgs: unknown[]) => {
+                const [transactionSql, ...rest] = callbackArgs;
+                if (
+                  typeof transactionSql !== 'function' &&
+                  (typeof transactionSql !== 'object' || transactionSql === null)
+                ) {
+                  return arg(...callbackArgs);
+                }
+
+                const instrumentedTransactionSql = new Proxy(transactionSql as object, {
+                  apply(txTarget, txThisArg, txArgArray) {
+                    const txInvocationStack = new Error().stack;
+                    return recordQueryForActiveRequest().then(() =>
+                      withSqlSyntaxErrorLogging(txArgArray, txInvocationStack, () =>
+                        Reflect.apply(txTarget as unknown as Function, txThisArg, txArgArray),
+                      ),
+                    );
+                  },
+                  get(txTarget, txProperty, txReceiver) {
+                    const txValue = Reflect.get(txTarget, txProperty, txReceiver);
+                    if (typeof txValue !== 'function') {
+                      return txValue;
+                    }
+                    const txBound = txValue.bind(txTarget) as (...txArgs: unknown[]) => unknown;
+                    if (txProperty === 'unsafe') {
+                      return (...txArgs: unknown[]) => {
+                        if (typeof txArgs[0] === 'string') {
+                          assertSafeUnsafeSqlStatement(txArgs[0]);
+                        }
+                        const txInvocationStack = new Error().stack;
+                        return recordQueryForActiveRequest().then(() =>
+                          withSqlSyntaxErrorLogging(txArgs, txInvocationStack, () =>
+                            txBound(...txArgs),
+                          ),
+                        );
+                      };
+                    }
+                    return txBound;
+                  },
+                });
+
+                return arg(instrumentedTransactionSql, ...rest);
+              };
+            }),
+          ),
+        );
+    }
+    if (property === 'reserve' || property === 'listen' || property === 'notify' || property === 'end') {
       return (...args: unknown[]) => ensureDnsPreflight().then(() => invokeWithLogging(...args));
     }
     if (property === 'unsafe') {
@@ -692,7 +756,7 @@ export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof p
         if (typeof args[0] === 'string') {
           assertSafeUnsafeSqlStatement(args[0]);
         }
-        return invokeWithLogging(...args);
+        return recordQueryForActiveRequest().then(() => invokeWithLogging(...args));
       };
     }
     // Helper methods like `json`/`array` must remain plain functions.

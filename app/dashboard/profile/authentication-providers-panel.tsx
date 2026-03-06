@@ -81,7 +81,7 @@ export function AuthenticationProvidersPanel({
         const canDisconnect = !isConnected || remainingProvidersCount + (hasPassword ? 1 : 0) > 0;
         const disconnectDisabledReason =
           isConnected && !canDisconnect
-            ? 'Set a password before disconnecting your last provider.'
+            ? 'This is your last sign-in method. Set a password before disconnecting it.'
             : null;
 
         return (

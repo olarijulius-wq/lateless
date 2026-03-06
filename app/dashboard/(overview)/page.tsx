@@ -122,7 +122,7 @@ export default async function Page(props: {
         <div className="grid gap-6 md:grid-cols-2">
           <Suspense
             fallback={
-              <div className="h-full min-h-[420px]">
+              <div>
                 <LatestInvoicesSkeleton />
               </div>
             }

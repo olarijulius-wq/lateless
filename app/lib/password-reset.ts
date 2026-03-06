@@ -1,6 +1,16 @@
 import crypto from 'crypto';
 import { sql } from '@/app/lib/db';
 import { sendPasswordResetEmail } from '@/app/lib/email';
+import {
+  sanitizeLifecycleEmailError,
+  upsertLifecycleEmailLog,
+} from '@/app/lib/lifecycle-email-log';
+
+export const __testHooks: {
+  sendPasswordResetEmailOverride: null | typeof sendPasswordResetEmail;
+} = {
+  sendPasswordResetEmailOverride: null,
+};
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -40,6 +50,32 @@ export async function requestPasswordResetByEmail(email: string): Promise<{
   `;
 
   const resetUrl = `${getBaseAppUrl()}/reset-password/${token}`;
-  await sendPasswordResetEmail({ to: normalizedEmail, resetUrl });
+  const idempotencyKey = `password_reset:${token}`;
+  const sendEmail =
+    __testHooks.sendPasswordResetEmailOverride ?? sendPasswordResetEmail;
+
+  try {
+    await sendEmail({ to: normalizedEmail, resetUrl });
+    await upsertLifecycleEmailLog({
+      userId: user.id,
+      emailType: 'password_reset',
+      idempotencyKey,
+      status: 'sent',
+      errorMessage: null,
+    });
+  } catch (error) {
+    await upsertLifecycleEmailLog({
+      userId: user.id,
+      emailType: 'password_reset',
+      idempotencyKey,
+      status: 'failed',
+      errorMessage: sanitizeLifecycleEmailError(
+        error,
+        'Unknown password reset email failure',
+      ),
+    });
+    throw error;
+  }
+
   return { userFound: true };
 }

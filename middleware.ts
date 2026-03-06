@@ -88,6 +88,9 @@ function csrfFailureResponse() {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const method = request.method.toUpperCase();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-lateless-request-route', pathname);
+  requestHeaders.set('x-lateless-request-method', method);
   const shouldNoindex = PRIVATE_PATH_PREFIXES.some((prefix) =>
     pathname.startsWith(prefix),
   );
@@ -121,7 +124,11 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.next();
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 
   if (shouldNoindex) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow');

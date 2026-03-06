@@ -4,6 +4,7 @@ import {
   ensureWorkspaceContextForCurrentUser,
   type WorkspaceRole,
 } from '@/app/lib/workspaces';
+import { getRequestCachedValue } from '@/app/lib/request-context';
 
 export type ResolvedWorkspaceContext = {
   userId: string;
@@ -44,46 +45,48 @@ export function isWorkspaceContextError(error: unknown): error is WorkspaceConte
 }
 
 export async function requireWorkspaceContext(): Promise<ResolvedWorkspaceContext> {
-  try {
-    const context = await ensureWorkspaceContextForCurrentUser();
-    if (!context.workspaceId?.trim()) {
-      reportWorkspaceContextEvent('NO_ACTIVE_WORKSPACE', {
-        reason: 'resolved context had empty workspaceId',
+  return getRequestCachedValue('workspace-context:current', async () => {
+    try {
+      const context = await ensureWorkspaceContextForCurrentUser();
+      if (!context.workspaceId?.trim()) {
+        reportWorkspaceContextEvent('NO_ACTIVE_WORKSPACE', {
+          reason: 'resolved context had empty workspaceId',
+          userId: context.userId,
+        });
+        throw new WorkspaceContextError(
+          'NO_ACTIVE_WORKSPACE',
+          'No active workspace is configured for the current user.',
+        );
+      }
+      return {
         userId: context.userId,
-      });
-      throw new WorkspaceContextError(
-        'NO_ACTIVE_WORKSPACE',
-        'No active workspace is configured for the current user.',
-      );
-    }
-    return {
-      userId: context.userId,
-      userEmail: context.userEmail,
-      workspaceId: context.workspaceId,
-      workspaceName: context.workspaceName,
-      role: context.userRole,
-    };
-  } catch (error) {
-    if (isWorkspaceContextError(error)) {
+        userEmail: context.userEmail,
+        workspaceId: context.workspaceId,
+        workspaceName: context.workspaceName,
+        role: context.userRole,
+      };
+    } catch (error) {
+      if (isWorkspaceContextError(error)) {
+        throw error;
+      }
+      if (error instanceof Error && error.message === 'Unauthorized') {
+        reportWorkspaceContextEvent('UNAUTHENTICATED', {
+          reason: 'missing auth session while requiring workspace context',
+        });
+        throw new WorkspaceContextError('UNAUTHORIZED', 'Unauthorized');
+      }
+      if (error instanceof Error && error.message === 'NO_ACTIVE_WORKSPACE') {
+        reportWorkspaceContextEvent('NO_ACTIVE_WORKSPACE', {
+          reason: 'authenticated user does not have resolvable workspace context',
+        });
+        throw new WorkspaceContextError(
+          'NO_ACTIVE_WORKSPACE',
+          'No active workspace is configured for the current user.',
+        );
+      }
       throw error;
     }
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      reportWorkspaceContextEvent('UNAUTHENTICATED', {
-        reason: 'missing auth session while requiring workspace context',
-      });
-      throw new WorkspaceContextError('UNAUTHORIZED', 'Unauthorized');
-    }
-    if (error instanceof Error && error.message === 'NO_ACTIVE_WORKSPACE') {
-      reportWorkspaceContextEvent('NO_ACTIVE_WORKSPACE', {
-        reason: 'authenticated user does not have resolvable workspace context',
-      });
-      throw new WorkspaceContextError(
-        'NO_ACTIVE_WORKSPACE',
-        'No active workspace is configured for the current user.',
-      );
-    }
-    throw error;
-  }
+  });
 }
 
 export async function requireWorkspaceRole(

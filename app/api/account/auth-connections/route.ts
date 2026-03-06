@@ -10,12 +10,20 @@ import {
 } from '@/app/lib/auth-connections';
 import { enforceRateLimit, parseQuery } from '@/app/lib/security/api-guard';
 
+export const __testHooks: {
+  authOverride: null | (() => Promise<{ user?: { id?: string; email?: string | null } } | null>);
+  enforceRateLimitOverride: null | typeof enforceRateLimit;
+} = {
+  authOverride: null,
+  enforceRateLimitOverride: null,
+};
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
 async function resolveSessionUserId() {
-  const session = await auth();
+  const session = await (__testHooks.authOverride ?? auth)();
   const explicitId = (session?.user as { id?: string } | undefined)?.id;
   if (explicitId) {
     return explicitId;
@@ -74,10 +82,10 @@ export async function DELETE(request: Request) {
     );
   }
 
-  const session = await auth();
+  const session = await (__testHooks.authOverride ?? auth)();
   const userEmail = session?.user?.email ? normalizeEmail(session.user.email) : null;
 
-  const rl = await enforceRateLimit(
+  const rl = await (__testHooks.enforceRateLimitOverride ?? enforceRateLimit)(
     request,
     {
       bucket: 'account_auth_connections_delete',
@@ -101,7 +109,12 @@ export async function DELETE(request: Request) {
   const result = await disconnectProvider(userId, providerParam as AuthProvider);
   if (!result.ok) {
     return NextResponse.json(
-      { ok: false, code: result.code, error: result.message },
+      {
+        ok: false,
+        code: result.code,
+        status: result.status,
+        error: result.message,
+      },
       { status: result.status },
     );
   }

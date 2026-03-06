@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { Button, primaryButtonClasses } from '@/app/ui/button';
+import { Button } from '@/app/ui/button';
 import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
 import { getPasswordCtaCopy } from './password-cta';
 
@@ -190,13 +190,13 @@ export function DeleteAccountForm() {
           />
         </div>
 
-        <button
+        <Button
           type="submit"
           disabled={deletePending}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-900 bg-neutral-900 px-4 py-2 text-sm font-semibold text-neutral-50 transition duration-200 ease-out hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-100 dark:focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50"
+          className={`px-4 ${NEUTRAL_FOCUS_RING_CLASSES}`}
         >
           {deletePending ? 'Deleting...' : 'Delete account'}
-        </button>
+        </Button>
 
         {deleteMessage ? (
           <p className="text-sm text-rose-700 dark:text-rose-300" aria-live="polite">

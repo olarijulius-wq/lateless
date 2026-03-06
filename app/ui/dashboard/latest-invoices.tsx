@@ -15,7 +15,7 @@ export default async function LatestInvoices() {
   const visibleInvoices = latestInvoices.slice(0, 5);
 
   return (
-    <div className="flex w-full flex-col self-start md:col-span-4">
+    <div className="w-full self-start md:col-span-4">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h2 className={`${lusitana.className} text-xl text-slate-900 dark:text-slate-100 md:text-2xl`}>
           Latest Invoices
