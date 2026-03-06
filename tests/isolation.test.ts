@@ -230,7 +230,10 @@ async function run() {
     const stripeWorkspaceMetadataModule = await import('@/app/lib/stripe-workspace-metadata');
     const invoiceWorkspaceBillingModule = await import('@/app/lib/invoice-workspace-billing');
     const authConnectionsModule = await import('@/app/lib/auth-connections');
+    const authConnectionsRoute = await import('@/app/api/account/auth-connections/route');
+    const requestContextModule = await import('@/app/lib/request-context');
     const accountPasswordResetRoute = await import('@/app/api/account/password-reset/route');
+    const passwordResetModule = await import('@/app/lib/password-reset');
     const resendVerificationRoute = await import('@/app/api/account/resend-verification/route');
     const oauthRelinkModule = await import('@/app/lib/oauth-relink');
     const verificationEmailModule = await import('@/app/lib/verification-email');
@@ -285,10 +288,14 @@ async function run() {
         stripePortalRoute.__testHooks.createPortalSessionOverride = null;
         stripePortalRoute.__testHooks.assertStripeConfigOverride = null;
         stripePortalRoute.__testHooks.onResolvedPortalCustomerId = null;
+        authConnectionsRoute.__testHooks.authOverride = null;
+        authConnectionsRoute.__testHooks.enforceRateLimitOverride = null;
         accountPasswordResetRoute.__testHooks.requireUserEmailOverride = null;
         accountPasswordResetRoute.__testHooks.enforceRateLimitOverride = null;
         accountPasswordResetRoute.__testHooks.requestPasswordResetByEmailOverride = null;
+        passwordResetModule.__testHooks.sendPasswordResetEmailOverride = null;
         verificationEmailModule.__testHooks.sendEmailVerificationOverride = null;
+        requestContextModule.__testHooks.reset();
       }
     }
 
@@ -1592,6 +1599,81 @@ async function run() {
       assert.ok(updated?.password_reset_sent_at, 'password reset timestamp should be set');
     });
 
+    await runCase('password reset writes sent lifecycle log row', async () => {
+      const fixtures = await seedFixtures();
+
+      accountPasswordResetRoute.__testHooks.requireUserEmailOverride = async () =>
+        fixtures.userEmail;
+      accountPasswordResetRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      passwordResetModule.__testHooks.sendPasswordResetEmailOverride = async () => {};
+
+      const response = await accountPasswordResetRoute.POST(
+        createNextRequest('http://localhost/api/account/password-reset', {
+          method: 'POST',
+          headers: { 'x-forwarded-for': '203.0.113.46' },
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.ok, true);
+
+      const [log] = await sql<{
+        status: string;
+        error_message: string | null;
+        sent_at: Date | null;
+      }[]>`
+        select status, error_message, sent_at
+        from public.lifecycle_email_logs
+        where user_id = ${fixtures.userId}
+          and email_type = 'password_reset'
+        order by last_attempt_at desc
+        limit 1
+      `;
+      assert.equal(log?.status, 'sent');
+      assert.equal(log?.error_message, null);
+      assert.ok(log?.sent_at);
+    });
+
+    await runCase('password reset logs failed lifecycle row with sanitized error', async () => {
+      const fixtures = await seedFixtures();
+
+      accountPasswordResetRoute.__testHooks.requireUserEmailOverride = async () =>
+        fixtures.userEmail;
+      accountPasswordResetRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      passwordResetModule.__testHooks.sendPasswordResetEmailOverride = async () => {
+        throw new Error('password reset send failed Bearer secret-token-123');
+      };
+
+      const response = await accountPasswordResetRoute.POST(
+        createNextRequest('http://localhost/api/account/password-reset', {
+          method: 'POST',
+          headers: { 'x-forwarded-for': '203.0.113.47' },
+        }),
+      );
+
+      assert.equal(response.status, 500);
+      const payload = await response.json();
+      assert.equal(payload.ok, false);
+
+      const [log] = await sql<{
+        status: string;
+        error_message: string | null;
+        sent_at: Date | null;
+      }[]>`
+        select status, error_message, sent_at
+        from public.lifecycle_email_logs
+        where user_id = ${fixtures.userId}
+          and email_type = 'password_reset'
+        order by last_attempt_at desc
+        limit 1
+      `;
+      assert.equal(log?.status, 'failed');
+      assert.equal(log?.sent_at, null);
+      assert.match(log?.error_message ?? '', /Bearer \[redacted\]/);
+      assert.doesNotMatch(log?.error_message ?? '', /secret-token-123/);
+    });
+
     await runCase('resetPassword action updates password only and keeps email/name intact', async () => {
       const userId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99008';
       const userEmail = 'reset-password-no-mutation@example.com';
@@ -1807,6 +1889,84 @@ async function run() {
       }
       assert.equal(result.code, 'CANNOT_DISCONNECT_LAST_LOGIN_METHOD');
       assert.equal(result.status, 409);
+    });
+
+    await runCase('disconnect auth-connections API returns lockout-safe 409 payload', async () => {
+      const oauthOnlyUserId = '9f0f5a07-8a5e-4db7-8e70-d152a0c99012';
+      const oauthOnlyEmail = 'oauth-only-api-disconnect@example.com';
+
+      await sql`
+        insert into public.users (id, name, email, password, is_verified)
+        values (${oauthOnlyUserId}, 'OAuth API Disconnect', ${oauthOnlyEmail}, '', true)
+      `;
+      await sql`
+        insert into public.nextauth_accounts (
+          user_id,
+          type,
+          provider,
+          provider_account_id
+        )
+        values (
+          ${oauthOnlyUserId},
+          'oauth',
+          'google',
+          'google-api-disconnect-test'
+        )
+      `;
+
+      authConnectionsRoute.__testHooks.authOverride = async () => ({
+        user: { id: oauthOnlyUserId, email: oauthOnlyEmail },
+      }) as never;
+      authConnectionsRoute.__testHooks.enforceRateLimitOverride = async () => null;
+
+      const response = await authConnectionsRoute.DELETE(
+        createNextRequest('http://localhost/api/account/auth-connections?provider=google', {
+          method: 'DELETE',
+          headers: { 'x-forwarded-for': '203.0.113.94' },
+        }),
+      );
+
+      assert.equal(response.status, 409);
+      const payload = await response.json();
+      assert.deepEqual(payload, {
+        ok: false,
+        code: 'CANNOT_DISCONNECT_LAST_LOGIN_METHOD',
+        status: 409,
+        error: "You can't disconnect your last sign-in method. Set a password first.",
+      });
+    });
+
+    await runCase('invoices list data path stays under query threshold', async () => {
+      const fixtures = await seedFixtures();
+      const workspaceContext: WorkspaceContext = {
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceA,
+      };
+
+      dataModule.__testHooks.requireWorkspaceContextOverride = async () => workspaceContext;
+      requestContextModule.__testHooks.reset();
+
+      await requestContextModule.runWithRequestMetrics(
+        { route: '/dashboard/invoices', method: 'GET' },
+        async () => {
+          await Promise.all([
+            dataModule.fetchFilteredInvoices('', 1, 'all', 'created_at', 'desc', 50),
+            dataModule.fetchInvoicesPages('', 'all', 50),
+            dataModule.fetchInvoicePayActionContext(),
+          ]);
+        },
+      );
+
+      const invoiceRequestSummary = requestContextModule.__testHooks.summaries.find(
+        (summary: { route: string; method: string }) =>
+          summary.route === '/dashboard/invoices' && summary.method === 'GET',
+      );
+
+      assert.ok(invoiceRequestSummary, 'expected request summary for invoices list path');
+      assert.ok(
+        invoiceRequestSummary.totalQueryCount <= 12,
+        `expected invoices list query count <= 12, got ${invoiceRequestSummary.totalQueryCount}`,
+      );
     });
 
     await runCase('oauth sign-in re-links provider after accidental disconnect', async () => {
