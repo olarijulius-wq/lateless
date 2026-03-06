@@ -169,16 +169,14 @@ async function getInvoiceCustomerScopeMeta() {
 }
 
 async function requireInvoiceCustomerScope(): Promise<InvoiceCustomerScope> {
-  return getRequestCachedValue('data:invoice-customer-scope', async () => {
-    const [context, meta] = await Promise.all([
-      TEST_HOOKS_ENABLED
-        ? (__testHooks.requireWorkspaceContextOverride
-          ? __testHooks.requireWorkspaceContextOverride()
-          : requireWorkspaceContext())
-        : requireWorkspaceContext(),
-      getInvoiceCustomerScopeMeta(),
-    ]);
+  const context = await resolveScopedDataWorkspaceContext();
+  const cacheKey =
+    TEST_HOOKS_ENABLED && __testHooks.requireWorkspaceContextOverride
+      ? `data:invoice-customer-scope:${context.workspaceId}:${context.userEmail}`
+      : 'data:invoice-customer-scope';
 
+  return getRequestCachedValue(cacheKey, async () => {
+    const meta = await getInvoiceCustomerScopeMeta();
     return {
       userEmail: context.userEmail,
       workspaceId: context.workspaceId,
@@ -188,19 +186,27 @@ async function requireInvoiceCustomerScope(): Promise<InvoiceCustomerScope> {
   });
 }
 
-async function requireDataWorkspaceContext() {
-  return getRequestCachedValue('data:workspace-context-normalized', async () => {
-    const context = TEST_HOOKS_ENABLED
-      ? (__testHooks.requireWorkspaceContextOverride
-        ? await __testHooks.requireWorkspaceContextOverride()
-        : await requireWorkspaceContext())
-      : await requireWorkspaceContext();
+async function resolveScopedDataWorkspaceContext() {
+  const context = TEST_HOOKS_ENABLED
+    ? (__testHooks.requireWorkspaceContextOverride
+      ? await __testHooks.requireWorkspaceContextOverride()
+      : await requireWorkspaceContext())
+    : await requireWorkspaceContext();
 
-    return {
-      userEmail: normalizeEmail(context.userEmail),
-      workspaceId: context.workspaceId.trim(),
-    };
-  });
+  return {
+    userEmail: normalizeEmail(context.userEmail),
+    workspaceId: context.workspaceId.trim(),
+  };
+}
+
+async function requireDataWorkspaceContext() {
+  const context = await resolveScopedDataWorkspaceContext();
+  const cacheKey =
+    TEST_HOOKS_ENABLED && __testHooks.requireWorkspaceContextOverride
+      ? `data:workspace-context-normalized:${context.workspaceId}:${context.userEmail}`
+      : 'data:workspace-context-normalized';
+
+  return getRequestCachedValue(cacheKey, async () => context);
 }
 
 function getInvoicesWorkspaceFilter(scope: InvoiceCustomerScope, qualified = false) {
