@@ -38,9 +38,24 @@ export default async function ProfilePage(props: {
       password: string | null;
       is_verified: boolean | null;
       two_factor_enabled: boolean | null;
+      connected_at: Date | null;
     }[]
   >`
-    SELECT id, email, password, is_verified, two_factor_enabled
+    SELECT
+      id,
+      email,
+      password,
+      is_verified,
+      two_factor_enabled,
+      coalesce(
+        (
+          select min(a.created_at)
+          from nextauth_accounts a
+          where a.user_id = users.id
+        ),
+        verification_sent_at,
+        password_reset_sent_at
+      ) as connected_at
     FROM users
     WHERE lower(email) = ${userEmail}
     LIMIT 1
@@ -57,22 +72,12 @@ export default async function ProfilePage(props: {
   }));
 
   let connectedOnLabel = 'your account';
-  try {
-    const [createdAtRecord] = await sql<{ created_at: Date | null }[]>`
-      SELECT created_at
-      FROM users
-      WHERE lower(email) = ${userEmail}
-      LIMIT 1
-    `;
-    if (createdAtRecord?.created_at) {
-      connectedOnLabel = new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }).format(createdAtRecord.created_at);
-    }
-  } catch {
-    connectedOnLabel = 'your account';
+  if (user?.connected_at) {
+    connectedOnLabel = new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(user.connected_at);
   }
 
   return (

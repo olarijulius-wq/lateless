@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import {
+  resolveDbConnectionConfig,
   resolveDbConnectionCandidates,
+  resolvePoolMaxForRuntime,
   resolveDbSourcePriority,
 } from '@/app/lib/db';
-import { resolveMigrationSourceEnvVar } from '@/scripts/migrate.mjs';
+import {
+  resolveMigrationConnectionConfig,
+  resolveMigrationSourceEnvVar,
+} from '@/scripts/migrate.mjs';
 
 const ORIGINAL_ENV = { ...process.env };
 const mutableEnv = process.env as Record<string, string | undefined>;
@@ -22,6 +27,8 @@ function resetEnv() {
 function run() {
   resetEnv();
   mutableEnv.NODE_ENV = 'development';
+  mutableEnv.LATELLESS_TEST_MODE = '0';
+  delete mutableEnv.POSTGRES_URL_TEST;
   mutableEnv.POSTGRES_URL_POOLER = 'postgres://u:p@pooler.local:6543/db';
   mutableEnv.POSTGRES_URL_NON_POOLING = 'postgres://u:p@direct-nonpool.local:5432/db';
   mutableEnv.POSTGRES_URL_DIRECT = 'postgres://u:p@direct-explicit.local:5432/db';
@@ -49,6 +56,8 @@ function run() {
 
   resetEnv();
   mutableEnv.NODE_ENV = 'production';
+  mutableEnv.LATELLESS_TEST_MODE = '0';
+  delete mutableEnv.POSTGRES_URL_TEST;
   mutableEnv.POSTGRES_URL_POOLER = 'postgres://u:p@pooler.local:6543/db';
   mutableEnv.POSTGRES_URL_NON_POOLING = 'postgres://u:p@direct-nonpool.local:5432/db';
   mutableEnv.POSTGRES_URL_DIRECT = 'postgres://u:p@direct-explicit.local:5432/db';
@@ -62,14 +71,21 @@ function run() {
 
   resetEnv();
   mutableEnv.NODE_ENV = 'production';
+  mutableEnv.LATELLESS_TEST_MODE = '0';
+  delete mutableEnv.POSTGRES_URL_TEST;
   mutableEnv.POSTGRES_URL_POOLER = 'postgres://u:p@pooler.local:6543/db';
   mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
   mutableEnv.DATABASE_URL = 'postgres://u:p@fallback.local:5432/db';
+  mutableEnv.POSTGRES_POOL_MAX = '8';
   const productionCandidates = resolveDbConnectionCandidates();
   assert.equal(productionCandidates[0]?.sourceEnvVar, 'POSTGRES_URL_POOLER');
+  assert.equal(resolveDbConnectionConfig().poolMax, 2);
+  assert.equal(resolvePoolMaxForRuntime(), 2);
 
   resetEnv();
   mutableEnv.NODE_ENV = 'production';
+  mutableEnv.LATELLESS_TEST_MODE = '0';
+  delete mutableEnv.POSTGRES_URL_TEST;
   mutableEnv.POSTGRES_URL_NON_POOLING = 'postgres://u:p@direct-nonpool.local:5432/db';
   mutableEnv.POSTGRES_URL_DIRECT = 'postgres://u:p@direct-explicit.local:5432/db';
   mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
@@ -86,7 +102,35 @@ function run() {
   assert.equal(resolveMigrationSourceEnvVar(), 'POSTGRES_URL');
 
   resetEnv();
+  mutableEnv.NODE_ENV = 'production';
+  mutableEnv.POSTGRES_URL_NON_POOLING = 'postgres://u:p@pooler.local:6543/db';
+  assert.throws(
+    () => resolveMigrationConnectionConfig(),
+    /Migrations cannot use pooler URLs/i,
+  );
+
+  mutableEnv.ALLOW_PROD_DB = '1';
+  const allowedPoolerMigrationConfig = resolveMigrationConnectionConfig();
+  assert.equal(allowedPoolerMigrationConfig.sourceEnvVar, 'POSTGRES_URL_NON_POOLING');
+
+  resetEnv();
   mutableEnv.NODE_ENV = 'test';
+  delete mutableEnv.POSTGRES_URL_TEST;
+  assert.throws(
+    () => resolveDbConnectionCandidates(),
+    /requires POSTGRES_URL_TEST/i,
+  );
+
+  resetEnv();
+  mutableEnv.CI = 'true';
+  delete mutableEnv.POSTGRES_URL_TEST;
+  assert.throws(
+    () => resolveDbConnectionCandidates(),
+    /requires POSTGRES_URL_TEST/i,
+  );
+
+  resetEnv();
+  mutableEnv.GITHUB_ACTIONS = 'true';
   delete mutableEnv.POSTGRES_URL_TEST;
   assert.throws(
     () => resolveDbConnectionCandidates(),
@@ -109,6 +153,15 @@ function run() {
   mutableEnv.ALLOW_PROD_DB = '1';
   const allowOverrideCandidates = resolveDbConnectionCandidates();
   assert.equal(allowOverrideCandidates[0]?.sourceEnvVar, 'POSTGRES_URL_TEST');
+
+  resetEnv();
+  mutableEnv.GITHUB_ACTIONS = 'true';
+  mutableEnv.POSTGRES_URL = 'postgres://u:p@direct.local:5432/db';
+  delete mutableEnv.POSTGRES_URL_TEST;
+  assert.throws(
+    () => resolveMigrationSourceEnvVar(),
+    /requires POSTGRES_URL_TEST/i,
+  );
 }
 
 run();
