@@ -11,13 +11,12 @@ const globalForDb = globalThis as unknown as {
   __latelessDbDnsErrorLogged?: Set<string>;
 };
 
-const poolMaxRaw = process.env.POSTGRES_POOL_MAX;
-const poolMax = Number(poolMaxRaw);
-const maxConnections =
-  Number.isFinite(poolMax) && poolMax > 0 ? Math.floor(poolMax) : 10;
-
 function isProductionEnv() {
   return process.env.NODE_ENV === 'production';
+}
+
+function isProductionEnvFor(env: NodeJS.ProcessEnv) {
+  return env.NODE_ENV === 'production';
 }
 
 type DbSourceEnvVar =
@@ -46,6 +45,7 @@ type DbConfig = {
   ssl: false | 'require';
   host: string;
   dbName: string;
+  poolMax: number;
   urlHasSslmode: boolean;
 };
 
@@ -154,7 +154,11 @@ function shouldPreferPoolerUrl() {
 }
 
 function isStrictTestMode() {
-  return process.env.NODE_ENV === 'test' || process.env.CI === 'true';
+  return (
+    process.env.NODE_ENV === 'test' ||
+    process.env.CI === 'true' ||
+    process.env.GITHUB_ACTIONS === 'true'
+  );
 }
 
 function parseDbTarget(connectionString: string): { host: string; dbName: string } {
@@ -197,7 +201,7 @@ export function resolveDbSourcePriority(): DbSourceEnvVar[] {
   if (strictTestMode) {
     if (!isTruthy(process.env.POSTGRES_URL_TEST)) {
       throwDbGuardrailError(
-        `NODE_ENV=${process.env.NODE_ENV ?? ''} CI=${process.env.CI ?? ''} requires POSTGRES_URL_TEST. Refusing fallback to POSTGRES_URL_POOLER/POSTGRES_URL/DATABASE_URL.`,
+        `NODE_ENV=${process.env.NODE_ENV ?? ''} CI=${process.env.CI ?? ''} GITHUB_ACTIONS=${process.env.GITHUB_ACTIONS ?? ''} requires POSTGRES_URL_TEST. Refusing fallback to POSTGRES_URL_POOLER/POSTGRES_URL/DATABASE_URL.`,
       );
     }
     priority.push('POSTGRES_URL_TEST');
@@ -241,7 +245,25 @@ export function resolveDbSourcePriority(): DbSourceEnvVar[] {
   return priority;
 }
 
-function buildDbConfig(sourceEnvVar: DbSourceEnvVar, connectionStringRaw: string): DbConfig {
+function resolveConfiguredPoolMax(env: NodeJS.ProcessEnv = process.env) {
+  const poolMaxRaw = env.POSTGRES_POOL_MAX;
+  const poolMax = Number(poolMaxRaw);
+  return Number.isFinite(poolMax) && poolMax > 0 ? Math.floor(poolMax) : 10;
+}
+
+export function resolvePoolMaxForRuntime(env: NodeJS.ProcessEnv = process.env) {
+  const configuredMax = resolveConfiguredPoolMax(env);
+  if (!isProductionEnvFor(env)) {
+    return configuredMax;
+  }
+  return Math.min(configuredMax, 2);
+}
+
+function buildDbConfig(
+  sourceEnvVar: DbSourceEnvVar,
+  connectionStringRaw: string,
+  env: NodeJS.ProcessEnv = process.env,
+): DbConfig {
   const trimmedRaw = connectionStringRaw.trim();
   const ssl = resolveSslMode(trimmedRaw);
   const connectionString =
@@ -257,6 +279,7 @@ function buildDbConfig(sourceEnvVar: DbSourceEnvVar, connectionStringRaw: string
     ssl,
     host,
     dbName,
+    poolMax: resolvePoolMaxForRuntime(env),
     urlHasSslmode,
   };
 }
@@ -311,7 +334,7 @@ export function resolveDbConnectionCandidates(): DbConfig[] {
     const trimmedRaw = raw.trim();
     if (seen.has(trimmedRaw)) continue;
     seen.add(trimmedRaw);
-    candidates.push(buildDbConfig(sourceEnvVar, trimmedRaw));
+    candidates.push(buildDbConfig(sourceEnvVar, trimmedRaw, process.env));
   }
 
   if (candidates.length === 0) {
@@ -332,14 +355,11 @@ export function resolveDbConnectionConfig(): DbConfig {
 function logBootOnce(dbConfig: DbConfig) {
   if (globalForDb.__latelessDbBootLogged) return;
   globalForDb.__latelessDbBootLogged = true;
-  const chosenSourceMessage = `[db][boot] chosen_env_var=${dbConfig.sourceEnvVar}`;
-  const message = `[db][boot] env=${process.env.NODE_ENV ?? ''} ci=${process.env.CI ?? ''} gha=${process.env.GITHUB_ACTIONS ?? ''} test_mode=${process.env.LATELLESS_TEST_MODE ?? ''} source=${dbConfig.sourceEnvVar} host=${dbConfig.host} ssl=${dbConfig.ssl} url_has_sslmode=${dbConfig.urlHasSslmode}`;
+  const message = `[db][boot] chosen_env_var=${dbConfig.sourceEnvVar} host=${dbConfig.host} db=${dbConfig.dbName} pool_max=${dbConfig.poolMax} node_env=${process.env.NODE_ENV ?? ''}`;
   if (process.env.NODE_ENV === 'development') {
-    console.log(chosenSourceMessage);
     console.log(message);
     return;
   }
-  console.info(chosenSourceMessage);
   console.info(message);
 }
 
@@ -388,12 +408,11 @@ function createClientForConfig(dbConfig: DbConfig) {
   const disablePreparedStatements = isPoolerUrl(dbConfig.connectionString);
   const clientSsl = dbConfig.ssl === false ? false : 'require';
   const isProduction = isProductionEnv();
-  const poolMaxClamped = isProduction ? Math.min(maxConnections, 2) : maxConnections;
 
   return postgres(dbConfig.connectionString, {
     ssl: clientSsl,
     prepare: disablePreparedStatements ? false : undefined,
-    max: poolMaxClamped,
+    max: dbConfig.poolMax,
     idle_timeout: 20,
     max_lifetime: isProduction ? 60 * 30 : undefined,
     connect_timeout: 15,
@@ -613,6 +632,38 @@ function withSqlSyntaxErrorLogging<T>(
   }
 }
 
+const SQL_STATEMENT_PREFIX_RE =
+  /^(with|select|insert|update|delete|create|alter|drop|truncate|grant|revoke|comment|vacuum|analyze|refresh|set|reset|show|call|do|values|begin|commit|rollback|savepoint|release|explain)\b/i;
+const SQL_BARE_FRAGMENT_RE =
+  /^[a-z_][a-z0-9_$]*(?:\.[a-z_][a-z0-9_$]*)*(?:\s*\([^)]*\))?$/i;
+const SQL_PREDICATE_FRAGMENT_RE =
+  /^[a-z_][a-z0-9_$]*(?:\.[a-z_][a-z0-9_$]*)*(?:\s*\([^)]*\))?\s*(=|<>|!=|>=|<=|>|<|like|ilike|is)\b/i;
+
+export function assertSafeUnsafeSqlStatement(statement: string): void {
+  const normalized = statement.trim().replace(/\s+/g, ' ');
+  if (!normalized) {
+    throw new Error('sql.unsafe requires a full SQL statement. Use sqlFragment for fragments.');
+  }
+
+  if (/^where\s+and\b/i.test(normalized)) {
+    throw new Error('Unsafe SQL fragment rejected: "WHERE AND" is not a valid standalone statement.');
+  }
+
+  if (/^(where|and|or)\b/i.test(normalized)) {
+    throw new Error('Unsafe SQL fragment rejected. Use sqlFragment inside a full query template.');
+  }
+
+  if (SQL_BARE_FRAGMENT_RE.test(normalized) || SQL_PREDICATE_FRAGMENT_RE.test(normalized)) {
+    throw new Error('Unsafe SQL fragment rejected. Bare column/predicate fragments must use sqlFragment.');
+  }
+
+  if (!SQL_STATEMENT_PREFIX_RE.test(normalized)) {
+    throw new Error(
+      'sql.unsafe rejected a non-statement input. Expected a SQL statement starting with SELECT/INSERT/UPDATE/etc.',
+    );
+  }
+}
+
 export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof postgres>, {
   apply(_target, thisArg, argArray) {
     const invocationStack = new Error().stack;
@@ -637,7 +688,12 @@ export const sql = new Proxy((() => undefined) as unknown as ReturnType<typeof p
       return (...args: unknown[]) => ensureDnsPreflight().then(() => invokeWithLogging(...args));
     }
     if (property === 'unsafe') {
-      return invokeWithLogging;
+      return (...args: unknown[]) => {
+        if (typeof args[0] === 'string') {
+          assertSafeUnsafeSqlStatement(args[0]);
+        }
+        return invokeWithLogging(...args);
+      };
     }
     // Helper methods like `json`/`array` must remain plain functions.
     return bound;
