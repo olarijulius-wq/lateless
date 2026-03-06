@@ -18,6 +18,7 @@ import { auth } from '@/auth';
 import { resolveBillingContext } from '@/app/lib/workspace-billing';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
+import { getRequestCachedValue } from '@/app/lib/request-context';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveDbConnectionConfig, sql, sqlFragment } from './db';
 
@@ -137,13 +138,8 @@ function renderScopeFilterEq(filter: ScopeFilterCondition) {
   return sqlFragment`${renderScopeFilterColumn(filter.column)} = ${filter.value}`;
 }
 
-let invoiceCustomerScopeMetaPromise:
-  | Promise<{ hasInvoicesWorkspaceId: boolean; hasCustomersWorkspaceId: boolean }>
-  | null = null;
-
 async function getInvoiceCustomerScopeMeta() {
-  if (!invoiceCustomerScopeMetaPromise) {
-    invoiceCustomerScopeMetaPromise = (async () => {
+  return getRequestCachedValue('data:invoice-customer-scope-meta', async () => {
       const [row] = await sql<{
         has_invoices_workspace_id: boolean;
         has_customers_workspace_id: boolean;
@@ -169,41 +165,42 @@ async function getInvoiceCustomerScopeMeta() {
         hasInvoicesWorkspaceId: Boolean(row?.has_invoices_workspace_id),
         hasCustomersWorkspaceId: Boolean(row?.has_customers_workspace_id),
       };
-    })();
-  }
-
-  return invoiceCustomerScopeMetaPromise;
+  });
 }
 
 async function requireInvoiceCustomerScope(): Promise<InvoiceCustomerScope> {
-  const [context, meta] = await Promise.all([
-    TEST_HOOKS_ENABLED
-      ? (__testHooks.requireWorkspaceContextOverride
-        ? __testHooks.requireWorkspaceContextOverride()
-        : requireWorkspaceContext())
-      : requireWorkspaceContext(),
-    getInvoiceCustomerScopeMeta(),
-  ]);
+  return getRequestCachedValue('data:invoice-customer-scope', async () => {
+    const [context, meta] = await Promise.all([
+      TEST_HOOKS_ENABLED
+        ? (__testHooks.requireWorkspaceContextOverride
+          ? __testHooks.requireWorkspaceContextOverride()
+          : requireWorkspaceContext())
+        : requireWorkspaceContext(),
+      getInvoiceCustomerScopeMeta(),
+    ]);
 
-  return {
-    userEmail: context.userEmail,
-    workspaceId: context.workspaceId,
-    hasInvoicesWorkspaceId: meta.hasInvoicesWorkspaceId,
-    hasCustomersWorkspaceId: meta.hasCustomersWorkspaceId,
-  };
+    return {
+      userEmail: context.userEmail,
+      workspaceId: context.workspaceId,
+      hasInvoicesWorkspaceId: meta.hasInvoicesWorkspaceId,
+      hasCustomersWorkspaceId: meta.hasCustomersWorkspaceId,
+    };
+  });
 }
 
 async function requireDataWorkspaceContext() {
-  const context = TEST_HOOKS_ENABLED
-    ? (__testHooks.requireWorkspaceContextOverride
-      ? await __testHooks.requireWorkspaceContextOverride()
-      : await requireWorkspaceContext())
-    : await requireWorkspaceContext();
+  return getRequestCachedValue('data:workspace-context-normalized', async () => {
+    const context = TEST_HOOKS_ENABLED
+      ? (__testHooks.requireWorkspaceContextOverride
+        ? await __testHooks.requireWorkspaceContextOverride()
+        : await requireWorkspaceContext())
+      : await requireWorkspaceContext();
 
-  return {
-    userEmail: normalizeEmail(context.userEmail),
-    workspaceId: context.workspaceId.trim(),
-  };
+    return {
+      userEmail: normalizeEmail(context.userEmail),
+      workspaceId: context.workspaceId.trim(),
+    };
+  });
 }
 
 function getInvoicesWorkspaceFilter(scope: InvoiceCustomerScope, qualified = false) {
@@ -622,31 +619,39 @@ export async function fetchCardData() {
   const customerFilter = getCustomersWorkspaceFilter(scope);
 
   try {
-    const invoiceCountRows = await sql`
-      SELECT COUNT(*) FROM invoices
-      WHERE 1=1
-        AND ${renderScopeFilterEq(invoiceFilter)}
-    `;
-
-    const customerCountRows = await sql`
-      SELECT COUNT(*) FROM customers
-      WHERE 1=1
-        AND ${renderScopeFilterEq(customerFilter)}
-    `;
-
-    const invoiceStatusRows = await sql`
+    const [summary] = await sql<{
+      invoice_count: string;
+      customer_count: string;
+      paid: string | null;
+      pending: string | null;
+    }[]>`
       SELECT
-        SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) AS "paid",
-        SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END) AS "pending"
-      FROM invoices
-      WHERE 1=1
-        AND ${renderScopeFilterEq(invoiceFilter)}
+        (
+          select count(*)::text
+          from invoices
+          where ${renderScopeFilterEq(invoiceFilter)}
+        ) as invoice_count,
+        (
+          select count(*)::text
+          from customers
+          where ${renderScopeFilterEq(customerFilter)}
+        ) as customer_count,
+        (
+          select sum(case when status = 'paid' then amount else 0 end)::text
+          from invoices
+          where ${renderScopeFilterEq(invoiceFilter)}
+        ) as paid,
+        (
+          select sum(case when status = 'pending' then amount else 0 end)::text
+          from invoices
+          where ${renderScopeFilterEq(invoiceFilter)}
+        ) as pending
     `;
 
-    const numberOfInvoices = Number(invoiceCountRows[0].count ?? '0');
-    const numberOfCustomers = Number(customerCountRows[0].count ?? '0');
-    const totalPaidInvoices = formatCurrencySuffix(invoiceStatusRows[0].paid ?? '0');
-    const totalPendingInvoices = formatCurrencySuffix(invoiceStatusRows[0].pending ?? '0');
+    const numberOfInvoices = Number(summary?.invoice_count ?? '0');
+    const numberOfCustomers = Number(summary?.customer_count ?? '0');
+    const totalPaidInvoices = formatCurrencySuffix(Number(summary?.paid ?? '0'));
+    const totalPendingInvoices = formatCurrencySuffix(Number(summary?.pending ?? '0'));
 
     return {
       numberOfCustomers,
