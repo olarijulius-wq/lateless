@@ -209,6 +209,39 @@ async function requireDataWorkspaceContext() {
   return getRequestCachedValue(cacheKey, async () => context);
 }
 
+async function requireInvoicePayActionWorkspaceContext(): Promise<{
+  workspaceId: string;
+  role: 'owner' | 'admin' | 'member';
+}> {
+  if (!(TEST_HOOKS_ENABLED && __testHooks.requireWorkspaceContextOverride)) {
+    const context = await requireWorkspaceContext();
+    return {
+      workspaceId: context.workspaceId,
+      role: context.role,
+    };
+  }
+
+  const context = await resolveScopedDataWorkspaceContext();
+  return getRequestCachedValue(
+    `data:invoice-pay-action-workspace-context:${context.workspaceId}:${context.userEmail}`,
+    async () => {
+      const [membership] = await sql<{ role: 'owner' | 'admin' | 'member' }[]>`
+        select wm.role
+        from public.workspace_members wm
+        join public.users u on u.id = wm.user_id
+        where wm.workspace_id = ${context.workspaceId}
+          and lower(u.email) = ${context.userEmail}
+        limit 1
+      `;
+
+      return {
+        workspaceId: context.workspaceId,
+        role: membership?.role ?? 'member',
+      };
+    },
+  );
+}
+
 function getInvoicesWorkspaceFilter(scope: InvoiceCustomerScope, qualified = false) {
   const workspaceId = scope.workspaceId?.trim();
   if (scope.hasInvoicesWorkspaceId && workspaceId) {
@@ -344,7 +377,7 @@ export type InvoicePayActionContext = {
 };
 
 export async function fetchInvoicePayActionContext(): Promise<InvoicePayActionContext> {
-  const workspaceContext = await requireWorkspaceContext();
+  const workspaceContext = await requireInvoicePayActionWorkspaceContext();
   const [row] = await sql<{
     workspace_billing_workspace_id: string | null;
     owner_stripe_connect_account_id: string | null;
