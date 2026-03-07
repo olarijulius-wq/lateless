@@ -33,6 +33,12 @@ export const secondaryButtonClasses = clsx(
 
 export const toolbarButtonClasses = clsx(primaryButtonClasses, 'h-10');
 
+export const payNowButtonClasses = clsx(
+  'inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-black disabled:cursor-not-allowed disabled:opacity-50',
+  BUTTON_INTERACTIVE,
+  'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300',
+);
+
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
     `${LIGHT_BUTTON_PRIMARY} dark:border-white dark:bg-white dark:text-black dark:hover:bg-neutral-100`,

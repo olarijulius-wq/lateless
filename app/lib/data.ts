@@ -393,7 +393,7 @@ export async function fetchStripeConnectAccountId(): Promise<string | null> {
 export type InvoicePayActionContext = {
   userRole: 'owner' | 'admin' | 'member';
   workspaceBillingMissing: boolean;
-  hasConnectedPayoutAccount: boolean;
+  isReadyForTransfers: boolean;
 };
 
 export async function fetchInvoicePayActionContext(): Promise<InvoicePayActionContext> {
@@ -401,10 +401,14 @@ export async function fetchInvoicePayActionContext(): Promise<InvoicePayActionCo
   const [row] = await sql<{
     workspace_billing_workspace_id: string | null;
     owner_stripe_connect_account_id: string | null;
+    owner_stripe_connect_details_submitted: boolean | null;
+    owner_stripe_connect_payouts_enabled: boolean | null;
   }[]>`
     select
       wb.workspace_id as workspace_billing_workspace_id,
-      owner_user.stripe_connect_account_id as owner_stripe_connect_account_id
+      owner_user.stripe_connect_account_id as owner_stripe_connect_account_id,
+      owner_user.stripe_connect_details_submitted as owner_stripe_connect_details_submitted,
+      owner_user.stripe_connect_payouts_enabled as owner_stripe_connect_payouts_enabled
     from public.workspaces w
     left join public.users owner_user
       on owner_user.id = w.owner_user_id
@@ -417,7 +421,10 @@ export async function fetchInvoicePayActionContext(): Promise<InvoicePayActionCo
   return {
     userRole: workspaceContext.role,
     workspaceBillingMissing: !(row?.workspace_billing_workspace_id?.trim()),
-    hasConnectedPayoutAccount: !!row?.owner_stripe_connect_account_id?.trim(),
+    isReadyForTransfers:
+      !!row?.owner_stripe_connect_account_id?.trim() &&
+      !!row?.owner_stripe_connect_details_submitted &&
+      !!row?.owner_stripe_connect_payouts_enabled,
   };
 }
 

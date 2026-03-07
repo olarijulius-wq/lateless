@@ -167,8 +167,7 @@ export default async function Page(props: {
           <Table
             invoices={invoices}
             userRole={payActionContext.userRole}
-            workspaceBillingMissing={payActionContext.workspaceBillingMissing}
-            hasConnectedPayoutAccount={payActionContext.hasConnectedPayoutAccount}
+            isReadyForTransfers={payActionContext.isReadyForTransfers}
             highlightedInvoiceId={highlight}
             returnToPath={returnToPath}
           />

@@ -17,15 +17,13 @@ import { primaryButtonClasses } from '@/app/ui/button';
 export default function InvoicesTable({
   invoices,
   userRole,
-  workspaceBillingMissing,
-  hasConnectedPayoutAccount,
+  isReadyForTransfers,
   highlightedInvoiceId,
   returnToPath,
 }: {
   invoices: InvoicesTableType[];
   userRole: 'owner' | 'admin' | 'member';
-  workspaceBillingMissing: boolean;
-  hasConnectedPayoutAccount: boolean;
+  isReadyForTransfers: boolean;
   highlightedInvoiceId?: string;
   returnToPath: string;
 }) {
@@ -199,15 +197,14 @@ export default function InvoicesTable({
                             />
                           </div>
                           {canPayInvoiceStatus(invoice.status) &&
-                            (canManageWorkspaceBilling &&
-                            (workspaceBillingMissing || !hasConnectedPayoutAccount) ? (
+                            (canManageWorkspaceBilling && !isReadyForTransfers ? (
                               <Link
                                 href="/dashboard/settings/payouts"
                                 className={`${primaryButtonClasses} pointer-events-auto relative z-10 h-9 whitespace-nowrap px-3 text-xs`}
                               >
                                 Connect Stripe
                               </Link>
-                            ) : hasConnectedPayoutAccount ? (
+                            ) : isReadyForTransfers ? (
                               <PayInvoiceButton
                                 invoiceId={invoice.id}
                                 className="whitespace-nowrap"
@@ -348,15 +345,14 @@ export default function InvoicesTable({
                           initialError={invoice.last_email_error}
                         />
                         {canPayInvoiceStatus(invoice.status) &&
-                          (canManageWorkspaceBilling &&
-                          (workspaceBillingMissing || !hasConnectedPayoutAccount) ? (
+                          (canManageWorkspaceBilling && !isReadyForTransfers ? (
                             <Link
                               href="/dashboard/settings/payouts"
                               className={`${primaryButtonClasses} pointer-events-auto relative z-10 h-9 whitespace-nowrap px-3 text-xs`}
                             >
                               Connect Stripe
                             </Link>
-                          ) : hasConnectedPayoutAccount ? (
+                          ) : isReadyForTransfers ? (
                             <PayInvoiceButton
                               invoiceId={invoice.id}
                               className="whitespace-nowrap"
