@@ -10,6 +10,7 @@ import {
   InvoicesTable,
   LatestInvoiceRaw,
   LatePayerStat,
+  OverdueCustomerSummary,
   Revenue,
   RevenueDay,
 } from './definitions';
@@ -643,6 +644,7 @@ export async function fetchLatestInvoices() {
     const data = await sql<LatestInvoiceRaw[]>`
       SELECT
         invoices.amount,
+        customers.id as customer_id,
         customers.name,
         customers.image_url,
         customers.email,
@@ -668,6 +670,50 @@ export async function fetchLatestInvoices() {
   } catch (error) {
     console.error('Database Error:', error);
     throw new Error('Failed to fetch the latest invoices.');
+  }
+}
+
+export async function fetchDashboardOverdueCustomers(limit: number = 5) {
+  const scope = await requireInvoiceCustomerScope();
+  const invoiceFilter = getInvoicesWorkspaceFilter(scope, true);
+  const customerFilter = getCustomersWorkspaceFilter(scope, true);
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 10) : 5;
+
+  try {
+    const data = await sql<OverdueCustomerSummary[]>`
+      SELECT
+        customers.id AS customer_id,
+        customers.name,
+        customers.email,
+        COUNT(invoices.id)::int AS overdue_invoices,
+        COALESCE(SUM(invoices.amount), 0)::int AS total_overdue_amount,
+        MAX((current_date - invoices.due_date))::int AS max_days_overdue
+      FROM invoices
+      JOIN customers
+        ON customers.id = invoices.customer_id
+        AND ${renderScopeFilterEq(customerFilter)}
+      WHERE
+        ${renderScopeFilterEq(invoiceFilter)}
+        AND invoices.status <> 'paid'
+        AND invoices.due_date IS NOT NULL
+        AND invoices.due_date < current_date
+      GROUP BY customers.id, customers.name, customers.email
+      ORDER BY
+        MAX((current_date - invoices.due_date)) DESC,
+        MIN(invoices.due_date) ASC,
+        customers.name ASC
+      LIMIT ${safeLimit}
+    `;
+
+    return data.map((row) => ({
+      ...row,
+      total_overdue_amount: Number(row.total_overdue_amount ?? 0),
+      overdue_invoices: Number(row.overdue_invoices ?? 0),
+      max_days_overdue: Number(row.max_days_overdue ?? 0),
+    }));
+  } catch (error) {
+    console.error('Database Error:', error);
+    throw new Error('Failed to fetch dashboard overdue customers.');
   }
 }
 

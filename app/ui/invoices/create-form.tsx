@@ -46,6 +46,7 @@ export default function Form({
   const billingHref = `/dashboard/settings/billing?plan=${encodeURIComponent(usage.planId)}${
     interval ? `&interval=${encodeURIComponent(interval)}` : ''
   }`;
+  const createCustomerHref = `/dashboard/customers/create?returnTo=${encodeURIComponent('/dashboard/invoices/create')}`;
   return (
     <form action={formAction}>
       {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
@@ -102,7 +103,7 @@ export default function Form({
                 Create a customer to start invoicing.
               </p>
               <div className="mt-3">
-                <Link href="/dashboard/customers/create" className={primaryButtonClasses}>
+                <Link href={createCustomerHref} className={primaryButtonClasses}>
                   Create customer
                 </Link>
               </div>

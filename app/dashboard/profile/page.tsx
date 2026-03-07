@@ -10,6 +10,7 @@ import {
   EmailPasswordPanel,
 } from './profile-security-panel';
 import { AuthenticationProvidersPanel } from './authentication-providers-panel';
+import DisplayNameForm from './display-name-form';
 
 export const metadata: Metadata = {
   title: 'My Profile',
@@ -34,6 +35,7 @@ export default async function ProfilePage(props: {
   const [user] = await sql<
     {
       id: string;
+      name: string | null;
       email: string;
       password: string | null;
       is_verified: boolean | null;
@@ -43,6 +45,7 @@ export default async function ProfilePage(props: {
   >`
     SELECT
       id,
+      name,
       email,
       password,
       is_verified,
@@ -63,6 +66,7 @@ export default async function ProfilePage(props: {
 
   const sessionUserId = (session.user as { id?: string }).id;
   const userId = sessionUserId || user?.id || null;
+  const displayName = user?.name?.trim() || session.user.name?.trim() || '';
 
   const connections = userId ? await fetchAuthConnections(userId) : [];
   const hasPassword = Boolean(user?.password && user.password.trim());
@@ -108,6 +112,16 @@ export default async function ProfilePage(props: {
           Verify your email before enabling two-factor authentication.
         </div>
       )}
+
+      <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+          Display name
+        </h2>
+        <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
+          This is the name shown across your account.
+        </p>
+        <DisplayNameForm initialName={displayName} />
+      </section>
 
       <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-[0_12px_24px_rgba(15,23,42,0.06)] dark:border-neutral-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)]">
         <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">

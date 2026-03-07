@@ -324,6 +324,32 @@ function sanitizeOnboardingReturnTo(returnToRaw: FormDataEntryValue | null): str
   }
 }
 
+function sanitizeCustomerCreateReturnTo(returnToRaw: FormDataEntryValue | null): string | null {
+  const onboardingReturnTo = sanitizeOnboardingReturnTo(returnToRaw);
+  if (onboardingReturnTo) {
+    return onboardingReturnTo;
+  }
+
+  if (typeof returnToRaw !== 'string') {
+    return null;
+  }
+
+  const trimmed = returnToRaw.trim();
+  if (!trimmed.startsWith('/dashboard/invoices/create')) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(trimmed, 'http://localhost');
+    if (parsed.pathname !== '/dashboard/invoices/create') {
+      return null;
+    }
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return null;
+  }
+}
+
 const MAX_DAILY_INVOICES = 100;
 
 export async function createInvoice(
@@ -800,10 +826,11 @@ export async function createCustomer(
     return { message: 'Database Error: Failed to Create Customer.' };
   }
 
-  const onboardingReturnTo = sanitizeOnboardingReturnTo(formData.get('returnTo'));
+  const onboardingReturnTo = sanitizeCustomerCreateReturnTo(formData.get('returnTo'));
   revalidatePath('/dashboard');
   revalidatePath('/dashboard/onboarding');
   revalidatePath('/dashboard/customers');
+  revalidatePath('/dashboard/invoices/create');
   redirect(onboardingReturnTo ?? '/dashboard/customers');
 }
 
@@ -1453,6 +1480,71 @@ export async function disableTwoFactor() {
 
   revalidatePath('/dashboard/profile');
   redirect('/dashboard/profile?twoFactor=disabled');
+}
+
+export type UpdateDisplayNameState = {
+  message: string;
+  error?: string;
+};
+
+export async function updateDisplayName(
+  prevState: UpdateDisplayNameState,
+  formData: FormData,
+): Promise<UpdateDisplayNameState> {
+  void prevState;
+
+  const parsed = z
+    .object({
+      name: requiredText(
+        z
+          .string({
+            required_error: 'Please enter your name.',
+            invalid_type_error: 'Please enter your name.',
+          })
+          .min(1, { message: 'Please enter your name.' })
+          .max(120, { message: 'Name must be 120 characters or fewer.' }),
+      ),
+    })
+    .safeParse({
+      name: formData.get('name'),
+    });
+
+  if (!parsed.success) {
+    return {
+      message: '',
+      error: parsed.error.flatten().fieldErrors.name?.[0] ?? 'Please enter your name.',
+    };
+  }
+
+  const session = await auth();
+  const email = session?.user?.email;
+  if (!email) {
+    return {
+      message: '',
+      error: 'Unauthorized.',
+    };
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+
+  try {
+    await sql`
+      update users
+      set name = ${parsed.data.name}
+      where lower(email) = ${normalizedEmail}
+    `;
+  } catch (error) {
+    console.error('Display name update failed', error);
+    return {
+      message: '',
+      error: 'Failed to update display name.',
+    };
+  }
+
+  revalidatePath('/dashboard/profile');
+  return {
+    message: 'Display name updated.',
+  };
 }
 
 export type PasswordResetRequestState = {

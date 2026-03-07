@@ -65,6 +65,7 @@ export type RevenueDay = {
 
 export type LatestInvoice = {
   id: string;
+  customer_id: string;
   name: string;
   image_url: string;
   email: string;
@@ -203,4 +204,13 @@ export type LatePayerStat = {
   email: string;
   paid_invoices: number;
   avg_delay_days: number;
+};
+
+export type OverdueCustomerSummary = {
+  customer_id: string;
+  name: string;
+  email: string;
+  overdue_invoices: number;
+  total_overdue_amount: number;
+  max_days_overdue: number;
 };
