@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import clsx from 'clsx';
-import { primaryButtonClasses } from '@/app/ui/button';
+import { payNowButtonClasses } from '@/app/ui/button';
 
 type PayInvoiceButtonProps = {
   invoiceId: string;
@@ -13,8 +13,8 @@ export default function PayInvoiceButton({
   disabled = false,
   className,
 }: PayInvoiceButtonProps) {
-  const payNowButtonClasses = clsx(
-    primaryButtonClasses,
+  const buttonClasses = clsx(
+    payNowButtonClasses,
     'pointer-events-auto relative z-10 h-9 whitespace-nowrap px-3 text-xs',
     className,
   );
@@ -24,7 +24,7 @@ export default function PayInvoiceButton({
       <button
         type="button"
         disabled
-        className={payNowButtonClasses}
+        className={buttonClasses}
       >
         Pay now
       </button>
@@ -35,7 +35,7 @@ export default function PayInvoiceButton({
     <Link
       href={`/api/invoices/${invoiceId}/pay-link`}
       prefetch={false}
-      className={payNowButtonClasses}
+      className={buttonClasses}
       data-row-nav-stop
     >
       Pay now
