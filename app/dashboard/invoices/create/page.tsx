@@ -3,6 +3,7 @@ import Breadcrumbs from '@/app/ui/invoices/breadcrumbs';
 import { fetchCustomers, fetchUserInvoiceUsageProgress } from '@/app/lib/data';
 import { Metadata } from 'next';
 import UpgradeNudge from '@/app/ui/upgrade-nudge';
+import { setRequestMetricsMeta } from '@/app/lib/request-context';
 
 export const metadata: Metadata = {
   title: 'Create',
@@ -12,6 +13,11 @@ export const metadata: Metadata = {
 export default async function Page(props: {
   searchParams?: Promise<{ customerId?: string; interval?: string; returnTo?: string }>;
 }) {
+  await setRequestMetricsMeta({
+    route: '/dashboard/invoices/create',
+    method: 'GET',
+    requestScope: true,
+  });
   const searchParams = await props.searchParams;
   const [customers, usage] = await Promise.all([
     fetchCustomers(),

@@ -15,6 +15,7 @@ import Pagination from '@/app/ui/invoices/pagination';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { fetchWorkspaceDunningState } from '@/app/lib/billing-dunning';
 import DashboardPageTitle from '@/app/ui/dashboard/page-title';
+import { setRequestMetricsMeta } from '@/app/lib/request-context';
 
 export const metadata: Metadata = {
   title: 'Late payers',
@@ -36,6 +37,11 @@ type LatePayersPageSearchParams = {
 export default async function Page(props: {
   searchParams?: Promise<LatePayersPageSearchParams>;
 }) {
+  await setRequestMetricsMeta({
+    route: '/dashboard/late-payers',
+    method: 'GET',
+    requestScope: true,
+  });
   const searchParams = await props.searchParams;
   const { plan } = await fetchUserPlanAndUsage();
   const canView = PLAN_CONFIG[plan].hasLatePayerAnalytics;

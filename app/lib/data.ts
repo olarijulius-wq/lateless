@@ -35,6 +35,7 @@ export const __testHooks = {
   requireWorkspaceContextOverride: null as
     | (() => Promise<{ userEmail: string; workspaceId: string }>)
     | null,
+  strictUserPlanUsageRuntimeOverride: null as boolean | null,
   renderInvoiceScopeWhereClause: (input: {
     userEmail: string;
     workspaceId: string;
@@ -1905,41 +1906,106 @@ export type UserInvoiceUsageProgress = {
   percentUsed: number;
 };
 
+function isStrictUserPlanUsageRuntime() {
+  if (
+    TEST_HOOKS_ENABLED &&
+    typeof __testHooks.strictUserPlanUsageRuntimeOverride === 'boolean'
+  ) {
+    return __testHooks.strictUserPlanUsageRuntimeOverride;
+  }
+
+  return (
+    process.env.NODE_ENV === 'test' ||
+    process.env.CI === 'true' ||
+    process.env.GITHUB_ACTIONS === 'true'
+  );
+}
+
+function isRequestScopeFallbackEligible(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  if (message.includes('fetchuserplanandusage requires request scope or test override')) {
+    return true;
+  }
+
+  const requestScopeIndicators = [
+    'outside a request scope',
+    'outside of request scope',
+    'outside of a request scope',
+    'request scope',
+  ];
+  const requestApiIndicators = ['auth', 'headers', 'cookies'];
+
+  return (
+    requestScopeIndicators.some((indicator) => message.includes(indicator)) &&
+    requestApiIndicators.some((indicator) => message.includes(indicator))
+  );
+}
+
+export function getFreePlanUsageDefaults(): UserPlanUsage {
+  return {
+    plan: 'free',
+    isPro: false,
+    subscriptionStatus: null,
+    cancelAtPeriodEnd: false,
+    currentPeriodEnd: null,
+    invoiceCount: 0,
+    maxPerMonth: PLAN_CONFIG.free.maxPerMonth,
+  };
+}
+
 export async function fetchUserPlanAndUsage(): Promise<UserPlanUsage> {
   const hasScopedRequest = hasRequestScope();
   const hasTestWorkspaceOverride =
     TEST_HOOKS_ENABLED && __testHooks.requireWorkspaceContextOverride;
+  const strictRuntime = isStrictUserPlanUsageRuntime();
 
-  if (!hasScopedRequest && !hasTestWorkspaceOverride) {
+  if (strictRuntime && !hasScopedRequest && !hasTestWorkspaceOverride) {
     throw new Error('fetchUserPlanAndUsage requires request scope or test override');
   }
 
-  const workspaceContext = await resolveScopedDataWorkspaceContext();
+  try {
+    const workspaceContext = await resolveScopedDataWorkspaceContext();
 
-  const billing = await resolveBillingContext({
-    workspaceId: workspaceContext.workspaceId,
-    userEmail: workspaceContext.userEmail,
-  });
+    const billing = await resolveBillingContext({
+      workspaceId: workspaceContext.workspaceId,
+      userEmail: workspaceContext.userEmail,
+    });
 
-  const invoiceMetricUsage = await fetchCurrentMonthInvoiceMetricCount({
-    userEmail: workspaceContext.userEmail,
-    workspaceId: workspaceContext.workspaceId,
-    metric: 'created',
-  });
+    const invoiceMetricUsage = await fetchCurrentMonthInvoiceMetricCount({
+      userEmail: workspaceContext.userEmail,
+      workspaceId: workspaceContext.workspaceId,
+      metric: 'created',
+    });
 
-  const plan = resolveEffectivePlan(billing.plan, billing.subscriptionStatus);
-  const maxPerMonth = PLAN_CONFIG[plan].maxPerMonth;
-  const invoiceCount = invoiceMetricUsage.count;
+    const plan = resolveEffectivePlan(billing.plan, billing.subscriptionStatus);
+    const maxPerMonth = PLAN_CONFIG[plan].maxPerMonth;
+    const invoiceCount = invoiceMetricUsage.count;
 
-  return {
-    plan,
-    isPro: plan !== 'free',
-    subscriptionStatus: billing.subscriptionStatus,
-    cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
-    currentPeriodEnd: billing.currentPeriodEnd,
-    invoiceCount,
-    maxPerMonth,
-  };
+    return {
+      plan,
+      isPro: plan !== 'free',
+      subscriptionStatus: billing.subscriptionStatus,
+      cancelAtPeriodEnd: billing.cancelAtPeriodEnd,
+      currentPeriodEnd: billing.currentPeriodEnd,
+      invoiceCount,
+      maxPerMonth,
+    };
+  } catch (error) {
+    if (strictRuntime || !isRequestScopeFallbackEligible(error)) {
+      throw error;
+    }
+
+    const { route, method } = getRequestMetricsMeta();
+    const message = error instanceof Error ? error.message : 'unknown';
+    console.warn(
+      `[billing][plan_usage_fallback] route=${route} method=${method} reason=${JSON.stringify(message)}`,
+    );
+    return getFreePlanUsageDefaults();
+  }
 }
 
 export async function fetchUserInvoiceUsageProgress(): Promise<UserInvoiceUsageProgress> {
