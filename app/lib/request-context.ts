@@ -2,7 +2,6 @@ import 'server-only';
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { headers } from 'next/headers';
-import { after } from 'next/server';
 
 type RequestMetricsMeta = {
   route: string;
@@ -21,7 +20,6 @@ type RequestMetricsStore = RequestMetricsMeta & {
   warned: boolean;
   finalized: boolean;
   chosenEnvVar: string | null;
-  afterRegistered: boolean;
   cache: Map<string, Promise<unknown>>;
 };
 
@@ -56,7 +54,6 @@ function createStore(meta?: Partial<RequestMetricsMeta>): RequestMetricsStore {
     warned: false,
     finalized: false,
     chosenEnvVar: null,
-    afterRegistered: false,
     cache: new Map(),
   };
 }
@@ -123,17 +120,6 @@ export async function recordDbQueryExecution(chosenEnvVar: string) {
   const store = await ensureRequestMetricsStore();
   store.queryCount += 1;
   store.chosenEnvVar = chosenEnvVar;
-
-  if (!store.afterRegistered) {
-    try {
-      after(() => {
-        finalizeRequestMetrics();
-      });
-      store.afterRegistered = true;
-    } catch {
-      // `after` is only available inside an active request context.
-    }
-  }
 
   if (!store.warned && store.queryCount > QUERY_WARNING_THRESHOLD) {
     store.warned = true;

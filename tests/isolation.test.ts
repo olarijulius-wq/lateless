@@ -527,6 +527,46 @@ async function run() {
       assert.equal(middlewareModule.isApiCsrfExempt('/api/stripe/webhook'), true);
     });
 
+    await runCase('resolveCanonicalCallbackUrl keeps localhost in local dev', async () => {
+      const env = process.env as Record<string, string | undefined>;
+      const originalNodeEnv = env.NODE_ENV;
+      const originalVercel = env.VERCEL;
+      const originalNextAuthUrl = env.NEXTAUTH_URL;
+      const originalNextPublicAppUrl = env.NEXT_PUBLIC_APP_URL;
+
+      env.NODE_ENV = 'development';
+      delete env.VERCEL;
+      env.NEXTAUTH_URL = 'https://lateless.org';
+      env.NEXT_PUBLIC_APP_URL = 'https://lateless.org';
+
+      try {
+        assert.equal(
+          authUrlModule.resolveCanonicalCallbackUrl(
+            'http://localhost:3000/login?callbackUrl=/dashboard',
+            '/dashboard',
+          ),
+          'http://localhost:3000/login?callbackUrl=/dashboard',
+        );
+      } finally {
+        env.NODE_ENV = originalNodeEnv;
+        if (typeof originalVercel === 'string') {
+          env.VERCEL = originalVercel;
+        } else {
+          delete env.VERCEL;
+        }
+        if (typeof originalNextAuthUrl === 'string') {
+          env.NEXTAUTH_URL = originalNextAuthUrl;
+        } else {
+          delete env.NEXTAUTH_URL;
+        }
+        if (typeof originalNextPublicAppUrl === 'string') {
+          env.NEXT_PUBLIC_APP_URL = originalNextPublicAppUrl;
+        } else {
+          delete env.NEXT_PUBLIC_APP_URL;
+        }
+      }
+    });
+
     await runCase('stripe workspace metadata parser prefers workspace_id', async () => {
       assert.equal(
         stripeWorkspaceMetadataModule.readWorkspaceIdFromStripeMetadata({
