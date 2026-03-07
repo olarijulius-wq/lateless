@@ -3,12 +3,14 @@ import { diagnosticsEnabled } from '@/app/lib/admin-gates';
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { buildSettingsSections } from '@/app/lib/settings-sections';
 import { PageShell, SectionCard } from '@/app/ui/page-layout';
+import { setRequestMetricsMeta } from '@/app/lib/request-context';
 
 export default async function SettingsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  await setRequestMetricsMeta({ route: '/dashboard/settings', method: 'GET' });
   const context = await ensureWorkspaceContextForCurrentUser();
   const sections = buildSettingsSections({
     userEmail: context.userEmail,

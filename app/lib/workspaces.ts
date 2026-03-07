@@ -1,13 +1,16 @@
 import crypto from 'crypto';
 import { auth } from '@/auth';
+import type { Session } from 'next-auth';
 import {
   COMPANY_LIMIT_BY_PLAN,
   normalizePlan,
   TEAM_SEAT_LIMIT_BY_PLAN,
 } from '@/app/lib/config';
 import { readCanonicalWorkspacePlanSource } from '@/app/lib/billing-sync';
+import { getRequestCachedValue } from '@/app/lib/request-context';
 import { sql } from '@/app/lib/db';
 export const TEAM_MIGRATION_REQUIRED_CODE = 'TEAM_MIGRATION_REQUIRED';
+const TEST_HOOKS_ENABLED = process.env.NODE_ENV === 'test';
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member';
 export type InvitableWorkspaceRole = 'admin' | 'member';
@@ -95,6 +98,10 @@ export function isTeamMigrationRequiredError(error: unknown): boolean {
 
 let workspaceSchemaReadyPromise: Promise<void> | null = null;
 
+export const __testHooks = {
+  authOverride: null as null | (() => Promise<Session | null>),
+};
+
 export async function assertWorkspaceSchemaReady(): Promise<void> {
   if (!workspaceSchemaReadyPromise) {
     workspaceSchemaReadyPromise = (async () => {
@@ -141,7 +148,7 @@ export async function assertWorkspaceSchemaReady(): Promise<void> {
 }
 
 export async function requireCurrentUser() {
-  const session = await auth();
+  const session = await getRequestAuthSession();
   const sessionUser = session?.user as { id?: string; email?: string } | undefined;
   const sessionEmail = sessionUser?.email?.trim() || null;
   const sessionUserId = sessionUser?.id?.trim() || null;
@@ -193,6 +200,15 @@ export async function requireCurrentUser() {
     email: normalizeEmail(resolvedEmail),
     name: user.name,
   };
+}
+
+export async function getRequestAuthSession(): Promise<Session | null> {
+  return getRequestCachedValue('auth:session', async () => {
+    if (TEST_HOOKS_ENABLED && __testHooks.authOverride) {
+      return __testHooks.authOverride();
+    }
+    return auth() as Promise<Session | null>;
+  });
 }
 
 export async function ensureActiveWorkspaceForUser(user: {
@@ -380,8 +396,10 @@ export async function ensureActiveWorkspaceForUser(user: {
 }
 
 export async function ensureWorkspaceContextForCurrentUser(): Promise<WorkspaceContext> {
-  const user = await requireCurrentUser();
-  return ensureActiveWorkspaceForUser(user);
+  return getRequestCachedValue('workspaces:current-user-context', async () => {
+    const user = await requireCurrentUser();
+    return ensureActiveWorkspaceForUser(user);
+  });
 }
 
 export async function fetchWorkspaceMembershipsForCurrentUser(): Promise<

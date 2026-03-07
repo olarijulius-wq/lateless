@@ -18,7 +18,11 @@ import { auth } from '@/auth';
 import { resolveBillingContext } from '@/app/lib/workspace-billing';
 import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
-import { getRequestCachedValue } from '@/app/lib/request-context';
+import {
+  getRequestCachedValue,
+  getRequestMetricsMeta,
+  recordRequestQueryLog,
+} from '@/app/lib/request-context';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveDbConnectionConfig, sql, sqlFragment } from './db';
 
@@ -42,6 +46,7 @@ export const __testHooks = {
         workspaceId: input.workspaceId,
         hasInvoicesWorkspaceId: input.hasInvoicesWorkspaceId,
         hasCustomersWorkspaceId: true,
+        hasCustomersCreatedAt: true,
       },
       input.qualified ?? true,
     );
@@ -78,6 +83,7 @@ type InvoiceCustomerScope = {
   workspaceId: string;
   hasInvoicesWorkspaceId: boolean;
   hasCustomersWorkspaceId: boolean;
+  hasCustomersCreatedAt: boolean;
 };
 
 type ScopeFilterCondition = {
@@ -143,6 +149,7 @@ async function getInvoiceCustomerScopeMeta() {
       const [row] = await sql<{
         has_invoices_workspace_id: boolean;
         has_customers_workspace_id: boolean;
+        has_customers_created_at: boolean;
       }[]>`
         select
           exists (
@@ -158,12 +165,20 @@ async function getInvoiceCustomerScopeMeta() {
             where table_schema = 'public'
               and table_name = 'customers'
               and column_name = 'workspace_id'
-          ) as has_customers_workspace_id
+          ) as has_customers_workspace_id,
+          exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'customers'
+              and column_name = 'created_at'
+          ) as has_customers_created_at
       `;
 
       return {
         hasInvoicesWorkspaceId: Boolean(row?.has_invoices_workspace_id),
         hasCustomersWorkspaceId: Boolean(row?.has_customers_workspace_id),
+        hasCustomersCreatedAt: Boolean(row?.has_customers_created_at),
       };
   });
 }
@@ -182,6 +197,7 @@ async function requireInvoiceCustomerScope(): Promise<InvoiceCustomerScope> {
       workspaceId: context.workspaceId,
       hasInvoicesWorkspaceId: meta.hasInvoicesWorkspaceId,
       hasCustomersWorkspaceId: meta.hasCustomersWorkspaceId,
+      hasCustomersCreatedAt: meta.hasCustomersCreatedAt,
     };
   });
 }
@@ -822,6 +838,25 @@ function buildCustomersOrderByClause(sortKey: CustomerSortKey, sortDir: Customer
     : sqlFragment`lower(customers.name) DESC, customers.id DESC`;
 }
 
+function buildPageCustomersOrderByClause(
+  sortKey: Exclude<CustomerSortKey, 'total_invoices'>,
+  sortDir: CustomerSortDir,
+) {
+  if (sortKey === 'email') {
+    return sortDir === 'asc'
+      ? sqlFragment`lower(page_customers.email) ASC, page_customers.id DESC`
+      : sqlFragment`lower(page_customers.email) DESC, page_customers.id DESC`;
+  }
+  if (sortKey === 'created_at') {
+    return sortDir === 'asc'
+      ? sqlFragment`page_customers.created_at ASC, page_customers.id DESC`
+      : sqlFragment`page_customers.created_at DESC, page_customers.id DESC`;
+  }
+  return sortDir === 'asc'
+    ? sqlFragment`lower(page_customers.name) ASC, page_customers.id DESC`
+    : sqlFragment`lower(page_customers.name) DESC, page_customers.id DESC`;
+}
+
 function normalizeInvoiceStatusFilter(
   statusFilter: string | undefined,
 ): InvoiceStatusFilter {
@@ -874,12 +909,45 @@ function logInvoiceListQueryDuration(input: {
   sortDir?: InvoiceSortDir;
 }) {
   const level = input.durationMs >= INVOICE_LIST_SLOW_QUERY_MS ? 'warn' : 'info';
-  console[level]('[invoices][query]', {
+  const { route, method } = getRequestMetricsMeta();
+  const label = `invoices.${input.queryName}`;
+  recordRequestQueryLog(label, input.durationMs);
+  console[level]('[dashboard][query]', {
+    route,
+    method,
+    label,
     queryName: input.queryName,
     durationMs: input.durationMs,
     pageSize: input.pageSize,
     currentPage: input.currentPage ?? null,
     statusFilter: input.statusFilter,
+    sortKey: input.sortKey ?? null,
+    sortDir: input.sortDir ?? null,
+    hasSearchQuery: input.query.trim().length > 0,
+  });
+}
+
+function logCustomerListQueryDuration(input: {
+  queryName: 'rows' | 'count';
+  durationMs: number;
+  pageSize: number;
+  currentPage?: number;
+  query: string;
+  sortKey?: CustomerSortKey;
+  sortDir?: CustomerSortDir;
+}) {
+  const level = input.durationMs >= INVOICE_LIST_SLOW_QUERY_MS ? 'warn' : 'info';
+  const { route, method } = getRequestMetricsMeta();
+  const label = `customers.${input.queryName}`;
+  recordRequestQueryLog(label, input.durationMs);
+  console[level]('[dashboard][query]', {
+    route,
+    method,
+    label,
+    queryName: input.queryName,
+    durationMs: input.durationMs,
+    pageSize: input.pageSize,
+    currentPage: input.currentPage ?? null,
     sortKey: input.sortKey ?? null,
     sortDir: input.sortDir ?? null,
     hasSearchQuery: input.query.trim().length > 0,
@@ -1686,32 +1754,91 @@ export async function fetchFilteredCustomers(
   const offset = (safeCurrentPage - 1) * safePageSize;
   const safeSortKey = normalizeCustomerSortKey(sortKey);
   const safeSortDir = normalizeCustomerSortDir(sortDir);
-  const orderByClause = buildCustomersOrderByClause(safeSortKey, safeSortDir);
+  const effectiveSortKey =
+    safeSortKey === 'created_at' && !scope.hasCustomersCreatedAt ? 'name' : safeSortKey;
+  const orderByClause = buildCustomersOrderByClause(effectiveSortKey, safeSortDir);
 
   try {
-    const data = await sql<CustomersTableType[]>`
-      SELECT
-        customers.id,
-        customers.name,
-        customers.email,
-        customers.image_url,
-        COUNT(invoices.id) AS total_invoices,
-        SUM(CASE WHEN invoices.status = 'pending' THEN invoices.amount ELSE 0 END) AS total_pending,
-        SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS total_paid
-      FROM customers
-      LEFT JOIN invoices
-        ON customers.id = invoices.customer_id
-        AND ${renderScopeFilterEq(invoiceFilter)}
-      WHERE 1=1
-        AND ${renderScopeFilterEq(customerFilter)}
-        AND (
-          customers.name ILIKE ${`%${query}%`} OR
-          customers.email ILIKE ${`%${query}%`}
-        )
-      GROUP BY customers.id, customers.name, customers.email, customers.image_url
-      ORDER BY ${orderByClause}
-      LIMIT ${safePageSize} OFFSET ${offset}
-    `;
+    const startedAt = Date.now();
+    const data =
+      effectiveSortKey === 'total_invoices'
+        ? await sql<CustomersTableType[]>`
+            SELECT
+              customers.id,
+              customers.name,
+              customers.email,
+              customers.image_url,
+              COUNT(invoices.id) AS total_invoices,
+              SUM(CASE WHEN invoices.status = 'pending' THEN invoices.amount ELSE 0 END) AS total_pending,
+              SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS total_paid
+            FROM customers
+            LEFT JOIN invoices
+              ON customers.id = invoices.customer_id
+              AND ${renderScopeFilterEq(invoiceFilter)}
+            WHERE 1=1
+              AND ${renderScopeFilterEq(customerFilter)}
+              AND (
+                customers.name ILIKE ${`%${query}%`} OR
+                customers.email ILIKE ${`%${query}%`}
+              )
+            GROUP BY customers.id, customers.name, customers.email, customers.image_url
+            ORDER BY ${orderByClause}
+            LIMIT ${safePageSize} OFFSET ${offset}
+          `
+        : await sql<CustomersTableType[]>`
+            WITH page_customers AS (
+              SELECT
+                customers.id,
+                customers.name,
+                customers.email,
+                customers.image_url,
+                ${
+                  scope.hasCustomersCreatedAt
+                    ? sqlFragment`customers.created_at`
+                    : sqlFragment`null::timestamptz as created_at`
+                }
+              FROM customers
+              WHERE 1=1
+                AND ${renderScopeFilterEq(customerFilter)}
+                AND (
+                  customers.name ILIKE ${`%${query}%`} OR
+                  customers.email ILIKE ${`%${query}%`}
+                )
+              ORDER BY ${buildCustomersOrderByClause(effectiveSortKey, safeSortDir)}
+              LIMIT ${safePageSize} OFFSET ${offset}
+            )
+            SELECT
+              page_customers.id,
+              page_customers.name,
+              page_customers.email,
+              page_customers.image_url,
+              COALESCE(invoice_totals.total_invoices, 0) AS total_invoices,
+              COALESCE(invoice_totals.total_pending, 0) AS total_pending,
+              COALESCE(invoice_totals.total_paid, 0) AS total_paid
+            FROM page_customers
+            LEFT JOIN LATERAL (
+              SELECT
+                COUNT(*) AS total_invoices,
+                SUM(CASE WHEN invoices.status = 'pending' THEN invoices.amount ELSE 0 END) AS total_pending,
+                SUM(CASE WHEN invoices.status = 'paid' THEN invoices.amount ELSE 0 END) AS total_paid
+              FROM invoices
+              WHERE invoices.customer_id = page_customers.id
+                AND ${renderScopeFilterEq(invoiceFilter)}
+            ) invoice_totals ON true
+            ORDER BY ${buildPageCustomersOrderByClause(
+              effectiveSortKey as Exclude<CustomerSortKey, 'total_invoices'>,
+              safeSortDir,
+            )}
+          `;
+    logCustomerListQueryDuration({
+      queryName: 'rows',
+      durationMs: Date.now() - startedAt,
+      pageSize: safePageSize,
+      currentPage: safeCurrentPage,
+      query,
+      sortKey: effectiveSortKey,
+      sortDir: safeSortDir,
+    });
 
     const customers = data.map((customer) => ({
       ...customer,
@@ -1735,6 +1862,7 @@ export async function fetchCustomersPages(
   const safePageSize = normalizeCustomerPageSize(pageSize);
 
   try {
+    const startedAt = Date.now();
     const data = await sql`
       SELECT COUNT(*)
       FROM customers
@@ -1745,6 +1873,12 @@ export async function fetchCustomersPages(
           customers.email ILIKE ${`%${query}%`}
         )
     `;
+    logCustomerListQueryDuration({
+      queryName: 'count',
+      durationMs: Date.now() - startedAt,
+      pageSize: safePageSize,
+      query,
+    });
 
     return Math.ceil(Number(data[0].count) / safePageSize);
   } catch (err) {
