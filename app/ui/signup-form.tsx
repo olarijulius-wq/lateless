@@ -1,12 +1,24 @@
 'use client';
 
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { ArrowRightIcon } from '@heroicons/react/20/solid';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/app/ui/button';
-import { registerUser, SignupState } from '@/app/lib/actions';
 import SocialAuthButtons from '@/app/(auth)/_components/social-auth-buttons';
 import authInputStyles from '@/app/(auth)/_components/auth-inputs.module.css';
+import { sanitizeRelativeCallbackPath } from '@/app/lib/auth-url';
+
+type SignupState = {
+  message: string | null;
+  code?: string;
+  errors?: {
+    name?: string[];
+    email?: string[];
+    password?: string[];
+    termsAccepted?: string[];
+  };
+};
 
 type SignupFormProps = {
   googleEnabled: boolean;
@@ -19,10 +31,11 @@ export default function SignupForm({
   githubEnabled,
   callbackUrl,
 }: SignupFormProps) {
-  const initialState: SignupState = { message: null, errors: {} };
-  const [state, formAction] = useActionState(registerUser, initialState);
+  const router = useRouter();
+  const [state, setState] = useState<SignupState>({ message: null, errors: {} });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitCount, setSubmitCount] = useState(0);
   const lastClearedSubmit = useRef(0);
   const hasError = Boolean(
@@ -34,20 +47,72 @@ export default function SignupForm({
   useEffect(() => {
     if (hasError && submitCount !== lastClearedSubmit.current) {
       lastClearedSubmit.current = submitCount;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPassword('');
     }
   }, [hasError, submitCount]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setSubmitCount((count) => count + 1);
+    setState({ message: null, errors: {} });
+    setIsSubmitting(true);
+
+    const form = new FormData(event.currentTarget);
+    const payload = {
+      name: typeof form.get('name') === 'string' ? form.get('name') : '',
+      email: typeof form.get('email') === 'string' ? form.get('email') : '',
+      password: typeof form.get('password') === 'string' ? form.get('password') : '',
+      termsAccepted: form.get('termsAccepted') === 'on',
+      callbackUrl: sanitizeRelativeCallbackPath(callbackUrl ?? '', '/dashboard'),
+    };
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = (await response.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            code?: string;
+            message?: string;
+            errors?: SignupState['errors'];
+          }
+        | null;
+
+      if (!response.ok || !result?.ok) {
+        setState({
+          message: result?.message ?? 'Failed to create your account. Please try again.',
+          code: result?.code,
+          errors: result?.errors ?? {},
+        });
+        return;
+      }
+
+      const nextLoginUrl = new URL('/login', window.location.origin);
+      nextLoginUrl.searchParams.set('signup', 'success');
+      const safeCallbackUrl = sanitizeRelativeCallbackPath(callbackUrl ?? '', '/dashboard');
+      if (safeCallbackUrl !== '/dashboard') {
+        nextLoginUrl.searchParams.set('callbackUrl', safeCallbackUrl);
+      }
+      router.push(`${nextLoginUrl.pathname}${nextLoginUrl.search}`);
+    } catch {
+      setState({
+        message: 'Failed to create your account. Please try again.',
+        errors: {},
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <form action={formAction} className="space-y-5" onSubmit={handleSubmit}>
+    <form className="space-y-5" onSubmit={handleSubmit}>
       <SocialAuthButtons
         googleEnabled={googleEnabled}
         githubEnabled={githubEnabled}
+        callbackUrl={callbackUrl}
       />
       <div className="flex items-center gap-3">
         <span className="h-px flex-1 bg-zinc-300 dark:bg-white/10" />
@@ -121,9 +186,10 @@ export default function SignupForm({
 
       <Button
         type="submit"
+        disabled={isSubmitting}
         className="h-11 w-full justify-start border-zinc-300 bg-white px-4 text-zinc-950 shadow-[0_10px_24px_rgba(0,0,0,0.12)] hover:border-zinc-400 hover:bg-white hover:shadow-[0_12px_26px_rgba(0,0,0,0.14)] focus-visible:ring-emerald-500/35 dark:border-zinc-700 dark:bg-zinc-900 dark:text-white dark:shadow-[0_10px_28px_rgba(0,0,0,0.35)] dark:hover:bg-zinc-800 dark:focus-visible:ring-emerald-500/40"
       >
-        Create account
+        {isSubmitting ? 'Creating account...' : 'Create account'}
         <ArrowRightIcon className="ml-auto h-5 w-5 text-current" />
       </Button>
     </form>

@@ -1,10 +1,6 @@
-import crypto from 'crypto';
 import { sql } from '@/app/lib/db';
 import { sendPasswordResetEmail } from '@/app/lib/email';
-import {
-  sanitizeLifecycleEmailError,
-  upsertLifecycleEmailLog,
-} from '@/app/lib/lifecycle-email-log';
+import { issueTokenAndSendLifecycleEmail } from '@/app/lib/lifecycle-email';
 
 export const __testHooks: {
   sendPasswordResetEmailOverride: null | typeof sendPasswordResetEmail;
@@ -14,16 +10,6 @@ export const __testHooks: {
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
-}
-
-function getBaseAppUrl() {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.AUTH_URL ||
-    (process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000')
-  );
 }
 
 export async function requestPasswordResetByEmail(email: string): Promise<{
@@ -41,41 +27,19 @@ export async function requestPasswordResetByEmail(email: string): Promise<{
     return { userFound: false };
   }
 
-  const token = crypto.randomUUID();
-  await sql`
-    update users
-    set password_reset_token = ${token},
-        password_reset_sent_at = now()
-    where id = ${user.id}
-  `;
-
-  const resetUrl = `${getBaseAppUrl()}/reset-password/${token}`;
-  const idempotencyKey = `password_reset:${token}`;
   const sendEmail =
     __testHooks.sendPasswordResetEmailOverride ?? sendPasswordResetEmail;
 
-  try {
-    await sendEmail({ to: normalizedEmail, resetUrl });
-    await upsertLifecycleEmailLog({
-      userId: user.id,
-      emailType: 'password_reset',
-      idempotencyKey,
-      status: 'sent',
-      errorMessage: null,
-    });
-  } catch (error) {
-    await upsertLifecycleEmailLog({
-      userId: user.id,
-      emailType: 'password_reset',
-      idempotencyKey,
-      status: 'failed',
-      errorMessage: sanitizeLifecycleEmailError(
-        error,
-        'Unknown password reset email failure',
-      ),
-    });
-    throw error;
-  }
+  await issueTokenAndSendLifecycleEmail({
+    userId: user.id,
+    email: normalizedEmail,
+    emailType: 'password_reset',
+    tokenColumn: 'password_reset_token',
+    sentAtColumn: 'password_reset_sent_at',
+    pathPrefix: '/reset-password/',
+    send: ({ to, url }) => sendEmail({ to, resetUrl: url }),
+    failureMessage: 'Unknown password reset email failure',
+  });
 
   return { userFound: true };
 }

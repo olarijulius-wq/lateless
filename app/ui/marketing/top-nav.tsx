@@ -4,6 +4,7 @@ import {
   MARKETING_CONTAINER_WIDE,
   MARKETING_SUBTLE_HOVER,
 } from '@/app/ui/marketing/tokens';
+import LatelessLogo from '@/app/ui/lateless-logo';
 
 const navAnchorClasses = `relative text-sm text-[color:var(--mk-fg-muted)] ${MARKETING_SUBTLE_HOVER} dark:after:absolute dark:after:bottom-[-6px] dark:after:left-0 dark:after:h-px dark:after:w-full dark:after:origin-left dark:after:scale-x-0 dark:after:bg-emerald-400/70 dark:after:transition-transform dark:after:duration-200 dark:hover:after:scale-x-100`;
 
@@ -11,8 +12,8 @@ export default function TopNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-[color:var(--mk-border)] bg-[color:var(--mk-bg)]/85 backdrop-blur-xl">
       <div className={`${MARKETING_CONTAINER_WIDE} flex h-16 items-center justify-between`}>
-        <Link href="/" className="text-base font-medium tracking-tight text-[var(--mk-fg-strong)]">
-          Lateless
+        <Link href="/" className="text-[var(--mk-fg-strong)]">
+          <LatelessLogo compact className="scale-[0.9] origin-left" />
         </Link>
 
         <nav aria-label="Primary" className="hidden items-center gap-6 md:flex">

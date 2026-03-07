@@ -15,6 +15,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import SocialAuthButtons from '@/app/(auth)/_components/social-auth-buttons';
 import authInputStyles from '@/app/(auth)/_components/auth-inputs.module.css';
+import { sanitizeRelativeCallbackPath } from '@/app/lib/auth-url';
 
 type LoginFormProps = {
   googleEnabled: boolean;
@@ -39,7 +40,10 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  const callbackUrl = sanitizeRelativeCallbackPath(
+    searchParams.get('callbackUrl'),
+    '/dashboard',
+  );
 
   const [state, formAction] = useActionState(
     authenticate,
@@ -178,6 +182,7 @@ export default function LoginForm({ googleEnabled, githubEnabled }: LoginFormPro
       <SocialAuthButtons
         googleEnabled={googleEnabled}
         githubEnabled={githubEnabled}
+        callbackUrl={callbackUrl}
       />
       <div className="flex items-center gap-3">
         <span className="h-px flex-1 bg-zinc-300 dark:bg-white/10" />

@@ -3,11 +3,12 @@
 import clsx from 'clsx';
 import { signIn } from 'next-auth/react';
 import type { ReactElement } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { sanitizeRelativeCallbackPath } from '@/app/lib/auth-url';
 
 type SocialAuthButtonsProps = {
   googleEnabled: boolean;
   githubEnabled: boolean;
+  callbackUrl?: string | null;
 };
 
 function GoogleIcon() {
@@ -31,10 +32,9 @@ function GitHubIcon() {
 export default function SocialAuthButtons({
   googleEnabled,
   githubEnabled,
+  callbackUrl,
 }: SocialAuthButtonsProps) {
-  const searchParams = useSearchParams();
-
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
+  const safeCallbackUrl = sanitizeRelativeCallbackPath(callbackUrl, '/dashboard');
   const items = [
     {
       id: 'google',
@@ -63,7 +63,7 @@ export default function SocialAuthButtons({
             key={item.id}
             type="button"
             onClick={
-              item.available ? () => signIn(item.id, { callbackUrl }) : undefined
+              item.available ? () => signIn(item.id, { callbackUrl: safeCallbackUrl }) : undefined
             }
             disabled={!item.available}
             className={clsx(

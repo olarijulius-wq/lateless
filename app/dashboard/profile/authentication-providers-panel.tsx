@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { useRouter } from 'next/navigation';
 import { Button, primaryButtonClasses } from '@/app/ui/button';
 import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
+import { sanitizeRelativeCallbackPath } from '@/app/lib/auth-url';
 
 type ProviderId = 'google' | 'github';
 
@@ -177,7 +178,9 @@ export function AuthenticationProvidersPanel({
                   setMessage(null);
                   setLinkingProvider(provider.id);
                   try {
-                    await signIn(provider.id, { callbackUrl: '/dashboard/profile' });
+                    await signIn(provider.id, {
+                      callbackUrl: sanitizeRelativeCallbackPath('/dashboard/profile'),
+                    });
                   } finally {
                     setLinkingProvider(null);
                   }

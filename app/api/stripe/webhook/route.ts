@@ -38,6 +38,24 @@ import { enforceRateLimit } from "@/app/lib/security/api-guard";
 
 export const runtime = "nodejs";
 
+type WebhookProcessOutcome = "processed" | "ignored";
+
+export const __testHooks: {
+  getStripeOverride: null | typeof getStripe;
+  processEventOverride: null | ((event: Stripe.Event) => Promise<WebhookProcessOutcome>);
+  assertStripeConfigOverride:
+    | null
+    | ((input: { expectedMode?: "test" | "live" }) => unknown);
+  createStripeRequestVerifierOverride: null | typeof createStripeRequestVerifier;
+  enforceRateLimitOverride: null | typeof enforceRateLimit;
+} = {
+  getStripeOverride: null,
+  processEventOverride: null,
+  assertStripeConfigOverride: null,
+  createStripeRequestVerifierOverride: null,
+  enforceRateLimitOverride: null,
+};
+
 const DEBUG = process.env.DEBUG_STRIPE_WEBHOOK === "true";
 const IS_PRODUCTION =
   process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
@@ -1267,8 +1285,9 @@ async function updateInvoiceActualFeeDetailsFromCharge({
   }
 }
 
-async function processEvent(event: Stripe.Event): Promise<void> {
-  const stripe = getStripe();
+async function processEvent(event: Stripe.Event): Promise<WebhookProcessOutcome> {
+  const stripe = (__testHooks.getStripeOverride ?? getStripe)();
+  let outcome: WebhookProcessOutcome = "ignored";
   let resolvedInvoiceId: string | null = null;
   let invoiceUpdateRows = 0;
   let billingStatusSignal: string | null = null;
@@ -1323,7 +1342,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
               workspaceId: metadataWorkspaceId ?? null,
             },
           );
-          return;
+          return outcome;
         }
 
         const stripeSubscription = await stripe.subscriptions.retrieve(
@@ -1360,8 +1379,9 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           },
         });
         if (!inserted) {
-          return;
+          return outcome;
         }
+        outcome = "processed";
 
         await syncPlanSnapshotAndCheckEffectiveness({
           event,
@@ -1392,7 +1412,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           userId: session.metadata?.userId ?? null,
           workspaceId: metadataWorkspaceId ?? null,
         });
-        return;
+        return outcome;
       }
     }
 
@@ -1419,7 +1439,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           paymentIntentId,
         },
       );
-      return;
+      return outcome;
     }
 
     debugLog("[stripe webhook] invoice resolution", {
@@ -1440,7 +1460,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       paymentIntentId,
       checkoutSessionId,
     });
-    if (!isValid) return;
+    if (!isValid) return outcome;
 
     resolvedInvoiceId = invoiceId;
     invoiceUpdateRows = await markInvoicePaid({
@@ -1451,6 +1471,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       eventAccount: event.account ?? null,
       eventType: event.type,
     });
+    outcome = "processed";
   }
 
   if (
@@ -1496,7 +1517,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           subscriptionId,
         },
       });
-      if (!workspace?.workspaceId) return;
+      if (!workspace?.workspaceId) return outcome;
 
       const inserted = await insertBillingEvent({
         workspaceId: workspace?.workspaceId ?? null,
@@ -1520,8 +1541,9 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         },
       });
       if (!inserted) {
-        return;
+        return outcome;
       }
+      outcome = "processed";
 
       if (workspace?.workspaceId) {
         await syncPlanSnapshotAndCheckEffectiveness({
@@ -1551,7 +1573,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         userId: sub.metadata?.userId ?? null,
         workspaceId: metadataWorkspaceId ?? null,
       });
-      return;
+      return outcome;
     }
   }
 
@@ -1581,7 +1603,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       },
     });
     if (!workspace?.workspaceId) {
-      return;
+      return outcome;
     }
 
     await upsertWorkspaceBilling({
@@ -1598,6 +1620,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       subscriptionId: sub.id,
       workspaceId: workspace.workspaceId,
     });
+    outcome = "processed";
   }
 
   if (event.type === "invoice.payment_failed") {
@@ -1639,7 +1662,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       },
     });
     if (!workspace?.workspaceId) {
-      return;
+      return outcome;
     }
 
     await upsertWorkspaceBilling({
@@ -1649,6 +1672,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscriptionId,
     });
+    outcome = "processed";
   }
 
   if (event.type === "invoice.payment_succeeded" || event.type === "invoice.paid") {
@@ -1694,7 +1718,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           subscriptionId,
         },
       });
-      if (!workspace?.workspaceId) return;
+      if (!workspace?.workspaceId) return outcome;
 
       const inserted = await insertBillingEvent({
         workspaceId: workspace?.workspaceId ?? null,
@@ -1713,8 +1737,9 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         },
       });
       if (!inserted) {
-        return;
+        return outcome;
       }
+      outcome = "processed";
 
       if (workspace?.workspaceId && subscriptionId) {
         const linePrice = invoiceAny.lines?.data?.[0]?.price;
@@ -1756,7 +1781,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           null,
         workspaceId: billingContextHints.metadataWorkspaceId ?? null,
       });
-      return;
+      return outcome;
     }
 
   }
@@ -1786,7 +1811,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           checkoutSessionId,
         },
       );
-      return;
+      return outcome;
     }
 
     debugLog("[stripe webhook] invoice resolution", {
@@ -1807,7 +1832,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       paymentIntentId,
       checkoutSessionId,
     });
-    if (!isValid) return;
+    if (!isValid) return outcome;
 
     resolvedInvoiceId = invoiceId;
     invoiceUpdateRows = await markInvoicePaid({
@@ -1818,6 +1843,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       eventAccount: event.account ?? null,
       eventType: event.type,
     });
+    outcome = "processed";
   }
 
   if (event.type === "payment_intent.payment_failed") {
@@ -1845,7 +1871,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           checkoutSessionId,
         },
       );
-      return;
+      return outcome;
     }
 
     const currentStatus = await findInvoiceStatusById(invoiceId);
@@ -1869,7 +1895,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       paymentIntentId,
       checkoutSessionId,
     });
-    if (!isValid) return;
+    if (!isValid) return outcome;
 
     resolvedInvoiceId = invoiceId;
     const intentStatus = String(intent.status ?? "").trim().toLowerCase();
@@ -1913,6 +1939,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         },
       );
     }
+    outcome = invoiceUpdateRows > 0 ? "processed" : outcome;
   }
 
   if (event.type === "charge.succeeded") {
@@ -1950,7 +1977,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         chargeId: charge.id,
         paymentIntentId,
       });
-      return;
+      return outcome;
     }
 
     const isValid = await validatePaidMutationOrWarn({
@@ -1963,7 +1990,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       checkoutSessionId,
       chargeId: charge.id ?? null,
     });
-    if (!isValid) return;
+    if (!isValid) return outcome;
 
     resolvedInvoiceId = invoiceId;
     invoiceUpdateRows = await markInvoicePaid({
@@ -1981,6 +2008,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       eventType: event.type,
       eventAccount: event.account ?? null,
     });
+    outcome = "processed";
   }
 
   if (event.type === "charge.refunded") {
@@ -2012,7 +2040,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         chargeId,
         paymentIntentId,
       });
-      return;
+      return outcome;
     }
 
     resolvedInvoiceId = invoiceId;
@@ -2045,7 +2073,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       checkoutSessionId,
       chargeId,
     });
-    if (!isValid) return;
+    if (!isValid) return outcome;
 
     const refundStatus = isPartialRefund ? "partially_refunded" : "refunded";
     const updated = await sql`
@@ -2083,6 +2111,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         skipReason,
       });
     }
+    outcome = invoiceUpdateRows > 0 ? "processed" : outcome;
   }
 
   if (
@@ -2156,7 +2185,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           paymentIntentId,
         },
       );
-      return;
+      return outcome;
     }
 
     resolvedInvoiceId = invoiceId;
@@ -2183,7 +2212,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       chargeId,
       disputeId: dispute.id,
     });
-    if (!isValid) return;
+    if (!isValid) return outcome;
 
     const updated = await sql`
       update invoices
@@ -2209,6 +2238,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         invoiceId,
       });
     }
+    outcome = invoiceUpdateRows > 0 ? "processed" : outcome;
   }
 
   if (
@@ -2284,7 +2314,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
           disputeStatus,
         },
       );
-      return;
+      return outcome;
     }
 
     resolvedInvoiceId = invoiceId;
@@ -2301,7 +2331,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         disputeStatus,
         invoiceId,
       });
-      return;
+      return outcome;
     }
 
     const isValid = await validateInvoiceMutationOrWarn({
@@ -2316,7 +2346,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       chargeId,
       disputeId: dispute.id,
     });
-    if (!isValid) return;
+    if (!isValid) return outcome;
 
     let updated: { id: string; status: string; paid_at: Date | null }[] = [];
     if (targetStatus === "paid") {
@@ -2360,6 +2390,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
       rows: invoiceUpdateRows,
       invoice: updated[0] ?? null,
     });
+    outcome = invoiceUpdateRows > 0 ? "processed" : outcome;
   }
 
   if (event.type === "account.updated") {
@@ -2391,6 +2422,7 @@ async function processEvent(event: Stripe.Event): Promise<void> {
         details_submitted: account.details_submitted,
       });
     }
+    outcome = "processed";
   }
 
   const shouldReconcileBillingRecovery =
@@ -2417,11 +2449,13 @@ async function processEvent(event: Stripe.Event): Promise<void> {
   if (resolvedInvoiceId && invoiceUpdateRows > 0) {
     revalidateInvoicePaths(resolvedInvoiceId);
   }
+
+  return outcome;
 }
 
 export async function POST(req: Request) {
-  const stripe = getStripe();
-  const rateLimitResponse = await enforceRateLimit(
+  const stripe = (__testHooks.getStripeOverride ?? getStripe)();
+  const rateLimitResponse = await (__testHooks.enforceRateLimitOverride ?? enforceRateLimit)(
     req,
     {
       bucket: "stripe_webhook",
@@ -2435,6 +2469,11 @@ export async function POST(req: Request) {
 
   const sig = req.headers.get("stripe-signature");
   if (!sig) {
+    console.warn("[stripe webhook] outcome=invalid_signature", {
+      id: null,
+      type: null,
+      reason: "missing_signature_header",
+    });
     return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 400 });
   }
 
@@ -2452,6 +2491,11 @@ export async function POST(req: Request) {
   try {
     event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
   } catch {
+    console.warn("[stripe webhook] outcome=invalid_signature", {
+      id: null,
+      type: null,
+      reason: "construct_event_failed",
+    });
     return NextResponse.json(
       { ok: false, error: "Invalid signature" },
       { status: 400 },
@@ -2465,9 +2509,14 @@ export async function POST(req: Request) {
   });
 
   try {
-    assertStripeConfig({ expectedMode: event.livemode ? "live" : "test" });
+    (__testHooks.assertStripeConfigOverride ?? assertStripeConfig)({
+      expectedMode: event.livemode ? "live" : "test",
+    });
     if (event.account) {
-      const verifier = createStripeRequestVerifier(stripe);
+      const verifier =
+        (__testHooks.createStripeRequestVerifierOverride ?? createStripeRequestVerifier)(
+          stripe,
+        );
       await verifier.verifyConnectedAccountAccess(event.account);
     }
   } catch (error) {
@@ -2491,8 +2540,8 @@ export async function POST(req: Request) {
       guidance: normalized.guidance,
     });
     return NextResponse.json(
-      { ok: false, code: normalized.code, error: normalized.guidance },
-      { status: 500 },
+      { ok: true, code: normalized.code, result: "ignored" },
+      { status: 200 },
     );
   }
 
@@ -2527,23 +2576,23 @@ export async function POST(req: Request) {
   }
 
   try {
-    await processEvent(event);
+    const outcome = await (__testHooks.processEventOverride ?? processEvent)(event);
 
     await sql`
       update public.stripe_webhook_events
       set
-        status = 'processed',
+        status = ${outcome},
         processed_at = now(),
         error = null
       where event_id = ${event.id}
     `;
 
-    console.log("[stripe webhook] outcome=processed", {
+    console.log(`[stripe webhook] outcome=${outcome}`, {
       id: event.id,
       type: event.type,
     });
     debugLog("[stripe webhook] processed", { id: event.id, type: event.type });
-    return NextResponse.json({ ok: true }, { status: 200 });
+    return NextResponse.json({ ok: true, result: outcome }, { status: 200 });
   } catch (err: unknown) {
     const message = stringifyErrorMessage(err);
     Sentry.captureException(err, {

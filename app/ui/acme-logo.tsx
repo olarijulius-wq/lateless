@@ -1,11 +1,5 @@
-import { lusitana } from '@/app/ui/fonts';
+import LatelessLogo from '@/app/ui/lateless-logo';
 
 export default function AcmeLogo() {
-  return (
-    <div
-      className={`${lusitana.className} flex flex-row items-center leading-none text-black dark:text-white`}
-    >
-      <p className="text-[44px]">Lateless</p>
-    </div>
-  );
+  return <LatelessLogo />;
 }
