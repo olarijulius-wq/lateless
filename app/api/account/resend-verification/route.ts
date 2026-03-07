@@ -60,6 +60,14 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Resend verification failed:', error);
+    return NextResponse.json(
+      {
+        ok: false,
+        code: 'VERIFICATION_EMAIL_SEND_FAILED',
+        message: 'Could not send verification email. Please try again.',
+      },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true });

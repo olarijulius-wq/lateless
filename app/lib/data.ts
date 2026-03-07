@@ -733,6 +733,7 @@ const DEFAULT_INVOICES_PAGE_SIZE = 50;
 const DEFAULT_CUSTOMERS_PAGE_SIZE = 50;
 const DEFAULT_LATE_PAYERS_PAGE_SIZE = 100;
 const DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE = 25;
+const INVOICE_LIST_SLOW_QUERY_MS = 750;
 
 function buildInvoicesOrderByClause(sortKey: InvoiceSortKey, sortDir: InvoiceSortDir) {
   if (sortKey === 'due_date') {
@@ -756,8 +757,8 @@ function buildInvoicesOrderByClause(sortKey: InvoiceSortKey, sortDir: InvoiceSor
       : sqlFragment`lower(invoices.status) DESC, invoices.date DESC, invoices.id DESC`;
   }
   return sortDir === 'asc'
-    ? sqlFragment`invoices.date ASC, invoices.id DESC`
-    : sqlFragment`invoices.date DESC, invoices.id DESC`;
+    ? sqlFragment`invoices.created_at ASC NULLS LAST, invoices.id DESC`
+    : sqlFragment`invoices.created_at DESC NULLS LAST, invoices.id DESC`;
 }
 
 function buildCustomerInvoicesOrderByClause(
@@ -862,6 +863,29 @@ function normalizeInvoicePageSize(pageSize: number | undefined): number {
   return DEFAULT_INVOICES_PAGE_SIZE;
 }
 
+function logInvoiceListQueryDuration(input: {
+  queryName: 'rows' | 'count';
+  durationMs: number;
+  pageSize: number;
+  currentPage?: number;
+  query: string;
+  statusFilter: InvoiceStatusFilter;
+  sortKey?: InvoiceSortKey;
+  sortDir?: InvoiceSortDir;
+}) {
+  const level = input.durationMs >= INVOICE_LIST_SLOW_QUERY_MS ? 'warn' : 'info';
+  console[level]('[invoices][query]', {
+    queryName: input.queryName,
+    durationMs: input.durationMs,
+    pageSize: input.pageSize,
+    currentPage: input.currentPage ?? null,
+    statusFilter: input.statusFilter,
+    sortKey: input.sortKey ?? null,
+    sortDir: input.sortDir ?? null,
+    hasSearchQuery: input.query.trim().length > 0,
+  });
+}
+
 function normalizeCustomerSortKey(sortKey: string | undefined): CustomerSortKey {
   if (
     sortKey === 'name' ||
@@ -956,7 +980,43 @@ export async function fetchFilteredInvoices(
   const orderByClause = buildInvoicesOrderByClause(safeSortKey, safeSortDir);
 
   try {
+    const startedAt = Date.now();
     const invoices = await sql<InvoicesTable[]>`
+      WITH page_invoice_ids AS (
+        SELECT invoices.id
+        FROM invoices
+        JOIN customers ON invoices.customer_id = customers.id
+        WHERE 1=1
+          AND ${renderScopeFilterEq(invoiceFilter)}
+          AND ${renderScopeFilterEq(customerFilter)}
+          AND (
+            ${safeStatusFilter} = 'all'
+            OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
+            OR (${safeStatusFilter} = 'refunded' AND invoices.status = 'refunded')
+            OR (${safeStatusFilter} = 'unpaid' AND invoices.status <> 'paid')
+            OR (
+              ${safeStatusFilter} = 'overdue'
+              AND (
+                invoices.status = 'overdue'
+                OR (
+                  invoices.due_date IS NOT NULL
+                  AND invoices.due_date < current_date
+                  AND invoices.status <> 'paid'
+                )
+              )
+            )
+          )
+          AND (
+            customers.name ILIKE ${`%${query}%`} OR
+            customers.email ILIKE ${`%${query}%`} OR
+            invoices.amount::text ILIKE ${`%${query}%`} OR
+            COALESCE(invoices.invoice_number, '') ILIKE ${`%${query}%`} OR
+            invoices.date::text ILIKE ${`%${query}%`} OR
+            invoices.status ILIKE ${`%${query}%`}
+          )
+        ORDER BY ${orderByClause}
+        LIMIT ${safePageSize} OFFSET ${offset}
+      )
       SELECT
         invoices.id,
         invoices.amount,
@@ -977,46 +1037,28 @@ export async function fetchFilteredInvoices(
         customers.name,
         customers.email,
         customers.image_url
-      FROM invoices
+      FROM page_invoice_ids
+      JOIN invoices ON invoices.id = page_invoice_ids.id
       JOIN customers ON invoices.customer_id = customers.id
-      left join lateral (
-        select status, sent_at, error
-        from public.invoice_email_logs l
-        where l.invoice_id = invoices.id
-        order by l.created_at desc
-        limit 1
-      ) logs on true
-      WHERE 1=1
-        AND ${renderScopeFilterEq(invoiceFilter)}
-        AND ${renderScopeFilterEq(customerFilter)}
-        AND (
-          ${safeStatusFilter} = 'all'
-          OR (${safeStatusFilter} = 'paid' AND invoices.status = 'paid')
-          OR (${safeStatusFilter} = 'refunded' AND invoices.status = 'refunded')
-          OR (${safeStatusFilter} = 'unpaid' AND invoices.status <> 'paid')
-          OR (
-            ${safeStatusFilter} = 'overdue'
-            AND (
-              invoices.status = 'overdue'
-              OR (
-                invoices.due_date IS NOT NULL
-                AND invoices.due_date < current_date
-                AND invoices.status <> 'paid'
-              )
-            )
-          )
-        )
-        AND (
-          customers.name ILIKE ${`%${query}%`} OR
-          customers.email ILIKE ${`%${query}%`} OR
-          invoices.amount::text ILIKE ${`%${query}%`} OR
-          COALESCE(invoices.invoice_number, '') ILIKE ${`%${query}%`} OR
-          invoices.date::text ILIKE ${`%${query}%`} OR
-          invoices.status ILIKE ${`%${query}%`}
-        )
+      LEFT JOIN LATERAL (
+        SELECT status, sent_at, error
+        FROM public.invoice_email_logs l
+        WHERE l.invoice_id = invoices.id
+        ORDER BY l.created_at DESC
+        LIMIT 1
+      ) logs ON true
       ORDER BY ${orderByClause}
-      LIMIT ${safePageSize} OFFSET ${offset}
     `;
+    logInvoiceListQueryDuration({
+      queryName: 'rows',
+      durationMs: Date.now() - startedAt,
+      pageSize: safePageSize,
+      currentPage: safeCurrentPage,
+      query,
+      statusFilter: safeStatusFilter,
+      sortKey: safeSortKey,
+      sortDir: safeSortDir,
+    });
 
     return invoices;
   } catch (error) {
@@ -1094,6 +1136,7 @@ export async function fetchInvoicesPages(
   const safePageSize = normalizeInvoicePageSize(pageSize);
 
   try {
+    const startedAt = Date.now();
     const data = await sql`
       SELECT COUNT(*)
       FROM invoices
@@ -1127,6 +1170,13 @@ export async function fetchInvoicesPages(
           invoices.status ILIKE ${`%${query}%`}
         )
     `;
+    logInvoiceListQueryDuration({
+      queryName: 'count',
+      durationMs: Date.now() - startedAt,
+      pageSize: safePageSize,
+      query,
+      statusFilter: safeStatusFilter,
+    });
 
     const totalPages = Math.ceil(Number(data[0].count) / safePageSize);
     return totalPages;

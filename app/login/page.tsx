@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { Metadata } from 'next';
 import Link from 'next/link';
 import AuthLayout from '@/app/(auth)/_components/auth-layout';
+import { sanitizeRelativeCallbackPath } from '@/app/lib/auth-url';
 
 export const metadata: Metadata = {
   title: 'Login',
@@ -31,11 +32,13 @@ export default async function LoginPage(props: LoginPageProps) {
   const verifiedAlready = searchParams?.verified === 'already';
   const resetSuccess = searchParams?.reset === 'success';
   const oauthAccountNotLinked = searchParams?.error === 'OAuthAccountNotLinked';
-  const callbackUrl =
+  const callbackUrl = sanitizeRelativeCallbackPath(
     searchParams?.callbackUrl ??
-    (searchParams?.plan
-      ? `/dashboard/settings/billing?plan=${searchParams.plan}${searchParams?.interval ? `&interval=${searchParams.interval}` : ''}`
-      : null);
+      (searchParams?.plan
+        ? `/dashboard/settings/billing?plan=${searchParams.plan}${searchParams?.interval ? `&interval=${searchParams.interval}` : ''}`
+        : null),
+    '/dashboard',
+  );
   const signupHref = callbackUrl
     ? `/signup?callbackUrl=${encodeURIComponent(callbackUrl)}`
     : '/signup';

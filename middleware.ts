@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import {
+  buildCanonicalAuthUrl,
+  getCanonicalAuthOrigin,
+} from '@/app/lib/auth-url';
 
 const PRIVATE_PATH_PREFIXES = [
   '/dashboard',
@@ -36,6 +40,15 @@ const CSRF_EXEMPT_API_PREFIXES = [
   '/api/auth/',
 ];
 
+const AUTH_ROUTE_PREFIXES = ['/api/auth/'];
+const PUBLIC_AUTH_PATHS = new Set([
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/verify',
+]);
+
 /**
  * Returns true when the request carries a recognized cron token header or
  * Authorization bearer token. Such requests originate from server-to-server
@@ -57,13 +70,37 @@ function hasCronTokenHeader(request: NextRequest): boolean {
   return false;
 }
 
-function isApiCsrfExempt(pathname: string): boolean {
+export function isApiCsrfExempt(pathname: string): boolean {
   // Exact-path exemptions first (most specific)
   if (CSRF_EXEMPT_API_EXACT_PATHS.has(pathname)) {
     return true;
   }
   // Prefix exemptions (public/auth routes)
   return CSRF_EXEMPT_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+export function isAuthRouteBypass(pathname: string): boolean {
+  if (AUTH_ROUTE_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return true;
+  }
+
+  if (PUBLIC_AUTH_PATHS.has(pathname)) {
+    return true;
+  }
+
+  return pathname.startsWith('/reset-password/') || pathname.startsWith('/verify/');
+}
+
+function shouldRedirectToCanonicalAuthHost(request: NextRequest): boolean {
+  if (!isAuthRouteBypass(request.nextUrl.pathname)) {
+    return false;
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    return false;
+  }
+
+  return request.nextUrl.origin !== getCanonicalAuthOrigin();
 }
 
 function isSameOrigin(value: string, expectedOrigin: string) {
@@ -86,6 +123,15 @@ function csrfFailureResponse() {
 }
 
 export function middleware(request: NextRequest) {
+  if (shouldRedirectToCanonicalAuthHost(request)) {
+    return NextResponse.redirect(
+      buildCanonicalAuthUrl(
+        `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      ),
+      308,
+    );
+  }
+
   const { pathname } = request.nextUrl;
   const method = request.method.toUpperCase();
   const requestHeaders = new Headers(request.headers);

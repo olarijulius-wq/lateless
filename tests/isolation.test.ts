@@ -37,6 +37,9 @@ async function resetDb() {
     truncate table
       public.refund_requests,
       public.invoice_email_logs,
+      public.stripe_webhook_events,
+      public.billing_events,
+      public.lifecycle_email_logs,
       public.company_profiles,
       public.invoices,
       public.customers,
@@ -235,11 +238,15 @@ async function run() {
     const accountPasswordResetRoute = await import('@/app/api/account/password-reset/route');
     const passwordResetModule = await import('@/app/lib/password-reset');
     const resendVerificationRoute = await import('@/app/api/account/resend-verification/route');
+    const signupRoute = await import('@/app/api/auth/register/route');
     const oauthRelinkModule = await import('@/app/lib/oauth-relink');
     const verificationEmailModule = await import('@/app/lib/verification-email');
     const actionsModule = await import('@/app/lib/actions');
     const loginStateModule = await import('@/app/lib/login-state');
     const passwordCtaCopyModule = await import('@/app/dashboard/profile/password-cta');
+    const authUrlModule = await import('@/app/lib/auth-url');
+    const middlewareModule = await import('@/middleware');
+    const stripeWebhookRoute = await import('@/app/api/stripe/webhook/route');
     const { authConfig } = await import('@/auth.config');
 
     let failures = 0;
@@ -295,6 +302,12 @@ async function run() {
         accountPasswordResetRoute.__testHooks.requestPasswordResetByEmailOverride = null;
         passwordResetModule.__testHooks.sendPasswordResetEmailOverride = null;
         verificationEmailModule.__testHooks.sendEmailVerificationOverride = null;
+        signupRoute.__testHooks.enforceRateLimitOverride = null;
+        stripeWebhookRoute.__testHooks.getStripeOverride = null;
+        stripeWebhookRoute.__testHooks.processEventOverride = null;
+        stripeWebhookRoute.__testHooks.assertStripeConfigOverride = null;
+        stripeWebhookRoute.__testHooks.createStripeRequestVerifierOverride = null;
+        stripeWebhookRoute.__testHooks.enforceRateLimitOverride = null;
         requestContextModule.__testHooks.reset();
       }
     }
@@ -383,6 +396,135 @@ async function run() {
         process.env.DIAGNOSTICS_ENABLED = previousDiagnosticsEnabled;
         process.env.INTERNAL_ADMIN_EMAILS = previousInternalAdmins;
       }
+    });
+
+    await runCase('signup returns 400 VALIDATION_ERROR for missing fields', async () => {
+      signupRoute.__testHooks.enforceRateLimitOverride = async () => null;
+
+      const response = await signupRoute.POST(
+        createNextRequest('http://localhost/api/auth/register', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            email: '',
+            password: '',
+            termsAccepted: false,
+          }),
+        }),
+      );
+
+      assert.equal(response.status, 400);
+      const payload = await response.json();
+      assert.equal(payload.ok, false);
+      assert.equal(payload.code, 'VALIDATION_ERROR');
+      assert.ok(payload.errors.email?.length);
+      assert.ok(payload.errors.password?.length);
+      assert.ok(payload.errors.termsAccepted?.length);
+    });
+
+    await runCase('signup creates user and issues verification email', async () => {
+      signupRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      let sentVerifyUrl: string | null = null;
+      verificationEmailModule.__testHooks.sendEmailVerificationOverride = async ({
+        verifyUrl,
+      }: {
+        verifyUrl: string;
+      }) => {
+        sentVerifyUrl = verifyUrl;
+      };
+
+      const response = await signupRoute.POST(
+        createNextRequest('http://localhost/api/auth/register', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            email: 'new-signup@example.com',
+            password: 'example-password',
+            termsAccepted: true,
+          }),
+        }),
+      );
+
+      assert.equal(response.status, 201);
+      const payload = await response.json();
+      assert.equal(payload.ok, true);
+      assert.equal(payload.code, 'SIGNUP_CREATED');
+
+      const [user] = await sql<{
+        email: string;
+        verification_token: string | null;
+        verification_sent_at: Date | null;
+      }[]>`
+        select email, verification_token, verification_sent_at
+        from public.users
+        where lower(email) = 'new-signup@example.com'
+        limit 1
+      `;
+
+      assert.equal(user?.email, 'new-signup@example.com');
+      assert.ok(user?.verification_token);
+      assert.ok(user?.verification_sent_at);
+      assert.ok((sentVerifyUrl ?? '').includes('/verify/'));
+    });
+
+    await runCase('signup returns 409 EMAIL_ALREADY_EXISTS when email exists', async () => {
+      signupRoute.__testHooks.enforceRateLimitOverride = async () => null;
+
+      await sql`
+        insert into public.users (id, name, email, password, is_verified)
+        values (
+          '9f0f5a07-8a5e-4db7-8e70-d152a0c99021',
+          'Existing Signup User',
+          'existing-signup@example.com',
+          '$2b$10$uD50r8jflxRQQ6MShwbVVuAVrkMtk0iA0WIMRqjYOEoTP0TO.Zi5q',
+          true
+        )
+      `;
+
+      const response = await signupRoute.POST(
+        createNextRequest('http://localhost/api/auth/register', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            email: 'existing-signup@example.com',
+            password: 'example-password',
+            termsAccepted: true,
+          }),
+        }),
+      );
+
+      assert.equal(response.status, 409);
+      const payload = await response.json();
+      assert.equal(payload.ok, false);
+      assert.equal(payload.code, 'EMAIL_ALREADY_EXISTS');
+    });
+
+    await runCase('auth callback URL stays on canonical host and middleware allowlist includes auth routes', async () => {
+      const safeRelative = authUrlModule.sanitizeRelativeCallbackPath(
+        'https://preview.lateless.vercel.app/dashboard/profile',
+        '/dashboard',
+      );
+      assert.equal(safeRelative, '/dashboard');
+
+      const canonicalAbsolute = authUrlModule.resolveCanonicalCallbackUrl(
+        'https://lateless.org/dashboard/profile?from=google',
+        '/dashboard',
+      );
+      assert.equal(
+        canonicalAbsolute,
+        'http://localhost:3000/dashboard/profile?from=google',
+      );
+
+      assert.equal(
+        middlewareModule.isAuthRouteBypass('/api/auth/callback/google'),
+        true,
+      );
+      assert.equal(
+        middlewareModule.isAuthRouteBypass('/api/auth/session'),
+        true,
+      );
+      assert.equal(middlewareModule.isApiCsrfExempt('/api/auth/session'), true);
+      assert.equal(middlewareModule.isApiCsrfExempt('/api/stripe/webhook'), true);
     });
 
     await runCase('stripe workspace metadata parser prefers workspace_id', async () => {
@@ -1808,7 +1950,7 @@ async function run() {
       `;
 
       verificationEmailModule.__testHooks.sendEmailVerificationOverride = async () => {
-        throw new Error('verification send failed test path');
+        throw new Error('verification send failed Bearer resend-secret-token');
       };
 
       const response = await resendVerificationRoute.POST(
@@ -1822,9 +1964,9 @@ async function run() {
         }),
       );
 
-      assert.equal(response.status, 200);
+      assert.equal(response.status, 500);
       const payload = await response.json();
-      assert.equal(payload.ok, true);
+      assert.equal(payload.ok, false);
 
       const [user] = await sql<{
         verification_token: string | null;
@@ -1852,7 +1994,140 @@ async function run() {
       `;
       assert.equal(log?.status, 'failed');
       assert.equal(log?.sent_at, null);
-      assert.match(log?.error_message ?? '', /verification send failed test path/);
+      assert.match(log?.error_message ?? '', /Bearer \[redacted\]/);
+      assert.doesNotMatch(log?.error_message ?? '', /resend-secret-token/);
+    });
+
+    await runCase('stripe webhook returns 400 for invalid signature', async () => {
+      stripeWebhookRoute.__testHooks.getStripeOverride = () =>
+        ({
+          webhooks: {
+            constructEvent() {
+              throw new Error('invalid signature');
+            },
+          },
+        }) as never;
+      stripeWebhookRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_signature';
+
+      const response = await stripeWebhookRoute.POST(
+        createNextRequest('http://localhost/api/stripe/webhook', {
+          method: 'POST',
+          headers: {
+            'stripe-signature': 'bad-signature',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ id: 'evt_invalid' }),
+        }),
+      );
+
+      assert.equal(response.status, 400);
+      const payload = await response.json();
+      assert.equal(payload.ok, false);
+    });
+
+    await runCase('stripe webhook returns 200 for ignored event', async () => {
+      const ignoredEvent = {
+        id: 'evt_ignored_1',
+        type: 'customer.created',
+        livemode: false,
+        account: null,
+        data: { object: { id: 'cus_ignored' } },
+      };
+
+      stripeWebhookRoute.__testHooks.getStripeOverride = () =>
+        ({
+          webhooks: {
+            constructEvent() {
+              return ignoredEvent;
+            },
+          },
+        }) as never;
+      stripeWebhookRoute.__testHooks.assertStripeConfigOverride = () =>
+        ({
+          secretKeyMasked: '****1234',
+          secretKeyMode: 'test',
+          environment: 'development',
+        }) as never;
+      stripeWebhookRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_signature';
+
+      const response = await stripeWebhookRoute.POST(
+        createNextRequest('http://localhost/api/stripe/webhook', {
+          method: 'POST',
+          headers: {
+            'stripe-signature': 'good-signature',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(ignoredEvent),
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.ok, true);
+      assert.equal(payload.result, 'ignored');
+    });
+
+    await runCase('stripe webhook returns 200 for handled event and records ledger row', async () => {
+      const handledEvent = {
+        id: 'evt_processed_1',
+        type: 'checkout.session.completed',
+        livemode: false,
+        account: null,
+        data: { object: { id: 'cs_test_123' } },
+      };
+
+      let processedEventId: string | null = null;
+      stripeWebhookRoute.__testHooks.getStripeOverride = () =>
+        ({
+          webhooks: {
+            constructEvent() {
+              return handledEvent;
+            },
+          },
+        }) as never;
+      stripeWebhookRoute.__testHooks.assertStripeConfigOverride = () =>
+        ({
+          secretKeyMasked: '****1234',
+          secretKeyMode: 'test',
+          environment: 'development',
+        }) as never;
+      stripeWebhookRoute.__testHooks.processEventOverride = async (event) => {
+        processedEventId = event.id;
+        return 'processed';
+      };
+      stripeWebhookRoute.__testHooks.enforceRateLimitOverride = async () => null;
+      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test_signature';
+
+      const response = await stripeWebhookRoute.POST(
+        createNextRequest('http://localhost/api/stripe/webhook', {
+          method: 'POST',
+          headers: {
+            'stripe-signature': 'good-signature',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(handledEvent),
+        }),
+      );
+
+      assert.equal(response.status, 200);
+      const payload = await response.json();
+      assert.equal(payload.ok, true);
+      assert.equal(payload.result, 'processed');
+      assert.equal(processedEventId, handledEvent.id);
+
+      const [ledgerRow] = await sql<{
+        event_id: string;
+        status: string;
+      }[]>`
+        select event_id, status
+        from public.stripe_webhook_events
+        where event_id = ${handledEvent.id}
+        limit 1
+      `;
+      assert.equal(ledgerRow?.event_id, handledEvent.id);
+      assert.equal(ledgerRow?.status, 'processed');
     });
 
     await runCase('oauth-only user cannot disconnect last provider', async () => {

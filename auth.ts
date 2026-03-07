@@ -10,6 +10,10 @@ import type { User } from '@/app/lib/definitions';
 import { sql } from '@/app/lib/db';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
+import {
+  getCanonicalAuthOrigin,
+  resolveCanonicalCallbackUrl,
+} from '@/app/lib/auth-url';
 
 /**
  * Compute the HMAC used for 2FA bypass nonces. This is a server-only helper;
@@ -349,14 +353,8 @@ function PostgresAuthAdapter(): Adapter {
   };
 }
 
-const rawAuthUrl = process.env.AUTH_URL;
-const normalizedAuthUrl =
-  rawAuthUrl?.replace(/\/api\/auth\/?$/, '') || rawAuthUrl || '';
-const resolvedBaseUrl = process.env.NEXTAUTH_URL || normalizedAuthUrl;
-
-if (!process.env.NEXTAUTH_URL && resolvedBaseUrl) {
-  process.env.NEXTAUTH_URL = resolvedBaseUrl;
-}
+const resolvedBaseUrl = getCanonicalAuthOrigin();
+process.env.NEXTAUTH_URL = resolvedBaseUrl;
 
 if (process.env.NODE_ENV !== 'production') {
   console.info('[auth][debug] env', {
@@ -414,6 +412,61 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     strategy: 'jwt',
   },
   trustHost: true,
+  cookies: {
+    sessionToken: {
+      name: `${resolvedBaseUrl.startsWith('https://') ? '__Secure-' : ''}authjs.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: resolvedBaseUrl.startsWith('https://'),
+      },
+    },
+    callbackUrl: {
+      name: `${resolvedBaseUrl.startsWith('https://') ? '__Secure-' : ''}authjs.callback-url`,
+      options: {
+        sameSite: 'lax',
+        path: '/',
+        secure: resolvedBaseUrl.startsWith('https://'),
+      },
+    },
+    csrfToken: {
+      name: `${resolvedBaseUrl.startsWith('https://') ? '__Host-' : ''}authjs.csrf-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: resolvedBaseUrl.startsWith('https://'),
+      },
+    },
+    pkceCodeVerifier: {
+      name: `${resolvedBaseUrl.startsWith('https://') ? '__Secure-' : ''}authjs.pkce.code_verifier`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: resolvedBaseUrl.startsWith('https://'),
+      },
+    },
+    state: {
+      name: `${resolvedBaseUrl.startsWith('https://') ? '__Secure-' : ''}authjs.state`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: resolvedBaseUrl.startsWith('https://'),
+      },
+    },
+    nonce: {
+      name: `${resolvedBaseUrl.startsWith('https://') ? '__Secure-' : ''}authjs.nonce`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: resolvedBaseUrl.startsWith('https://'),
+      },
+    },
+  },
   secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
   logger: {
     error(code, ...message) {
@@ -609,6 +662,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     ...authConfig.callbacks,
+    async redirect({ url }) {
+      return resolveCanonicalCallbackUrl(url, '/dashboard');
+    },
     async signIn({ user, account, profile }) {
       if (!account || account.provider === 'credentials') {
         return true;

@@ -15,13 +15,14 @@ import {
   sendTwoFactorCodeEmail,
 } from '@/app/lib/email';
 import { requestPasswordResetByEmail } from '@/app/lib/password-reset';
-import { issueAndSendVerificationEmail } from '@/app/lib/verification-email';
 import { initialLoginState, type LoginState } from '@/app/lib/login-state';
 import { logFunnelEvent } from '@/app/lib/funnel-events';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveBillingContext } from '@/app/lib/workspace-billing';
 import { isDbDnsResolutionError, sql } from '@/app/lib/db';
+import { sanitizeRelativeCallbackPath } from '@/app/lib/auth-url';
+import { createUserFromSignup, signupSchema } from '@/app/lib/signup';
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
@@ -961,17 +962,6 @@ export async function saveCompanyProfile(
   }
 }
 
-const SignupSchema = z.object({
-  name: z.string().trim().optional(),
-  email: z.string().email({ message: 'Please enter a valid email address.' }),
-  password: z.string().min(6, { message: 'Password must be at least 6 characters.' }),
-  termsAccepted: z.literal(true, {
-    errorMap: () => ({
-      message: 'You must agree to the Terms and acknowledge the Privacy Policy.',
-    }),
-  }),
-});
-
 export type SignupState = {
   errors?: {
     name?: string[];
@@ -983,7 +973,7 @@ export type SignupState = {
 };
 
 export async function registerUser(prevState: SignupState, formData: FormData) {
-  const validated = SignupSchema.safeParse({
+  const validated = signupSchema.safeParse({
     name: formData.get('name'),
     email: formData.get('email'),
     password: formData.get('password'),
@@ -993,52 +983,16 @@ export async function registerUser(prevState: SignupState, formData: FormData) {
   if (!validated.success) {
     return {
       errors: validated.error.flatten().fieldErrors,
-      message: 'Missing fields. Failed to create account.',
+      message: 'Please correct the highlighted fields and try again.',
     };
   }
 
-  const { name, email, password } = validated.data;
-  const normalizedEmail = normalizeEmail(email);
-  const resolvedName = name?.trim() || nameFromEmail(normalizedEmail);
-
-  let userId: string | null = null;
-
-  try {
-    const existing = await sql`
-      select id from users where lower(email) = ${normalizedEmail} limit 1
-    `;
-    if (existing.length > 0) {
-      return { message: 'An account with this email already exists.' };
-    }
-
-    const password_hash = await bcrypt.hash(password, 10);
-
-    const [inserted] = await sql<{ id: string }[]>`
-      insert into users (name, email, password)
-      values (${resolvedName}, ${normalizedEmail}, ${password_hash})
-      returning id
-    `;
-    userId = inserted?.id ?? null;
-  } catch {
-    return { message: 'Database error: failed to create account.' };
-  }
-
-  if (userId) {
-    try {
-      await issueAndSendVerificationEmail({
-        userId,
-        email: normalizedEmail,
-      });
-    } catch (error) {
-      console.error('Email verification setup failed:', error);
-    }
-
-    await logFunnelEvent({
-      userEmail: normalizedEmail,
-      eventName: 'signup_completed',
-      source: 'signup',
-      meta: { userId },
-    });
+  const result = await createUserFromSignup(validated.data);
+  if (!result.body.ok) {
+    return {
+      errors: result.body.errors,
+      message: result.body.message,
+    };
   }
 
   const callbackUrlRaw = formData.get('callbackUrl');
@@ -1085,7 +1039,10 @@ export async function authenticate(
 
   const normalizedEmail = normalizeEmail(validated.data.email);
   const password = validated.data.password;
-  const redirectTo = formData.get('redirectTo')?.toString() || '/dashboard';
+  const redirectTo = sanitizeRelativeCallbackPath(
+    formData.get('redirectTo')?.toString(),
+    '/dashboard',
+  );
 
   try {
     const rate = await checkRateLimit(
@@ -1277,7 +1234,10 @@ export async function verifyTwoFactorCode(
 
   const codeInput = formData.get('code');
   const code = typeof codeInput === 'string' ? codeInput.trim() : '';
-  const redirectTo = formData.get('redirectTo')?.toString() || '/dashboard';
+  const redirectTo = sanitizeRelativeCallbackPath(
+    formData.get('redirectTo')?.toString(),
+    '/dashboard',
+  );
 
   if (!/^\d{6}$/.test(code)) {
     return {

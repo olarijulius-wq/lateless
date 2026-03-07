@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import SignupForm from '@/app/ui/signup-form';
 import AuthLayout from '@/app/(auth)/_components/auth-layout';
+import { sanitizeRelativeCallbackPath } from '@/app/lib/auth-url';
 
 export const metadata: Metadata = {
   title: 'Sign up',
@@ -20,7 +21,10 @@ type SignupPageProps = {
 
 export default async function Page(props: SignupPageProps) {
   const searchParams = await props.searchParams;
-  const callbackUrl = searchParams?.callbackUrl ?? null;
+  const callbackUrl = sanitizeRelativeCallbackPath(
+    searchParams?.callbackUrl ?? null,
+    '/dashboard',
+  );
   const loginHref = callbackUrl
     ? `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
     : '/login';
