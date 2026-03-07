@@ -40,7 +40,11 @@ export default async function Page(props: {
     interval?: string;
   }>;
 }) {
-  await setRequestMetricsMeta({ route: '/dashboard/invoices', method: 'GET' });
+  await setRequestMetricsMeta({
+    route: '/dashboard/invoices',
+    method: 'GET',
+    requestScope: true,
+  });
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) > 0 ? Number(searchParams?.page) : 1;

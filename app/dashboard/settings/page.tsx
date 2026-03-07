@@ -40,7 +40,11 @@ export default async function SettingsPage(props: {
     interval?: string;
   }>;
 }) {
-  await setRequestMetricsMeta({ route: '/dashboard/settings', method: 'GET' });
+  await setRequestMetricsMeta({
+    route: '/dashboard/settings',
+    method: 'GET',
+    requestScope: true,
+  });
   const searchParams = await props.searchParams;
   const hasBillingParams =
     searchParams?.success ||

@@ -20,6 +20,7 @@ import { PLAN_CONFIG, resolveEffectivePlan, type PlanId } from './config';
 import { fetchCurrentMonthInvoiceMetricCount } from '@/app/lib/usage';
 import {
   getRequestCachedValue,
+  hasRequestScope,
   getRequestMetricsMeta,
   recordRequestQueryLog,
 } from '@/app/lib/request-context';
@@ -1905,33 +1906,22 @@ export type UserInvoiceUsageProgress = {
 };
 
 export async function fetchUserPlanAndUsage(): Promise<UserPlanUsage> {
-  const session = await auth();
-  const email = session?.user?.email;
-  const freeLimit = PLAN_CONFIG.free.maxPerMonth;
-
-  // Kui mingil põhjusel sessiooni pole, käitume kui free user 0 invoice’iga
-  if (!email) {
-    return {
-      plan: 'free' as PlanId,
-      isPro: false,
-      subscriptionStatus: null as string | null,
-      cancelAtPeriodEnd: false,
-      currentPeriodEnd: null as Date | string | null,
-      invoiceCount: 0,
-      maxPerMonth: freeLimit,
-    };
+  if (
+    !hasRequestScope() &&
+    !(TEST_HOOKS_ENABLED && __testHooks.requireWorkspaceContextOverride)
+  ) {
+    throw new Error('fetchUserPlanAndUsage requires request scope or test override');
   }
 
-  const normalizedEmail = normalizeEmail(email);
-  const workspaceContext = await requireWorkspaceContext();
+  const workspaceContext = await resolveScopedDataWorkspaceContext();
 
   const billing = await resolveBillingContext({
     workspaceId: workspaceContext.workspaceId,
-    userEmail: normalizedEmail,
+    userEmail: workspaceContext.userEmail,
   });
 
   const invoiceMetricUsage = await fetchCurrentMonthInvoiceMetricCount({
-    userEmail: normalizedEmail,
+    userEmail: workspaceContext.userEmail,
     workspaceId: workspaceContext.workspaceId,
     metric: 'created',
   });

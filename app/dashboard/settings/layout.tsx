@@ -10,7 +10,11 @@ export default async function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await setRequestMetricsMeta({ route: '/dashboard/settings', method: 'GET' });
+  await setRequestMetricsMeta({
+    route: '/dashboard/settings',
+    method: 'GET',
+    requestScope: true,
+  });
   const context = await ensureWorkspaceContextForCurrentUser();
   const sections = buildSettingsSections({
     userEmail: context.userEmail,

@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 };
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  await setRequestMetricsMeta({ route: '/dashboard', method: 'GET' });
+  await setRequestMetricsMeta({ route: '/dashboard', method: 'GET', requestScope: true });
   const session = await getRequestAuthSession();
   const sessionUser = session?.user as { id?: string; email?: string } | undefined;
   if (!sessionUser?.email?.trim() && !sessionUser?.id?.trim()) {

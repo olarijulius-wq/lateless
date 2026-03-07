@@ -5,6 +5,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 type RequestMetricsMeta = {
   route: string;
   method: string;
+  requestScope?: boolean;
 };
 
 type RequestMetricsSummary = {
@@ -56,6 +57,7 @@ function createStore(meta?: Partial<RequestMetricsMeta>): RequestMetricsStore {
   return {
     route: normalizeRoute(meta?.route),
     method: normalizeMethod(meta?.method),
+    requestScope: meta?.requestScope === true,
     queryCount: 0,
     warned: false,
     finalized: false,
@@ -72,6 +74,9 @@ async function ensureRequestMetricsStore(meta?: Partial<RequestMetricsMeta>) {
     }
     if (meta?.method) {
       existingStore.method = normalizeMethod(meta.method);
+    }
+    if (meta?.requestScope === true) {
+      existingStore.requestScope = true;
     }
     return existingStore;
   }
@@ -128,7 +133,12 @@ export function getRequestMetricsMeta(): RequestMetricsMeta {
   return {
     route: normalizeRoute(store?.route),
     method: normalizeMethod(store?.method),
+    requestScope: store?.requestScope === true,
   };
+}
+
+export function hasRequestScope(): boolean {
+  return requestMetricsStorage.getStore()?.requestScope === true;
 }
 
 export function recordRequestQueryLog(label: string, durationMs: number) {

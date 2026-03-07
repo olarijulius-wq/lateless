@@ -37,7 +37,11 @@ export default async function Page(props: {
     updatedCustomer?: string;
   }>;
 }) {
-  await setRequestMetricsMeta({ route: '/dashboard/customers', method: 'GET' });
+  await setRequestMetricsMeta({
+    route: '/dashboard/customers',
+    method: 'GET',
+    requestScope: true,
+  });
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) > 0 ? Number(searchParams?.page) : 1;
