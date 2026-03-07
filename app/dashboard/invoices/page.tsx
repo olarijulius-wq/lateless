@@ -21,6 +21,7 @@ import InvoicesListControls from '@/app/ui/invoices/list-controls';
 import InvoicesUpdatedToast from '@/app/ui/invoices/updated-toast';
 import DashboardPageTitle from '@/app/ui/dashboard/page-title';
 import { setRequestMetricsMeta } from '@/app/lib/request-context';
+import { startDashboardRouteTrace } from '@/app/lib/dashboard-debug';
 
 export const metadata: Metadata = {
   title: 'Invoices',
@@ -40,6 +41,7 @@ export default async function Page(props: {
     interval?: string;
   }>;
 }) {
+  const finishRouteTrace = startDashboardRouteTrace({ route: '/dashboard/invoices' });
   await setRequestMetricsMeta({
     route: '/dashboard/invoices',
     method: 'GET',
@@ -98,6 +100,11 @@ export default async function Page(props: {
     fetchUserInvoiceUsageProgress(),
     fetchInvoicePayActionContext(),
   ]);
+  finishRouteTrace({
+    invoiceCount: invoices.length,
+    totalPages,
+    workspaceBillingMissing: payActionContext.workspaceBillingMissing,
+  });
 
   const { planId, usedThisMonth, maxPerMonth, percentUsed } = usage;
   const isBlocked = maxPerMonth !== null && percentUsed >= 1;

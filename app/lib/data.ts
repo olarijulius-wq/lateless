@@ -24,6 +24,7 @@ import {
   getRequestMetricsMeta,
   recordRequestQueryLog,
 } from '@/app/lib/request-context';
+import { logDashboardQuery } from '@/app/lib/dashboard-debug';
 import { requireWorkspaceContext } from '@/app/lib/workspace-context';
 import { resolveDbConnectionConfig, sql, sqlFragment } from './db';
 
@@ -751,7 +752,6 @@ const DEFAULT_INVOICES_PAGE_SIZE = 50;
 const DEFAULT_CUSTOMERS_PAGE_SIZE = 50;
 const DEFAULT_LATE_PAYERS_PAGE_SIZE = 100;
 const DEFAULT_CUSTOMER_INVOICES_PAGE_SIZE = 25;
-const INVOICE_LIST_SLOW_QUERY_MS = 750;
 
 function buildInvoicesOrderByClause(sortKey: InvoiceSortKey, sortDir: InvoiceSortDir) {
   if (sortKey === 'due_date') {
@@ -910,22 +910,23 @@ function logInvoiceListQueryDuration(input: {
   sortKey?: InvoiceSortKey;
   sortDir?: InvoiceSortDir;
 }) {
-  const level = input.durationMs >= INVOICE_LIST_SLOW_QUERY_MS ? 'warn' : 'info';
   const { route, method } = getRequestMetricsMeta();
   const label = `invoices.${input.queryName}`;
   recordRequestQueryLog(label, input.durationMs);
-  console[level]('[dashboard][query]', {
+  logDashboardQuery({
     route,
     method,
     label,
-    queryName: input.queryName,
     durationMs: input.durationMs,
-    pageSize: input.pageSize,
-    currentPage: input.currentPage ?? null,
-    statusFilter: input.statusFilter,
-    sortKey: input.sortKey ?? null,
-    sortDir: input.sortDir ?? null,
-    hasSearchQuery: input.query.trim().length > 0,
+    details: {
+      queryName: input.queryName,
+      pageSize: input.pageSize,
+      currentPage: input.currentPage ?? null,
+      statusFilter: input.statusFilter,
+      sortKey: input.sortKey ?? null,
+      sortDir: input.sortDir ?? null,
+      hasSearchQuery: input.query.trim().length > 0,
+    },
   });
 }
 
@@ -938,21 +939,22 @@ function logCustomerListQueryDuration(input: {
   sortKey?: CustomerSortKey;
   sortDir?: CustomerSortDir;
 }) {
-  const level = input.durationMs >= INVOICE_LIST_SLOW_QUERY_MS ? 'warn' : 'info';
   const { route, method } = getRequestMetricsMeta();
   const label = `customers.${input.queryName}`;
   recordRequestQueryLog(label, input.durationMs);
-  console[level]('[dashboard][query]', {
+  logDashboardQuery({
     route,
     method,
     label,
-    queryName: input.queryName,
     durationMs: input.durationMs,
-    pageSize: input.pageSize,
-    currentPage: input.currentPage ?? null,
-    sortKey: input.sortKey ?? null,
-    sortDir: input.sortDir ?? null,
-    hasSearchQuery: input.query.trim().length > 0,
+    details: {
+      queryName: input.queryName,
+      pageSize: input.pageSize,
+      currentPage: input.currentPage ?? null,
+      sortKey: input.sortKey ?? null,
+      sortDir: input.sortDir ?? null,
+      hasSearchQuery: input.query.trim().length > 0,
+    },
   });
 }
 
@@ -1028,6 +1030,34 @@ function normalizeLatePayerPageSize(pageSize: number | undefined): number {
     return pageSize;
   }
   return DEFAULT_LATE_PAYERS_PAGE_SIZE;
+}
+
+function logLatePayerQueryDuration(input: {
+  queryName: 'rows' | 'count';
+  durationMs: number;
+  pageSize: number;
+  currentPage?: number;
+  query: string;
+  sortKey?: LatePayerSortKey;
+  sortDir?: LatePayerSortDir;
+}) {
+  const { route, method } = getRequestMetricsMeta();
+  const label = `late_payers.${input.queryName}`;
+  recordRequestQueryLog(label, input.durationMs);
+  logDashboardQuery({
+    route,
+    method,
+    label,
+    durationMs: input.durationMs,
+    details: {
+      queryName: input.queryName,
+      pageSize: input.pageSize,
+      currentPage: input.currentPage ?? null,
+      sortKey: input.sortKey ?? null,
+      sortDir: input.sortDir ?? null,
+      hasSearchQuery: input.query.trim().length > 0,
+    },
+  });
 }
 
 export async function fetchFilteredInvoices(
@@ -1652,6 +1682,7 @@ export async function fetchLatePayerStats(
   const orderByClause = buildLatePayersOrderByClause(safeSortKey, safeSortDir);
 
   try {
+    const startedAt = Date.now();
     const data = await sql<LatePayerStat[]>`
       SELECT
         customers.id AS customer_id,
@@ -1690,6 +1721,15 @@ export async function fetchLatePayerStats(
       ORDER BY ${orderByClause}
       LIMIT ${safePageSize} OFFSET ${offset}
     `;
+    logLatePayerQueryDuration({
+      queryName: 'rows',
+      durationMs: Date.now() - startedAt,
+      pageSize: safePageSize,
+      currentPage: safeCurrentPage,
+      query,
+      sortKey: safeSortKey,
+      sortDir: safeSortDir,
+    });
 
     return data;
   } catch (error) {
@@ -1705,6 +1745,7 @@ export async function fetchLatePayerPages(query: string = '', pageSize: number =
   const safePageSize = normalizeLatePayerPageSize(pageSize);
 
   try {
+    const startedAt = Date.now();
     const data = await sql`
       SELECT COUNT(*)
       FROM (
@@ -1733,6 +1774,12 @@ export async function fetchLatePayerPages(query: string = '', pageSize: number =
         GROUP BY customers.id
       ) late_payers
     `;
+    logLatePayerQueryDuration({
+      queryName: 'count',
+      durationMs: Date.now() - startedAt,
+      pageSize: safePageSize,
+      query,
+    });
 
     return Math.ceil(Number(data[0].count) / safePageSize);
   } catch (error) {
