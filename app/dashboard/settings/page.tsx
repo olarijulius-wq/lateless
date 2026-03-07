@@ -8,6 +8,7 @@ import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interacti
 import { CARD_INTERACTIVE, LIGHT_SURFACE } from '@/app/ui/theme/tokens';
 import { buildSettingsSections } from '@/app/lib/settings-sections';
 import { setRequestMetricsMeta } from '@/app/lib/request-context';
+import { startDashboardRouteTrace } from '@/app/lib/dashboard-debug';
 
 export const metadata: Metadata = {
   title: 'Settings',
@@ -40,6 +41,7 @@ export default async function SettingsPage(props: {
     interval?: string;
   }>;
 }) {
+  const finishRouteTrace = startDashboardRouteTrace({ route: '/dashboard/settings' });
   await setRequestMetricsMeta({
     route: '/dashboard/settings',
     method: 'GET',
@@ -66,6 +68,11 @@ export default async function SettingsPage(props: {
     userEmail: context.userEmail,
     userRole: context.userRole,
     diagnosticsEnabled: diagnosticsEnabled(),
+  });
+  finishRouteTrace({
+    userId: context.userId,
+    workspaceId: context.workspaceId,
+    sectionCount: sections.length,
   });
 
   return (

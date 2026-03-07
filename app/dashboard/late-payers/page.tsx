@@ -16,6 +16,7 @@ import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import { fetchWorkspaceDunningState } from '@/app/lib/billing-dunning';
 import DashboardPageTitle from '@/app/ui/dashboard/page-title';
 import { setRequestMetricsMeta } from '@/app/lib/request-context';
+import { startDashboardRouteTrace } from '@/app/lib/dashboard-debug';
 
 export const metadata: Metadata = {
   title: 'Late payers',
@@ -37,6 +38,7 @@ type LatePayersPageSearchParams = {
 export default async function Page(props: {
   searchParams?: Promise<LatePayersPageSearchParams>;
 }) {
+  const finishRouteTrace = startDashboardRouteTrace({ route: '/dashboard/late-payers' });
   await setRequestMetricsMeta({
     route: '/dashboard/late-payers',
     method: 'GET',
@@ -84,6 +86,12 @@ export default async function Page(props: {
   }
   const isEmpty = latePayers.length === 0;
   const totalLatePayers = latePayers.length;
+  finishRouteTrace({
+    latePayerCount: totalLatePayers,
+    totalPages,
+    canView,
+    showRecoveryWarning,
+  });
 
   return (
     <div className="space-y-4">

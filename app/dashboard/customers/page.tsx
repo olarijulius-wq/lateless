@@ -20,6 +20,7 @@ import CustomersUpdatedToast from '@/app/ui/customers/updated-toast';
 import DashboardPageTitle from '@/app/ui/dashboard/page-title';
 import { getRequestAuthSession } from '@/app/lib/workspaces';
 import { setRequestMetricsMeta } from '@/app/lib/request-context';
+import { startDashboardRouteTrace } from '@/app/lib/dashboard-debug';
 
 export const metadata: Metadata = {
   title: 'Customers',
@@ -37,6 +38,7 @@ export default async function Page(props: {
     updatedCustomer?: string;
   }>;
 }) {
+  const finishRouteTrace = startDashboardRouteTrace({ route: '/dashboard/customers' });
   await setRequestMetricsMeta({
     route: '/dashboard/customers',
     method: 'GET',
@@ -97,6 +99,11 @@ export default async function Page(props: {
     fetchCustomersPages(query, pageSize),
     fetchUserPlanAndUsage(),
   ]);
+  finishRouteTrace({
+    userId: (session.user as { id?: string } | undefined)?.id ?? null,
+    customerCount: customers.length,
+    totalPages,
+  });
   const canExportCsv = PLAN_CONFIG[plan.plan].canExportCsv;
 
   return (

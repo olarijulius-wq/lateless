@@ -16,10 +16,6 @@ function isProductionEnv() {
   return process.env.NODE_ENV === 'production';
 }
 
-function isProductionEnvFor(env: NodeJS.ProcessEnv) {
-  return env.NODE_ENV === 'production';
-}
-
 type DbSourceEnvVar =
   | 'POSTGRES_URL_TEST'
   | 'POSTGRES_URL_POOLER'
@@ -253,11 +249,7 @@ function resolveConfiguredPoolMax(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export function resolvePoolMaxForRuntime(env: NodeJS.ProcessEnv = process.env) {
-  const configuredMax = resolveConfiguredPoolMax(env);
-  if (!isProductionEnvFor(env)) {
-    return configuredMax;
-  }
-  return Math.min(configuredMax, 2);
+  return resolveConfiguredPoolMax(env);
 }
 
 function buildDbConfig(

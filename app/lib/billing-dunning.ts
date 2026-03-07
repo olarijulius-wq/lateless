@@ -5,6 +5,7 @@ import {
   getRequestMetricsMeta,
   recordRequestQueryLog,
 } from '@/app/lib/request-context';
+import { logDashboardQuery } from '@/app/lib/dashboard-debug';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -104,7 +105,7 @@ export async function fetchWorkspaceDunningState(
     const durationMs = Date.now() - startedAt;
     const { route, method } = getRequestMetricsMeta();
     recordRequestQueryLog('billing_dunning.fetch_state', durationMs);
-    console[durationMs >= 750 ? 'warn' : 'info']('[dashboard][query]', {
+    logDashboardQuery({
       route,
       method,
       label: 'billing_dunning.fetch_state',

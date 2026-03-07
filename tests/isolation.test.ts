@@ -247,6 +247,8 @@ async function run() {
     const authUrlModule = await import('@/app/lib/auth-url');
     const middlewareModule = await import('@/middleware');
     const stripeWebhookRoute = await import('@/app/api/stripe/webhook/route');
+    const remindersDashboardDataModule = await import('@/app/lib/reminders-dashboard-data');
+    const dbModule = await import('@/app/lib/db');
     const { authConfig } = await import('@/auth.config');
 
     let failures = 0;
@@ -2377,6 +2379,22 @@ async function run() {
       },
     );
 
+    await runCase('resolvePoolMaxForRuntime respects configured production max', async () => {
+      assert.equal(
+        dbModule.resolvePoolMaxForRuntime({
+          NODE_ENV: 'production',
+          POSTGRES_POOL_MAX: '8',
+        } as NodeJS.ProcessEnv),
+        8,
+      );
+      assert.equal(
+        dbModule.resolvePoolMaxForRuntime({
+          NODE_ENV: 'production',
+        } as NodeJS.ProcessEnv),
+        10,
+      );
+    });
+
     await runCase('customers list data path stays under query threshold', async () => {
       const fixtures = await seedFixtures();
       const workspaceContext: WorkspaceContext = {
@@ -2414,6 +2432,27 @@ async function run() {
             entry.route === '/dashboard/customers' && entry.label === 'customers.rows',
         ),
         'expected route-aware customers query timing log',
+      );
+    });
+
+    await runCase('reminders page query stays scoped to the requested workspace', async () => {
+      const fixtures = await seedFixtures();
+
+      await sql`
+        update public.invoices
+        set reminder_level = 0
+        where id in (${fixtures.invoiceA}, ${fixtures.invoiceB})
+      `;
+
+      const rows = await remindersDashboardDataModule.fetchUpcomingReminders(
+        fixtures.workspaceA,
+        false,
+        false,
+      );
+
+      assert.deepStrictEqual(
+        rows.map((row: { invoice_id: string }) => row.invoice_id),
+        [fixtures.invoiceA],
       );
     });
 
