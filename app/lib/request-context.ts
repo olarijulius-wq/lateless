@@ -31,6 +31,7 @@ type RequestMetricsStore = RequestMetricsMeta & {
 };
 
 const QUERY_WARNING_THRESHOLD = 50;
+const DEFAULT_REQUEST_SCOPE = process.env.NODE_ENV !== 'test';
 
 const requestMetricsStorage = new AsyncLocalStorage<RequestMetricsStore>();
 
@@ -53,11 +54,15 @@ function normalizeMethod(value: string | null | undefined) {
   return method ? method : 'GET';
 }
 
+function resolveRequestScope(requestScope: boolean | undefined) {
+  return requestScope ?? DEFAULT_REQUEST_SCOPE;
+}
+
 function createStore(meta?: Partial<RequestMetricsMeta>): RequestMetricsStore {
   return {
     route: normalizeRoute(meta?.route),
     method: normalizeMethod(meta?.method),
-    requestScope: meta?.requestScope === true,
+    requestScope: resolveRequestScope(meta?.requestScope),
     queryCount: 0,
     warned: false,
     finalized: false,
@@ -75,8 +80,8 @@ async function ensureRequestMetricsStore(meta?: Partial<RequestMetricsMeta>) {
     if (meta?.method) {
       existingStore.method = normalizeMethod(meta.method);
     }
-    if (meta?.requestScope === true) {
-      existingStore.requestScope = true;
+    if (meta && 'requestScope' in meta) {
+      existingStore.requestScope = resolveRequestScope(meta.requestScope);
     }
     return existingStore;
   }
@@ -138,7 +143,12 @@ export function getRequestMetricsMeta(): RequestMetricsMeta {
 }
 
 export function hasRequestScope(): boolean {
-  return requestMetricsStorage.getStore()?.requestScope === true;
+  const store = requestMetricsStorage.getStore();
+  if (!store) {
+    return false;
+  }
+
+  return store.requestScope === true || DEFAULT_REQUEST_SCOPE;
 }
 
 export function recordRequestQueryLog(label: string, durationMs: number) {

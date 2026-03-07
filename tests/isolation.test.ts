@@ -2330,6 +2330,21 @@ async function run() {
       );
     });
 
+    await runCase(
+      'fetchUserPlanAndUsage still rejects test requests without request scope',
+      async () => {
+        await requestContextModule.runWithRequestMetrics(
+          { route: '/dashboard/customers', method: 'GET', requestScope: false },
+          async () => {
+            await assert.rejects(
+              dataModule.fetchUserPlanAndUsage(),
+              /fetchUserPlanAndUsage requires request scope or test override/,
+            );
+          },
+        );
+      },
+    );
+
     await runCase('customers list data path stays under query threshold', async () => {
       const fixtures = await seedFixtures();
       const workspaceContext: WorkspaceContext = {
