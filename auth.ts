@@ -354,7 +354,9 @@ function PostgresAuthAdapter(): Adapter {
 }
 
 const resolvedBaseUrl = getCanonicalAuthOrigin();
-process.env.NEXTAUTH_URL = resolvedBaseUrl;
+if (process.env.NODE_ENV === 'production') {
+  process.env.NEXTAUTH_URL = resolvedBaseUrl;
+}
 
 if (process.env.NODE_ENV !== 'production') {
   console.info('[auth][debug] env', {
@@ -662,8 +664,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     ...authConfig.callbacks,
-    async redirect({ url }) {
-      return resolveCanonicalCallbackUrl(url, '/dashboard');
+    async redirect({ url, baseUrl }) {
+      return resolveCanonicalCallbackUrl(url, '/dashboard', {
+        baseUrl,
+      });
     },
     async signIn({ user, account, profile }) {
       if (!account || account.provider === 'credentials') {

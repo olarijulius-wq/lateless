@@ -1,6 +1,11 @@
 const LOCALHOST_FALLBACK_ORIGIN = 'http://localhost:3000';
 const PRODUCTION_CANONICAL_ORIGIN = 'https://lateless.org';
 
+type AuthOriginOptions = {
+  requestOrigin?: string | null;
+  baseUrl?: string | null;
+};
+
 function normalizeOrigin(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
@@ -26,13 +31,11 @@ export function getCanonicalAuthOrigin(): string {
     return PRODUCTION_CANONICAL_ORIGIN;
   }
 
-  return (
-    normalizeOrigin(process.env.NEXTAUTH_URL) ||
-    normalizeOrigin(process.env.AUTH_URL) ||
-    normalizeOrigin(process.env.NEXT_PUBLIC_APP_URL) ||
-    normalizeOrigin(process.env.VERCEL_URL) ||
-    LOCALHOST_FALLBACK_ORIGIN
-  );
+  if (!process.env.VERCEL) {
+    return LOCALHOST_FALLBACK_ORIGIN;
+  }
+
+  return normalizeOrigin(process.env.VERCEL_URL) || LOCALHOST_FALLBACK_ORIGIN;
 }
 
 export function sanitizeRelativeCallbackPath(
@@ -65,24 +68,46 @@ export function buildCanonicalAuthUrl(pathname: string): string {
   return new URL(pathname, getCanonicalAuthOrigin()).toString();
 }
 
+function resolveAuthOrigin(options?: AuthOriginOptions): string {
+  if (process.env.NODE_ENV === 'production') {
+    return PRODUCTION_CANONICAL_ORIGIN;
+  }
+
+  if (!process.env.VERCEL) {
+    return (
+      normalizeOrigin(options?.requestOrigin) ||
+      normalizeOrigin(options?.baseUrl) ||
+      LOCALHOST_FALLBACK_ORIGIN
+    );
+  }
+
+  return (
+    normalizeOrigin(options?.requestOrigin) ||
+    normalizeOrigin(options?.baseUrl) ||
+    normalizeOrigin(process.env.VERCEL_URL) ||
+    LOCALHOST_FALLBACK_ORIGIN
+  );
+}
+
 export function resolveCanonicalCallbackUrl(
   rawValue: string | null | undefined,
   fallback = '/dashboard',
+  options?: AuthOriginOptions,
 ): string {
-  const canonicalOrigin = getCanonicalAuthOrigin();
+  const canonicalOrigin = resolveAuthOrigin(options);
   const safeFallback = fallback.startsWith('/') ? fallback : '/dashboard';
   const candidate = rawValue?.trim();
 
   if (!candidate) {
-    return buildCanonicalAuthUrl(safeFallback);
+    return new URL(safeFallback, canonicalOrigin).toString();
   }
 
   try {
     const parsed = new URL(candidate, canonicalOrigin);
     const finalPath = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-    return buildCanonicalAuthUrl(finalPath || safeFallback);
+    return new URL(finalPath || safeFallback, canonicalOrigin).toString();
   } catch {
-    return buildCanonicalAuthUrl(safeFallback);
+    return new URL(safeFallback, canonicalOrigin).toString();
   }
 }
 
