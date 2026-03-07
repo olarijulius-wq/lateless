@@ -518,7 +518,7 @@ export default function RemindersAdminPanel({
             type="button"
             onClick={handleRunNow}
             disabled={isRunning || isRefreshing}
-            className="inline-flex h-9 items-center justify-center rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-black transition hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-white dark:text-black dark:hover:bg-neutral-100"
+            className={clsx(secondaryButtonClasses, 'h-9 px-3')}
           >
             {isRunning || isRefreshing ? 'Running...' : 'Run now'}
           </button>
