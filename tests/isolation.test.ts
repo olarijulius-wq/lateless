@@ -262,6 +262,7 @@ async function run() {
         console.error(error);
       } finally {
         dataModule.__testHooks.requireWorkspaceContextOverride = null;
+        dataModule.__testHooks.strictUserPlanUsageRuntimeOverride = null;
         invoiceExportRoute.__testHooks.authOverride = null;
         invoiceExportRoute.__testHooks.requireWorkspaceContextOverride = null;
         invoiceExportRoute.__testHooks.enforceRateLimitOverride = null;
@@ -2342,6 +2343,37 @@ async function run() {
             );
           },
         );
+      },
+    );
+
+    await runCase(
+      'fetchUserPlanAndUsage falls back to free defaults outside strict runtime',
+      async () => {
+        dataModule.__testHooks.strictUserPlanUsageRuntimeOverride = false;
+        workspacesModule.__testHooks.authOverride = async () => {
+          throw new Error('headers was called outside a request scope');
+        };
+
+        const warnings: string[] = [];
+        const originalWarn = console.warn;
+        console.warn = (...args: unknown[]) => {
+          warnings.push(args.map((value) => String(value)).join(' '));
+        };
+
+        try {
+          const usage = await requestContextModule.runWithRequestMetrics(
+            { route: '/dashboard/customers', method: 'GET', requestScope: false },
+            async () => dataModule.fetchUserPlanAndUsage(),
+          );
+
+          assert.deepStrictEqual(usage, dataModule.getFreePlanUsageDefaults());
+        } finally {
+          console.warn = originalWarn;
+        }
+
+        assert.equal(warnings.length, 1, `expected one warning, got ${warnings.length}`);
+        assert.match(warnings[0] ?? '', /\[billing\]\[plan_usage_fallback\]/);
+        assert.match(warnings[0] ?? '', /route=\/dashboard\/customers/);
       },
     );
 

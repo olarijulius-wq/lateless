@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import NavLinks from '@/app/ui/dashboard/nav-links';
 import { AccountMenuItems } from '@/app/ui/dashboard/mobile-drawer';
-import AcmeLogo from '@/app/ui/acme-logo';
+import LatelessLogo from '@/app/ui/lateless-logo';
 import {
   ChevronUpIcon,
 } from '@heroicons/react/24/outline';
@@ -56,7 +56,7 @@ export default async function SideNav() {
           href="/"
         >
           <div className="w-32 text-slate-900 dark:text-slate-100 md:w-40">
-            <AcmeLogo />
+            <LatelessLogo />
           </div>
         </Link>
         <div className="flex h-full flex-col">
