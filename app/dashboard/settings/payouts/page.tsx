@@ -6,6 +6,7 @@ import {
 import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
 import ConnectStripeButton from '../connect-stripe-button';
 import ResyncConnectStatusButton from './resync-connect-status-button';
+import StripeConnectReturnSync from './stripe-connect-return-sync';
 import { checkConnectedAccountAccess } from '@/app/lib/stripe-connect';
 import PricingPanel from '@/app/ui/pricing/panel';
 import { primaryButtonClasses } from '@/app/ui/button';
@@ -15,7 +16,12 @@ export const metadata: Metadata = {
   title: 'Payouts',
 };
 
-export default async function PayoutsPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function PayoutsPage(props: {
+  searchParams?: Promise<{ stripe?: string }>;
+}) {
+  const searchParams = await props.searchParams;
   const email = await requireUserEmail();
   const context = await ensureWorkspaceContextForCurrentUser();
   const userRole = context.userRole;
@@ -64,6 +70,7 @@ export default async function PayoutsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-5">
+      <StripeConnectReturnSync enabled={searchParams?.stripe === 'return'} />
       <SectionCard className="space-y-2">
         <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Payouts</h2>
         <p className="text-sm text-slate-600 dark:text-neutral-300">

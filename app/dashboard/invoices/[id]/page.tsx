@@ -126,7 +126,7 @@ export default async function Page(props: {
     PLAN_CONFIG[plan].hasReminders &&
     isSettingsRemindersAdminEmail(userEmail);
   const overdue = isInvoiceOverdue(invoice.due_date, invoice.status);
-  const hasConnect = !!connectStatus.accountId?.trim();
+  const canAcceptStripePayments = connectStatus.isReadyForTransfers;
   const payerTotal =
     invoice.status === 'paid' && typeof invoice.payable_amount === 'number'
       ? invoice.payable_amount
@@ -282,7 +282,7 @@ export default async function Page(props: {
                   redirectToReturnTo
                 />
                 {canPayInvoiceStatus(invoice.status) &&
-                  (hasConnect ? (
+                  (canAcceptStripePayments ? (
                     <PayInvoiceButton invoiceId={invoice.id} />
                   ) : (
                     <Link href="/dashboard/settings/payouts" className={`${secondaryButtonClasses} h-9 px-3`}>
@@ -412,7 +412,7 @@ export default async function Page(props: {
                 Paid at: {invoice.paid_at ? formatDateToLocal(invoice.paid_at) : '—'}
               </p>
               <p className="text-sm text-slate-700 dark:text-zinc-300">
-                Stripe connected: {hasConnect ? 'Yes' : 'No'}
+                Stripe connected: {connectStatus.hasAccount ? 'Yes' : 'No'}
               </p>
             </SectionCard>
 

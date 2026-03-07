@@ -159,6 +159,7 @@ export async function POST(req: Request) {
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000');
   const payoutsUrl = `${baseUrl}/dashboard/settings/payouts`;
+  const payoutsReturnUrl = `${payoutsUrl}?stripe=return`;
   const isTest = process.env.STRIPE_SECRET_KEY?.startsWith('sk_test_') ?? false;
   const mode = isTest ? 'test' : 'live';
   const parsedQuery = parseQuery(onboardQuerySchema, new URL(req.url));
@@ -245,7 +246,7 @@ export async function POST(req: Request) {
       account: accountId,
       type: 'account_onboarding',
       refresh_url: payoutsUrl,
-      return_url: payoutsUrl,
+      return_url: payoutsReturnUrl,
     });
 
     return NextResponse.json({ ok: true, url: accountLink.url, build });

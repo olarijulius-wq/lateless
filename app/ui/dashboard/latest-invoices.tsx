@@ -30,15 +30,10 @@ export default async function LatestInvoices() {
 
       <div
         className={clsx(
-          'group relative flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] transition-colors transition-shadow hover:cursor-pointer hover:border-neutral-300 hover:bg-slate-50/50 hover:shadow-[0_16px_30px_rgba(15,23,42,0.08)] dark:border-zinc-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)] dark:hover:border-zinc-700 dark:hover:bg-neutral-950',
+          'group relative flex flex-col rounded-2xl border border-neutral-200 bg-white p-4 shadow-[0_12px_24px_rgba(15,23,42,0.06)] transition-colors transition-shadow hover:border-neutral-300 hover:bg-slate-50/50 hover:shadow-[0_16px_30px_rgba(15,23,42,0.08)] dark:border-zinc-800 dark:bg-black dark:shadow-[0_18px_35px_rgba(0,0,0,0.45)] dark:hover:border-zinc-700 dark:hover:bg-neutral-950',
         )}
       >
-        <Link
-          href="/dashboard/invoices"
-          aria-label="Open invoices"
-          className="absolute inset-0 z-10 rounded-2xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-black"
-        />
-        <div className="relative z-20 flex flex-col">
+        <div className="relative flex flex-col">
           {isEmpty ? (
             <div className="rounded-xl border border-neutral-200 bg-slate-50 p-6 dark:border-zinc-800 dark:bg-black">
               <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">No invoices yet</h3>
@@ -63,9 +58,10 @@ export default async function LatestInvoices() {
                     : `#${invoice.id.slice(0, 6).toUpperCase()}`;
 
                   return (
-                    <div
+                    <Link
                       key={invoice.id}
-                      className="rounded-xl border border-neutral-200 bg-white p-3 dark:border-zinc-800 dark:bg-black"
+                      href={`/dashboard/customers/${invoice.customer_id}`}
+                      className="block rounded-xl border border-neutral-200 bg-white p-3 transition hover:border-neutral-300 hover:bg-slate-50 dark:border-zinc-800 dark:bg-black dark:hover:border-zinc-700 dark:hover:bg-neutral-950"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -90,7 +86,7 @@ export default async function LatestInvoices() {
                           {invoice.due_date ? formatDateToLocal(invoice.due_date) : '—'}
                         </span>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>
@@ -108,8 +104,9 @@ export default async function LatestInvoices() {
                     : `#${invoice.id.slice(0, 6).toUpperCase()}`;
 
                   return (
-                    <div
+                    <Link
                       key={invoice.id}
+                      href={`/dashboard/customers/${invoice.customer_id}`}
                       className={clsx(
                         'grid grid-cols-[120px_minmax(0,1fr)_120px_110px] items-center gap-4 px-2 py-3 text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-neutral-900',
                         { 'border-t border-neutral-200 dark:border-zinc-800': i !== 0 },
@@ -134,7 +131,7 @@ export default async function LatestInvoices() {
                       <div className="flex justify-end">
                         <InvoiceStatus status={invoice.status} />
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>
@@ -149,7 +146,7 @@ export default async function LatestInvoices() {
               </div>
               <Link
                 href="/dashboard/invoices"
-                className="relative z-20 text-xs text-slate-700 hover:underline dark:text-slate-200"
+                className="text-xs text-slate-700 hover:underline dark:text-slate-200"
               >
                 View all invoices
               </Link>
