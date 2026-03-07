@@ -503,7 +503,7 @@ function UpcomingTable({
                       type="button"
                       onClick={handleRunNow}
                       disabled={isRunning}
-                      className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-neutral-900 bg-neutral-900 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500 disabled:cursor-not-allowed disabled:opacity-60 md:h-9 md:w-auto md:text-xs"
+                      className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-neutral-900 bg-neutral-900 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200 md:h-9 md:w-auto md:text-xs"
                     >
                       {isRunning ? 'Running...' : 'Run reminders now'}
                     </button>
@@ -519,7 +519,7 @@ function UpcomingTable({
                   type="button"
                   disabled
                   title="Owner/Admin only"
-                  className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-black opacity-60 md:h-9 md:w-auto md:text-xs"
+                  className="inline-flex h-10 w-full items-center justify-center rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium text-black opacity-60 dark:border-neutral-600 dark:bg-white dark:text-neutral-950 md:h-9 md:w-auto md:text-xs"
                 >
                   Run reminders now
                 </button>
