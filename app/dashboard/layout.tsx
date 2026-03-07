@@ -1,14 +1,17 @@
 import SideNav from '@/app/ui/dashboard/sidenav';
-import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
 import FeedbackButton from '@/app/ui/dashboard/feedback-button';
 import BillingRecoveryBanner from '@/app/ui/dashboard/billing-recovery-banner';
-import { ensureWorkspaceContextForCurrentUser } from '@/app/lib/workspaces';
+import {
+  ensureWorkspaceContextForCurrentUser,
+  getRequestAuthSession,
+} from '@/app/lib/workspaces';
 import {
   fetchWorkspaceDunningState,
   shouldShowDunningBanner,
 } from '@/app/lib/billing-dunning';
 import type { Metadata } from 'next';
+import { setRequestMetricsMeta } from '@/app/lib/request-context';
 
 export const metadata: Metadata = {
   robots: {
@@ -18,7 +21,8 @@ export const metadata: Metadata = {
 };
 
 export default async function Layout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
+  await setRequestMetricsMeta({ route: '/dashboard', method: 'GET', requestScope: true });
+  const session = await getRequestAuthSession();
   const sessionUser = session?.user as { id?: string; email?: string } | undefined;
   if (!sessionUser?.email?.trim() && !sessionUser?.id?.trim()) {
     redirect('/login');

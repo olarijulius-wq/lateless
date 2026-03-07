@@ -20,6 +20,7 @@ import UpgradeNudge from '@/app/ui/upgrade-nudge';
 import InvoicesListControls from '@/app/ui/invoices/list-controls';
 import InvoicesUpdatedToast from '@/app/ui/invoices/updated-toast';
 import DashboardPageTitle from '@/app/ui/dashboard/page-title';
+import { setRequestMetricsMeta } from '@/app/lib/request-context';
 
 export const metadata: Metadata = {
   title: 'Invoices',
@@ -39,6 +40,11 @@ export default async function Page(props: {
     interval?: string;
   }>;
 }) {
+  await setRequestMetricsMeta({
+    route: '/dashboard/invoices',
+    method: 'GET',
+    requestScope: true,
+  });
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) > 0 ? Number(searchParams?.page) : 1;

@@ -14,11 +14,12 @@ import ExportCustomersButton from './export-button';
 import { PLAN_CONFIG } from '@/app/lib/config';
 import { RevealOnMount } from '@/app/ui/motion/reveal';
 import MobileExpandableSearchToolbar from '@/app/ui/dashboard/mobile-expandable-search-toolbar';
-import { auth } from '@/auth';
 import CustomersListControls from '@/app/ui/customers/list-controls';
 import Pagination from '@/app/ui/invoices/pagination';
 import CustomersUpdatedToast from '@/app/ui/customers/updated-toast';
 import DashboardPageTitle from '@/app/ui/dashboard/page-title';
+import { getRequestAuthSession } from '@/app/lib/workspaces';
+import { setRequestMetricsMeta } from '@/app/lib/request-context';
 
 export const metadata: Metadata = {
   title: 'Customers',
@@ -36,6 +37,11 @@ export default async function Page(props: {
     updatedCustomer?: string;
   }>;
 }) {
+  await setRequestMetricsMeta({
+    route: '/dashboard/customers',
+    method: 'GET',
+    requestScope: true,
+  });
   const searchParams = await props.searchParams;
   const query = searchParams?.query || '';
   const currentPage = Number(searchParams?.page) > 0 ? Number(searchParams?.page) : 1;
@@ -61,7 +67,7 @@ export default async function Page(props: {
   const isUpdated = searchParams?.updated === '1';
   const updatedCustomerId =
     searchParams?.updatedCustomer?.trim() || highlight || '';
-  const session = await auth();
+  const session = await getRequestAuthSession();
   if (!session?.user?.email) {
     const callbackParams = new URLSearchParams();
     if (query) callbackParams.set('query', query);

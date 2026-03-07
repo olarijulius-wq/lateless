@@ -308,6 +308,7 @@ async function run() {
         stripeWebhookRoute.__testHooks.assertStripeConfigOverride = null;
         stripeWebhookRoute.__testHooks.createStripeRequestVerifierOverride = null;
         stripeWebhookRoute.__testHooks.enforceRateLimitOverride = null;
+        workspacesModule.__testHooks.authOverride = null;
         requestContextModule.__testHooks.reset();
       }
     }
@@ -565,6 +566,44 @@ async function run() {
           delete env.NEXT_PUBLIC_APP_URL;
         }
       }
+    });
+
+    await runCase('resolveCanonicalCallbackUrl preserves query and hash while keeping localhost in dev', async () => {
+      assert.equal(
+        authUrlModule.resolveCanonicalCallbackUrl(
+          'https://lateless.org/dashboard/profile?from=google#security',
+          '/dashboard',
+        ),
+        'http://localhost:3000/dashboard/profile?from=google#security',
+      );
+    });
+
+    await runCase('request-scoped auth session is cached for repeated dashboard helpers', async () => {
+      let authCalls = 0;
+      workspacesModule.__testHooks.authOverride = async () => {
+        authCalls += 1;
+        return {
+          user: {
+            id: 'request-cache-user',
+            email: 'request-cache@example.com',
+          },
+        } as never;
+      };
+
+      await requestContextModule.runWithRequestMetrics(
+        { route: '/dashboard', method: 'GET' },
+        async () => {
+          const [first, second] = await Promise.all([
+            workspacesModule.getRequestAuthSession(),
+            workspacesModule.getRequestAuthSession(),
+          ]);
+
+          assert.equal(first?.user?.email, 'request-cache@example.com');
+          assert.equal(second?.user?.email, 'request-cache@example.com');
+        },
+      );
+
+      assert.equal(authCalls, 1);
     });
 
     await runCase('stripe workspace metadata parser prefers workspace_id', async () => {
@@ -2281,6 +2320,53 @@ async function run() {
       assert.ok(
         invoiceRequestSummary.totalQueryCount <= 12,
         `expected invoices list query count <= 12, got ${invoiceRequestSummary.totalQueryCount}`,
+      );
+      assert.ok(
+        requestContextModule.__testHooks.queryLogs.some(
+          (entry: { route: string; label: string }) =>
+            entry.route === '/dashboard/invoices' && entry.label === 'invoices.rows',
+        ),
+        'expected route-aware invoices query timing log',
+      );
+    });
+
+    await runCase('customers list data path stays under query threshold', async () => {
+      const fixtures = await seedFixtures();
+      const workspaceContext: WorkspaceContext = {
+        userEmail: fixtures.userEmail,
+        workspaceId: fixtures.workspaceA,
+      };
+
+      dataModule.__testHooks.requireWorkspaceContextOverride = async () => workspaceContext;
+      requestContextModule.__testHooks.reset();
+
+      await requestContextModule.runWithRequestMetrics(
+        { route: '/dashboard/customers', method: 'GET' },
+        async () => {
+          await Promise.all([
+            dataModule.fetchFilteredCustomers('', 1, 50, 'name', 'asc'),
+            dataModule.fetchCustomersPages('', 50),
+            dataModule.fetchUserPlanAndUsage(),
+          ]);
+        },
+      );
+
+      const customerRequestSummary = requestContextModule.__testHooks.summaries.find(
+        (summary: { route: string; method: string }) =>
+          summary.route === '/dashboard/customers' && summary.method === 'GET',
+      );
+
+      assert.ok(customerRequestSummary, 'expected request summary for customers list path');
+      assert.ok(
+        customerRequestSummary.totalQueryCount <= 10,
+        `expected customers list query count <= 10, got ${customerRequestSummary.totalQueryCount}`,
+      );
+      assert.ok(
+        requestContextModule.__testHooks.queryLogs.some(
+          (entry: { route: string; label: string }) =>
+            entry.route === '/dashboard/customers' && entry.label === 'customers.rows',
+        ),
+        'expected route-aware customers query timing log',
       );
     });
 

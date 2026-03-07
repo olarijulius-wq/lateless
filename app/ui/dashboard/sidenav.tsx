@@ -6,11 +6,11 @@ import {
   ChevronUpIcon,
 } from '@heroicons/react/24/outline';
 import { signOut } from '@/auth';
-import { auth } from '@/auth';
 import MobileNav from '@/app/ui/dashboard/mobile-nav';
 import FitTextEmail from '@/app/ui/dashboard/fit-text-email';
 import {
   ensureWorkspaceContextForCurrentUser,
+  getRequestAuthSession,
 } from '@/app/lib/workspaces';
 import { fetchWorkspaceDunningState } from '@/app/lib/billing-dunning';
 import { isFeedbackAdminEmail } from '@/app/lib/feedback';
@@ -21,7 +21,7 @@ function getInitial(value: string) {
 }
 
 export default async function SideNav() {
-  const session = await auth();
+  const session = await getRequestAuthSession();
   const userEmail = session?.user?.email ?? '';
   const identityLabel = userEmail || 'Account';
   const avatarInitial = getInitial(userEmail || '?');

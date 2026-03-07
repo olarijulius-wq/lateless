@@ -7,6 +7,7 @@ import { RevealOnScroll } from '@/app/ui/motion/reveal';
 import { NEUTRAL_FOCUS_RING_CLASSES } from '@/app/ui/dashboard/neutral-interaction';
 import { CARD_INTERACTIVE, LIGHT_SURFACE } from '@/app/ui/theme/tokens';
 import { buildSettingsSections } from '@/app/lib/settings-sections';
+import { setRequestMetricsMeta } from '@/app/lib/request-context';
 
 export const metadata: Metadata = {
   title: 'Settings',
@@ -39,6 +40,11 @@ export default async function SettingsPage(props: {
     interval?: string;
   }>;
 }) {
+  await setRequestMetricsMeta({
+    route: '/dashboard/settings',
+    method: 'GET',
+    requestScope: true,
+  });
   const searchParams = await props.searchParams;
   const hasBillingParams =
     searchParams?.success ||

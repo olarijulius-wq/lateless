@@ -1,5 +1,10 @@
 import { sendBillingRecoveryEmail } from '@/app/lib/email';
 import { sql } from '@/app/lib/db';
+import {
+  getRequestCachedValue,
+  getRequestMetricsMeta,
+  recordRequestQueryLog,
+} from '@/app/lib/request-context';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -80,23 +85,35 @@ function mapDunningRow(row: DunningStateRow): DunningState {
 export async function fetchWorkspaceDunningState(
   workspaceId: string,
 ): Promise<DunningState | null> {
-  const rows = await sql<DunningStateRow[]>`
-    select
-      workspace_id,
-      user_email,
-      subscription_status,
-      last_payment_failure_at,
-      last_recovery_email_at,
-      last_banner_dismissed_at,
-      recovery_required,
-      updated_at
-    from public.dunning_state
-    where workspace_id = ${workspaceId}
-    limit 1
-  `;
+  return getRequestCachedValue(`billing-dunning:workspace:${workspaceId}`, async () => {
+    const startedAt = Date.now();
+    const rows = await sql<DunningStateRow[]>`
+      select
+        workspace_id,
+        user_email,
+        subscription_status,
+        last_payment_failure_at,
+        last_recovery_email_at,
+        last_banner_dismissed_at,
+        recovery_required,
+        updated_at
+      from public.dunning_state
+      where workspace_id = ${workspaceId}
+      limit 1
+    `;
+    const durationMs = Date.now() - startedAt;
+    const { route, method } = getRequestMetricsMeta();
+    recordRequestQueryLog('billing_dunning.fetch_state', durationMs);
+    console[durationMs >= 750 ? 'warn' : 'info']('[dashboard][query]', {
+      route,
+      method,
+      label: 'billing_dunning.fetch_state',
+      durationMs,
+    });
 
-  const row = rows[0];
-  return row ? mapDunningRow(row) : null;
+    const row = rows[0];
+    return row ? mapDunningRow(row) : null;
+  });
 }
 
 export function shouldShowDunningBanner(

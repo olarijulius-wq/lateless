@@ -22,6 +22,7 @@ import {
   enforceRateLimit,
   parseQuery,
 } from '@/app/lib/security/api-guard';
+import { setRequestMetricsMeta } from '@/app/lib/request-context';
 
 export const runtime = 'nodejs';
 const usageQuerySchema = z
@@ -33,6 +34,11 @@ const usageQuerySchema = z
 
 export async function GET(request: Request) {
   try {
+    await setRequestMetricsMeta({
+      route: '/api/settings/usage',
+      method: request.method,
+      requestScope: true,
+    });
     const context = await ensureWorkspaceContextForCurrentUser();
     const rl = await enforceRateLimit(
       request,

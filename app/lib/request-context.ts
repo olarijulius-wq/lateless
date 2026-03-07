@@ -1,11 +1,11 @@
 import 'server-only';
 
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { headers } from 'next/headers';
 
 type RequestMetricsMeta = {
   route: string;
   method: string;
+  requestScope?: boolean;
 };
 
 type RequestMetricsSummary = {
@@ -13,6 +13,13 @@ type RequestMetricsSummary = {
   method: string;
   totalQueryCount: number;
   chosenEnvVar: string;
+};
+
+type RequestQueryLog = {
+  route: string;
+  method: string;
+  label: string;
+  durationMs: number;
 };
 
 type RequestMetricsStore = RequestMetricsMeta & {
@@ -23,16 +30,16 @@ type RequestMetricsStore = RequestMetricsMeta & {
   cache: Map<string, Promise<unknown>>;
 };
 
-const REQUEST_ROUTE_HEADER = 'x-lateless-request-route';
-const REQUEST_METHOD_HEADER = 'x-lateless-request-method';
 const QUERY_WARNING_THRESHOLD = 50;
 
 const requestMetricsStorage = new AsyncLocalStorage<RequestMetricsStore>();
 
 export const __testHooks = {
   summaries: [] as RequestMetricsSummary[],
+  queryLogs: [] as RequestQueryLog[],
   reset() {
     this.summaries = [];
+    this.queryLogs = [];
   },
 };
 
@@ -50,6 +57,7 @@ function createStore(meta?: Partial<RequestMetricsMeta>): RequestMetricsStore {
   return {
     route: normalizeRoute(meta?.route),
     method: normalizeMethod(meta?.method),
+    requestScope: meta?.requestScope === true,
     queryCount: 0,
     warned: false,
     finalized: false,
@@ -58,35 +66,22 @@ function createStore(meta?: Partial<RequestMetricsMeta>): RequestMetricsStore {
   };
 }
 
-async function resolveRequestMetaFromHeaders(): Promise<RequestMetricsMeta> {
-  try {
-    const requestHeaders = await headers();
-    return {
-      route: normalizeRoute(requestHeaders.get(REQUEST_ROUTE_HEADER)),
-      method: normalizeMethod(requestHeaders.get(REQUEST_METHOD_HEADER)),
-    };
-  } catch {
-    return {
-      route: 'unknown',
-      method: 'GET',
-    };
-  }
-}
-
 async function ensureRequestMetricsStore(meta?: Partial<RequestMetricsMeta>) {
   const existingStore = requestMetricsStorage.getStore();
   if (existingStore) {
-    if (meta?.route && existingStore.route === 'unknown') {
+    if (meta?.route) {
       existingStore.route = normalizeRoute(meta.route);
     }
-    if (meta?.method && existingStore.method === 'GET') {
+    if (meta?.method) {
       existingStore.method = normalizeMethod(meta.method);
+    }
+    if (meta?.requestScope === true) {
+      existingStore.requestScope = true;
     }
     return existingStore;
   }
 
-  const resolvedMeta = meta ?? (await resolveRequestMetaFromHeaders());
-  const store = createStore(resolvedMeta);
+  const store = createStore(meta);
   requestMetricsStorage.enterWith(store);
   return store;
 }
@@ -127,6 +122,37 @@ export async function recordDbQueryExecution(chosenEnvVar: string) {
       `[db][request_warn] route=${store.route} method=${store.method} total_query_count=${store.queryCount}`,
     );
   }
+}
+
+export async function setRequestMetricsMeta(meta: Partial<RequestMetricsMeta>) {
+  await ensureRequestMetricsStore(meta);
+}
+
+export function getRequestMetricsMeta(): RequestMetricsMeta {
+  const store = requestMetricsStorage.getStore();
+  return {
+    route: normalizeRoute(store?.route),
+    method: normalizeMethod(store?.method),
+    requestScope: store?.requestScope === true,
+  };
+}
+
+export function hasRequestScope(): boolean {
+  return requestMetricsStorage.getStore()?.requestScope === true;
+}
+
+export function recordRequestQueryLog(label: string, durationMs: number) {
+  if (process.env.NODE_ENV !== 'test') {
+    return;
+  }
+
+  const meta = getRequestMetricsMeta();
+  __testHooks.queryLogs.push({
+    route: meta.route,
+    method: meta.method,
+    label,
+    durationMs,
+  });
 }
 
 export async function getRequestCachedValue<T>(
