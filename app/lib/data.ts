@@ -1906,10 +1906,11 @@ export type UserInvoiceUsageProgress = {
 };
 
 export async function fetchUserPlanAndUsage(): Promise<UserPlanUsage> {
-  if (
-    !hasRequestScope() &&
-    !(TEST_HOOKS_ENABLED && __testHooks.requireWorkspaceContextOverride)
-  ) {
+  const hasScopedRequest = hasRequestScope();
+  const hasTestWorkspaceOverride =
+    TEST_HOOKS_ENABLED && __testHooks.requireWorkspaceContextOverride;
+
+  if (!hasScopedRequest && !hasTestWorkspaceOverride) {
     throw new Error('fetchUserPlanAndUsage requires request scope or test override');
   }
 
